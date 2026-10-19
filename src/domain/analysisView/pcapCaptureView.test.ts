@@ -5,7 +5,35 @@ import {
   type AnalysisViewParent,
 } from "./analysisView.js";
 
-const capture = (tsharkStderr: string): AnalysisViewParent => {
+const handshake = {
+  stream: "7",
+  server_name: "example.example",
+  record_version: "0x0301",
+  hello_version: "0x0303",
+  cipher_values: ["0x1301"],
+  extension_types: ["0", "11"],
+  curves: ["29"],
+  ec_point_formats: ["0"],
+  alpn: ["h2"],
+  ja3: "f09d9334475ec483246499ee7a6ff1d2",
+  ja4: "t12d0203h2_777cda164f4b_7638730b74bd",
+};
+
+const capture = (
+  tsharkStderr: string,
+  overrides: Partial<{
+    tls_sni_values: string[];
+    tls_sni_count: number;
+    tls_handshakes: (typeof handshake)[];
+    tls_handshake_count: number;
+    dns_queries: {
+      query: string;
+      response_addresses: string[];
+      response_address_count: number;
+    }[];
+    dns_query_count: number;
+  }> = {},
+): AnalysisViewParent => {
   const target = {
     path: "/recordings/input.pcap",
     sha256: "c".repeat(64),
@@ -34,6 +62,8 @@ const capture = (tsharkStderr: string): AnalysisViewParent => {
     dns_query_count: 0,
     tls_sni_values: [],
     tls_sni_count: 0,
+    tls_handshakes: [],
+    tls_handshake_count: 0,
     protocol_distribution: [],
     protocol_count: 0,
     http_request_uris: [],
@@ -44,6 +74,7 @@ const capture = (tsharkStderr: string): AnalysisViewParent => {
     unattributed_dns_packet_count: 0,
     coverage: "complete",
     diagnostics: { capinfos_stderr: "", tshark_stderr: tsharkStderr },
+    ...overrides,
   };
   const evidence = createEvidence(
     { ...target, format: "file" },
@@ -96,4 +127,83 @@ it("pages diagnostics without splitting a surrogate pair", () => {
     offset = page.value.coverage.next_offset;
   }
   expect(text).toBe("ab😀cd");
+});
+
+it("pages retained tls-handshakes facts without rerunning tshark", () => {
+  const parent = capture("", {
+    tls_handshakes: [handshake],
+    tls_handshake_count: 1,
+  });
+  const page = projectAnalysisView(parent, {
+    kind: "pcap",
+    facet: "tls-handshakes",
+    offset: 0,
+    limit: 64,
+  });
+  if (!page.ok) throw page.error;
+  if (page.value.kind !== "pcap" || page.value.page.facet !== "tls-handshakes")
+    throw new Error("Expected a tls-handshakes page.");
+  expect(page.value.page.items).toEqual([handshake]);
+  expect(page.value.coverage).toMatchObject({
+    examined: 1,
+    total: 1,
+    next_offset: null,
+  });
+  const summary = projectAnalysisView(parent, { kind: "summary" });
+  if (!summary.ok) throw summary.error;
+  const summaryData = (
+    summary.value as unknown as {
+      summary: { retained_counts: Record<string, number> };
+    }
+  ).summary;
+  expect(summaryData.retained_counts.tls_handshakes).toBe(1);
+});
+
+it("discloses opt-in risk-plane advisories with the observational limitation only", () => {
+  const parent = capture("", {
+    tls_sni_values: ["js.datadome.co", "plain.example"],
+    tls_sni_count: 2,
+    dns_queries: [
+      {
+        query: "client.perimeterx.net",
+        response_addresses: [],
+        response_address_count: 0,
+      },
+    ],
+    dns_query_count: 1,
+    tls_handshakes: [handshake],
+    tls_handshake_count: 1,
+  });
+  const page = projectAnalysisView(parent, {
+    kind: "pcap",
+    facet: "risk-plane",
+    offset: 0,
+    limit: 64,
+  });
+  if (!page.ok) throw page.error;
+  if (page.value.kind !== "pcap" || page.value.page.facet !== "risk-plane")
+    throw new Error("Expected a risk-plane page.");
+  const advisories = page.value.page.items;
+  expect(advisories).toEqual(
+    expect.arrayContaining([
+      expect.stringContaining("DataDome"),
+      expect.stringContaining("HUMAN Security (PerimeterX)"),
+      expect.stringContaining("observational disclosure only"),
+    ]),
+  );
+  // A non-matching SNI inside the retained handshakes contributes nothing;
+  // only retained host, DNS question and HTTP-host values are matched.
+  expect(page.value.limitations.join(" ")).toContain(
+    "Matching covers only retained SNI, DNS and HTTP-host values",
+  );
+  const summary = projectAnalysisView(parent, { kind: "summary" });
+  if (!summary.ok) throw summary.error;
+  const summaryData = (
+    summary.value as unknown as {
+      summary: { retained_counts: Record<string, number> };
+    }
+  ).summary;
+  expect(summaryData.retained_counts.tls_handshakes).toBe(1);
+  // The summary never carries advisories implicitly.
+  expect(JSON.stringify(summaryData)).not.toContain("DataDome");
 });

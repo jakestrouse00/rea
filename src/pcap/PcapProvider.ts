@@ -34,6 +34,7 @@ import {
   parseTsharkJsonOutput,
   TSHARK_JSON_MAX_BYTES,
 } from "./PcapOutput.js";
+import { TLS_FINGERPRINT_LIMITATIONS } from "../domain/pcap/tlsFingerprint.js";
 import {
   runPcapCommand,
   type PcapCommandCleanup,
@@ -65,7 +66,16 @@ const FIELDS = [
   "dns.qry.name",
   "dns.a",
   "dns.aaaa",
+  "tls.handshake.type",
   "tls.handshake.extensions_server_name",
+  "tls.record.version",
+  "tls.handshake.version",
+  "tls.handshake.ciphersuite",
+  "tls.handshake.extension.type",
+  "tls.handshake.extensions_alpn",
+  "tls.handshake.extensions_supported_group",
+  "tls.handshake.ec_point_format",
+  "tcp.stream",
   "http.request.full_uri",
 ];
 
@@ -661,6 +671,8 @@ export class PcapProvider {
         dns_query_count: fields.dnsQueryCount,
         tls_sni_values: fields.tlsSniValues,
         tls_sni_count: fields.tlsSniCount,
+        tls_handshakes: fields.tlsHandshakes,
+        tls_handshake_count: fields.tlsHandshakeCount,
         protocol_distribution: fields.protocolDistribution,
         protocol_count: fields.protocolCount,
         http_request_uris: fields.httpRequestUris,
@@ -676,6 +688,7 @@ export class PcapProvider {
         "Both tools read one owned snapshot; target identity comes from its admitted source descriptor",
         "DNS address values are associated only with a single question in the same response packet; values may include additional DNS records, not only final resolution answers",
         "Only bytes present in the saved capture are examined; encryption and capture truncation can hide higher-level fields",
+        ...TLS_FINGERPRINT_LIMITATIONS,
         ...(fields.partial
           ? [
               "One or more projected categories were capped, credential-bearing URIs were omitted or coalesced, or DNS address attribution remains unresolved; counts retain the examined totals",

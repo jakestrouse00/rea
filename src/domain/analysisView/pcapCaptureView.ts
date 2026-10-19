@@ -1,6 +1,11 @@
 import { analysisViewInputError } from "./analysisViewErrors.js";
 import { z } from "zod";
 import { pcapResultSchemas } from "../pcap/pcapAnalysis.js";
+import {
+  riskPlaneAdvisoriesForValues,
+  RISK_PLANE_ADVISORY_LIMITATION,
+} from "../riskPlaneAdvisories.js";
+import { parseRecordedTransportUrl } from "../recordedTransportUrl.js";
 import { analysisInputErrorFromIssues } from "../inputIssueProjection.js";
 import type { AnalysisError } from "../analysisErrorBase.js";
 import { err, ok, type Result } from "../result.js";
@@ -29,9 +34,11 @@ export const pcapViewRequestSchema = z.discriminatedUnion("facet", [
       "endpoints",
       "dns-queries",
       "tls-sni",
+      "tls-handshakes",
       "protocols",
       "http-uris",
       "unattributed-addresses",
+      "risk-plane",
     ]),
   }),
   z.strictObject({
@@ -57,6 +64,10 @@ export const pcapViewPageSchema = z.discriminatedUnion("facet", [
   }),
   z.strictObject({ facet: z.literal("tls-sni"), items: fields.tls_sni_values }),
   z.strictObject({
+    facet: z.literal("tls-handshakes"),
+    items: fields.tls_handshakes,
+  }),
+  z.strictObject({
     facet: z.literal("protocols"),
     items: fields.protocol_distribution,
   }),
@@ -73,6 +84,10 @@ export const pcapViewPageSchema = z.discriminatedUnion("facet", [
     items: fields.unattributed_dns_addresses,
   }),
   z.strictObject({
+    facet: z.literal("risk-plane"),
+    items: z.array(z.string().min(1)),
+  }),
+  z.strictObject({
     facet: z.literal("diagnostics"),
     text: z.string(),
     status: z.enum(["retained", "unknown"]),
@@ -83,6 +98,7 @@ export const pcapSummarySchema = captureSchema
     endpoints: true,
     dns_queries: true,
     tls_sni_values: true,
+    tls_handshakes: true,
     protocol_distribution: true,
     http_request_uris: true,
     unattributed_dns_addresses: true,
@@ -93,6 +109,7 @@ export const pcapSummarySchema = captureSchema
       endpoints: z.number().int().nonnegative(),
       dns_queries: z.number().int().nonnegative(),
       tls_sni_values: z.number().int().nonnegative(),
+      tls_handshakes: z.number().int().nonnegative(),
       protocol_distribution: z.number().int().nonnegative(),
       http_request_uris: z.number().int().nonnegative(),
       unattributed_dns_addresses: z.number().int().nonnegative(),
@@ -141,6 +158,7 @@ const summarize = ({
   endpoints,
   dns_queries,
   tls_sni_values,
+  tls_handshakes,
   protocol_distribution,
   http_request_uris,
   unattributed_dns_addresses,
@@ -152,6 +170,7 @@ const summarize = ({
     endpoints: endpoints.length,
     dns_queries: dns_queries.length,
     tls_sni_values: tls_sni_values.length,
+    tls_handshakes: tls_handshakes.length,
     protocol_distribution: protocol_distribution.length,
     http_request_uris: http_request_uris.length,
     unattributed_dns_addresses: unattributed_dns_addresses.length,
@@ -164,6 +183,23 @@ const summarize = ({
           capinfos: diagnostics.capinfos_stderr.length,
         },
 });
+
+/**
+ * Match retained host-like values (SNI, DNS question names and HTTP URI
+ * hosts) against documentation-backed anti-bot vendor suffixes, and disclose
+ * them as observational advisory strings. Matching covers only retained
+ * values and never establishes vendor behavior for the caller's session.
+ */
+const riskPlaneAdvisoryStrings = (capture: Capture): readonly string[] =>
+  riskPlaneAdvisoriesForValues([
+    ...capture.tls_sni_values,
+    ...capture.dns_queries.map(({ query }) => query),
+    ...capture.http_request_uris.flatMap((uri) => {
+      const origin = parseRecordedTransportUrl(uri).origin;
+      const host = origin === null ? null : URL.parse(origin)?.hostname;
+      return host === undefined || host === null ? [] : [host];
+    }),
+  ]);
 
 const selectRows = (
   capture: Capture,
@@ -197,6 +233,11 @@ const selectRows = (
       return ok({
         page: { facet: view.facet, items: slice(capture.tls_sni_values) },
         total: capture.tls_sni_values.length,
+      });
+    case "tls-handshakes":
+      return ok({
+        page: { facet: view.facet, items: slice(capture.tls_handshakes) },
+        total: capture.tls_handshakes.length,
       });
     case "protocols":
       return ok({
@@ -239,6 +280,13 @@ const selectRows = (
           items: slice(matches[0]!.response_addresses),
         },
         total: matches[0]!.response_addresses.length,
+      });
+    }
+    case "risk-plane": {
+      const advisories = [...riskPlaneAdvisoryStrings(capture)];
+      return ok({
+        page: { facet: view.facet, items: slice(advisories) },
+        total: advisories.length,
       });
     }
   }
@@ -324,6 +372,14 @@ export const projectPcapCaptureView = (
         ...shared,
         source_coverage: capture.coverage,
         page: selected.value.page,
+        limitations:
+          view.facet === "risk-plane"
+            ? [
+                ...shared.limitations,
+                RISK_PLANE_ADVISORY_LIMITATION,
+                "Matching covers only retained SNI, DNS and HTTP-host values; unmatched vendor planes and values without a retained spelling remain unknown.",
+              ]
+            : shared.limitations,
         coverage: pageViewCoverage(
           view.offset,
           selected.value.page.items.length,

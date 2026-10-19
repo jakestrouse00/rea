@@ -156,6 +156,106 @@ it("refuses dense JSON before its expanded graph exceeds the decoding budget", a
   });
 });
 
+it("retains one bounded per-stream ClientHello fact set with derived fingerprints", async () => {
+  const result = await parseTsharkJsonOutput(
+    capture([
+      {
+        "frame.protocols": ["ip:tcp:tls"],
+        "ip.src": ["192.0.2.10"],
+        "ip.dst": ["192.0.2.20"],
+        "tcp.stream": ["7"],
+        "tls.handshake.type": ["1"],
+        "tls.record.version": ["0x0301"],
+        "tls.handshake.version": ["0x0303"],
+        "tls.handshake.extensions_server_name": ["example.example"],
+        "tls.handshake.ciphersuite": ["0x1301", "0xc02b"],
+        "tls.handshake.extension.type": ["0", "11", "13"],
+        "tls.handshake.extensions_alpn": ["h2", "http/1.1"],
+        "tls.handshake.extensions_supported_group": ["23", "29"],
+        "tls.handshake.ec_point_format": ["uncompressed"],
+      },
+    ]),
+  );
+  expect(result.tlsHandshakeCount).toBe(1);
+  expect(result.tlsHandshakes[0]).toEqual({
+    stream: "7",
+    server_name: "example.example",
+    record_version: "0x0301",
+    hello_version: "0x0303",
+    cipher_values: ["0x1301", "0xc02b"],
+    extension_types: ["0", "11", "13"],
+    curves: ["23", "29"],
+    ec_point_formats: ["uncompressed"],
+    alpn: ["h2", "http/1.1"],
+    ja3: "f09d9334475ec483246499ee7a6ff1d2",
+    ja4: "t12d0203h2_777cda164f4b_7638730b74bd",
+  });
+  expect(result.partial).toBe(false);
+});
+
+it("dedupes retransmitted ClientHello values on one stream without inventing a second flow", async () => {
+  const hello = {
+    "frame.protocols": ["ip:tcp:tls"],
+    "tcp.stream": ["9"],
+    "tls.handshake.type": ["1"],
+    "tls.handshake.version": ["0x0303"],
+  };
+  const result = await parseTsharkJsonOutput(capture([hello, hello]));
+  expect(result.tlsHandshakeCount).toBe(1);
+  expect(result.tlsHandshakes[0]).toEqual({
+    stream: "9",
+    server_name: null,
+    record_version: null,
+    hello_version: "0x0303",
+    cipher_values: [],
+    extension_types: [],
+    curves: [],
+    ec_point_formats: [],
+    alpn: [],
+    ja3: "bddda940f9963577c41d7c28b1a5f65f",
+    ja4: "t12i000000_5feceb66ffc8_5feceb66ffc8",
+  });
+});
+
+it("keeps distinct ClientHello value bases and absent-stream groups separate", async () => {
+  const shared = {
+    "frame.protocols": ["ip:tcp:tls"],
+    "tls.handshake.type": ["1"],
+    "tls.handshake.version": ["0x0303"],
+  };
+  const result = await parseTsharkJsonOutput(
+    capture([
+      { ...shared },
+      { ...shared, "tls.handshake.ciphersuite": ["0x1301"] },
+      { ...shared, "ip.src": ["192.0.2.10"], "ip.dst": ["192.0.2.20"] },
+    ]),
+  );
+  expect(result.tlsHandshakeCount).toBe(3);
+  expect(result.tlsHandshakes.map(({ stream }) => stream)).toEqual([
+    null,
+    null,
+    null,
+  ]);
+  expect(
+    result.tlsHandshakes.map(({ cipher_values }) => cipher_values),
+  ).toEqual([[], ["0x1301"], []]);
+});
+
+it("does not retain non-ClientHello TLS records as handshake facts", async () => {
+  const result = await parseTsharkJsonOutput(
+    capture([
+      {
+        "frame.protocols": ["ip:tcp:tls"],
+        "tls.handshake.type": ["2"],
+        "tls.handshake.version": ["0x0303"],
+        "tls.handshake.ciphersuite": ["0x1302"],
+      },
+    ]),
+  );
+  expect(result.tlsHandshakeCount).toBe(0);
+  expect(result.partial).toBe(false);
+});
+
 it("permits cancellation while validating and aggregating producer output", async () => {
   const controller = new AbortController();
   const result = parseTsharkJsonOutput(

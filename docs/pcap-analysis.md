@@ -38,11 +38,20 @@ Then use its `normalized_result.parent_evidence_id` with
 {"kind":"pcap","facet":"dns-queries","offset":0,"limit":20}
 {"kind":"pcap","facet":"dns-addresses","query":"example.com","offset":0,"limit":20}
 {"kind":"pcap","facet":"tls-sni","offset":0,"limit":20}
+{"kind":"pcap","facet":"tls-handshakes","offset":0,"limit":20}
+{"kind":"pcap","facet":"risk-plane","offset":0,"limit":20}
 {"kind":"pcap","facet":"diagnostics","stream":"tshark","offset":0,"limit":4096}
 ```
 
 Other row facets are `protocols`, `http-uris` and `unattributed-addresses`.
-Defaults are offset 0 and limit 64. DNS question pages give address counts;
+`tls-handshakes` pages the retained per-flow TLS ClientHello facts with derived,
+value-free JA3/JA4 fingerprints (ClientHello field values only — no certificate
+bytes or keys; see the report's own limitation strings for the documented JA4
+approximations and producer-spelling dependence). `risk-plane` matches retained
+SNI, DNS question and HTTP-host values against documentation-backed anti-bot
+vendor suffixes and pages observational advisory strings only; presence claims
+nothing about behavior or outcome for the caller's session. Defaults are offset
+0 and limit 64. DNS question pages give address counts;
 select one exact retained question to page its addresses. Diagnostic windows
 count UTF-16 code units; other windows count rows. Missing/ambiguous selectors
 fail. Unknown legacy diagnostics remain unknown, not an observed empty stream.

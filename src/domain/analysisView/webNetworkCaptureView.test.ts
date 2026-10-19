@@ -4,7 +4,7 @@ import { createEvidence } from "../evidence.js";
 import { webNetworkCaptureSchema } from "../webNetworkCapture.js";
 import { projectAnalysisView } from "./analysisView.js";
 
-const capture = () => {
+const capture = (url = "https://example.invalid/a") => {
   const body = Buffer.from("original body");
   const artifact = {
     path: "/recordings/input.saz",
@@ -33,7 +33,7 @@ const capture = () => {
         time: null,
         request: {
           method: "POST",
-          url: "https://example.invalid/a",
+          url,
           body: body.toString(),
         },
       },
@@ -128,6 +128,53 @@ it("keeps selected-record page coverage distinct from capture coverage and unsaf
       exhausted: true,
     },
   });
+});
+
+it("attaches per-record risk_plane_advisories only when the caller opts in", () => {
+  const { parent } = capture("https://js.datadome.co/challenge");
+  const plain = projectAnalysisView(parent, {
+    kind: "capture",
+    detail: "preview",
+    offset: 0,
+    limit: 9,
+  });
+  if (!plain.ok) throw plain.error;
+  expect(JSON.stringify(plain.value)).not.toContain("risk_plane_advisories");
+  const opted = projectAnalysisView(parent, {
+    kind: "capture",
+    detail: "preview",
+    offset: 0,
+    limit: 9,
+    risk_advisories: true,
+  });
+  if (!opted.ok) throw opted.error;
+  if (opted.value.kind !== "capture") throw new Error("Expected record page.");
+  for (const item of opted.value.items) {
+    expect(item).toHaveProperty("risk_plane_advisories");
+    const advisories = (item as unknown as { risk_plane_advisories: string[] })
+      .risk_plane_advisories;
+    expect(advisories).toHaveLength(1);
+    expect(advisories[0]).toContain("DataDome");
+    expect(advisories[0]).toContain("observational disclosure only");
+    expect(advisories[0]).toMatch(/https:\/\/docs\.datadome\.co\//u);
+  }
+  const unmatched = projectAnalysisView(capture().parent, {
+    kind: "capture",
+    detail: "preview",
+    offset: 0,
+    limit: 9,
+    risk_advisories: true,
+  });
+  if (!unmatched.ok) throw unmatched.error;
+  if (unmatched.value.kind !== "capture")
+    throw new Error("Expected record page.");
+  expect(
+    unmatched.value.items.every(
+      (item) =>
+        (item as unknown as { risk_plane_advisories: string[] })
+          .risk_plane_advisories.length === 0,
+    ),
+  ).toBe(true);
 });
 
 it("retains explicitly unknown digests and rejects a different subject path", () => {

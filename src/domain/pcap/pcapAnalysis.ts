@@ -63,6 +63,30 @@ const protocolCount = z.strictObject({
   packet_count: z.number().int().positive(),
 });
 
+/**
+ * Retained ClientHello field values with derived JA3/JA4 fingerprints. Only
+ * handshake field values: no certificate bytes, no keys, no server-side facts.
+ */
+const tlsClientHello = z.strictObject({
+  stream: z.string().min(1).nullable(),
+  server_name: z.string().min(1).nullable(),
+  record_version: z.string().min(1).nullable(),
+  hello_version: z.string().min(1).nullable(),
+  cipher_values: z.array(z.string().min(1)),
+  extension_types: z.array(z.string().min(1)),
+  curves: z.array(z.string().min(1)),
+  ec_point_formats: z.array(z.string().min(1)),
+  alpn: z.array(z.string().min(1)),
+  ja3: z
+    .string()
+    .regex(/^[0-9a-f]{32}$/u)
+    .nullable(),
+  ja4: z
+    .string()
+    .regex(/^t(?:13|12|11|10)[di]\d{4}[0-9a-z]{2}_[0-9a-f]{12}_[0-9a-f]{12}$/u)
+    .nullable(),
+});
+
 /** Portable pcap observations with explicit coverage limitations. */
 export const pcapResultSchemas = {
   inspect_pcap_client: z.strictObject({
@@ -92,6 +116,9 @@ export const pcapResultSchemas = {
     /** TLS Server Name Indication values observed in handshakes. */
     tls_sni_values: z.array(z.string().min(1)),
     tls_sni_count: z.number().int().nonnegative(),
+    /** Bounded per-flow TLS ClientHello facts with derived JA3/JA4 fingerprints. */
+    tls_handshakes: z.array(tlsClientHello),
+    tls_handshake_count: z.number().int().nonnegative(),
     /** Protocol distribution (frame.protocols column counts). */
     protocol_distribution: z.array(protocolCount),
     protocol_count: z.number().int().nonnegative(),

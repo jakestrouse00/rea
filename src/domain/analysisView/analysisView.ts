@@ -89,6 +89,7 @@ import {
   projectWebNetworkCaptureView,
   captureViewRequestSchema,
   captureViewItemsSchema,
+  captureViewAdvisoryItemsSchema,
   captureSummarySchema,
 } from "./webNetworkCaptureView.js";
 import type { WebNetworkApiSurfaceAccumulator } from "./WebNetworkApiSurfaceAccumulator.js";
@@ -531,7 +532,7 @@ export const analysisViewResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("capture"),
     view: captureViewRequestSchema,
-    items: captureViewItemsSchema,
+    items: z.union([captureViewItemsSchema, captureViewAdvisoryItemsSchema]),
     ...viewResultBase,
     parent_operation: z.literal("inspect_web_network_capture"),
   }),

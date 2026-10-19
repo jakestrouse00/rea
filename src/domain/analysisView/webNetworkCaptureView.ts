@@ -6,6 +6,10 @@ import { analysisInputErrorFromIssues } from "../inputIssueProjection.js";
 import type { JsonValue } from "../jsonValue.js";
 import { err, ok, type Result } from "../result.js";
 import {
+  riskPlaneAdvisoriesForValues,
+  RISK_PLANE_ADVISORY_LIMITATION,
+} from "../riskPlaneAdvisories.js";
+import {
   webNetworkCaptureRecordSchema,
   webNetworkCaptureBinaryDescriptorSchema,
   webNetworkCaptureSchema,
@@ -36,6 +40,12 @@ export const captureViewRequestSchema = z.strictObject({
   detail: z.enum(["preview", "complete"]).default("preview"),
   offset: z.number().int().nonnegative().default(0),
   limit: z.number().int().positive().default(64),
+  /**
+   * Opt-in observational advisories: when true, each returned record carries
+   * its risk_plane_advisories strings (empty when nothing matched). Absent
+   * or false projects no advisories.
+   */
+  risk_advisories: z.boolean().optional(),
 });
 
 const previewSchema = webNetworkCaptureRecordSchema.extend({
@@ -43,6 +53,16 @@ const previewSchema = webNetworkCaptureRecordSchema.extend({
 });
 export const captureViewItemsSchema = z.array(
   z.union([webNetworkCaptureRecordSchema, previewSchema]),
+);
+/** Opted-in record pages attach one advisory-strings array per record. */
+const recordWithAdvisories = webNetworkCaptureRecordSchema.extend({
+  risk_plane_advisories: z.array(z.string()),
+});
+const previewWithAdvisories = previewSchema.extend({
+  risk_plane_advisories: z.array(z.string()),
+});
+export const captureViewAdvisoryItemsSchema = z.array(
+  z.union([recordWithAdvisories, previewWithAdvisories]),
 );
 
 /** Count/identity overview; bodies and the archive member inventory stay in the parent. */
@@ -384,6 +404,42 @@ const preview = (record: WebNetworkCaptureRecord, format: string) => {
   };
 };
 
+/**
+ * Retained request host-like values that may match a documented vendor-plane
+ * suffix. Host and authority never carry a userinfo marker; URL hosts come
+ * only from an absolute WHATWG parse, never an invented one. Every other
+ * retained value stays uninterpreted.
+ */
+const recordHosts = (
+  format: string,
+  record: { readonly reported: JsonValue },
+): string[] => {
+  const request = object(record.reported)?.request;
+  const fields = request === undefined ? null : object(request);
+  const hosts: string[] = [];
+  if (fields !== null) {
+    if (format === "mitmproxy")
+      for (const field of ["host", "authority"] as const) {
+        const value = fields[field];
+        if (
+          typeof value === "string" &&
+          value.length <= 262 &&
+          value.trim() !== "" &&
+          !hasControl(value, true) &&
+          !LONE_SURROGATE.test(value) &&
+          !/[/\\?#@]/u.test(value)
+        )
+          hosts.push(value);
+      }
+    const url = fields.url;
+    if (typeof url === "string" && url.length <= MITMPROXY_PATH_MAX_LENGTH) {
+      const hostname = URL.parse(url.trim())?.hostname;
+      if (hostname !== undefined) hosts.push(hostname);
+    }
+  }
+  return [...new Set(hosts)];
+};
+
 /** Authenticate the retained report and its subject at one owning boundary. */
 const parseCaptureParent = (
   parent: AnalysisViewParent,
@@ -510,15 +566,29 @@ export const projectWebNetworkCaptureView = (
       : projected;
   }
   const records = report.records.slice(view.offset, view.offset + view.limit);
+  const items =
+    view.detail === "complete"
+      ? records
+      : records.map((record) => preview(record, report.format));
+  // Advisories match only each record's retained request host-like fields;
+  // every other string value stays uninterpreted and unmatched.
+  const advisoryItems = () =>
+    captureViewAdvisoryItemsSchema.parse(
+      items.map((record) => ({
+        ...record,
+        risk_plane_advisories: riskPlaneAdvisoriesForValues(
+          recordHosts(report.format, record),
+        ),
+      })),
+    );
   return ok({
     kind: "capture",
     view,
     ...shared,
-    items: captureViewItemsSchema.parse(
-      view.detail === "complete"
-        ? records
-        : records.map((record) => preview(record, report.format)),
-    ),
+    items:
+      view.risk_advisories === true
+        ? advisoryItems()
+        : captureViewItemsSchema.parse(items),
     coverage: pageViewCoverage(
       view.offset,
       records.length,
@@ -529,6 +599,12 @@ export const projectWebNetworkCaptureView = (
       ...(view.detail === "preview"
         ? [
             "Preview selects recorded headline fields and byte descriptors; headers, XML, bodies, message data and other fields remain in complete record pages. Missing preview fields do not establish their absence from the producer record.",
+          ]
+        : []),
+      ...(view.risk_advisories === true
+        ? [
+            RISK_PLANE_ADVISORY_LIMITATION,
+            "Advisory matching covers only each record's retained request host, authority and absolute-URL host fields; every other retained value is uninterpreted and unmatched, and unmatched vendor planes remain unknown.",
           ]
         : []),
     ],

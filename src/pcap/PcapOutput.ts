@@ -5,6 +5,7 @@ import {
 } from "../domain/analysisErrorCore.js";
 import { parseRecordedTransportUrl } from "../domain/recordedTransportUrl.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
+import { clientHelloFingerprints } from "../domain/pcap/tlsFingerprint.js";
 
 const OPERATION = "inspect_pcap_capture";
 /** Bounds JSON decoding plus its expanded object graph before JSON.parse. */
@@ -117,6 +118,21 @@ export const parseCapinfosOutput = (stdout: string): CapinfosMetadata => {
   };
 };
 
+export interface TlsHandshakeFacts {
+  /** Producer TCP stream ID, or null when the producer reported none. */
+  readonly stream: string | null;
+  readonly server_name: string | null;
+  readonly record_version: string | null;
+  readonly hello_version: string | null;
+  readonly cipher_values: string[];
+  readonly extension_types: string[];
+  readonly curves: string[];
+  readonly ec_point_formats: string[];
+  readonly alpn: string[];
+  readonly ja3: string | null;
+  readonly ja4: string | null;
+}
+
 export interface TsharkFields {
   readonly endpoints: { address: string; port: null; packet_count: number }[];
   readonly endpointCount: number;
@@ -128,6 +144,8 @@ export interface TsharkFields {
   readonly dnsQueryCount: number;
   readonly tlsSniValues: string[];
   readonly tlsSniCount: number;
+  readonly tlsHandshakes: TlsHandshakeFacts[];
+  readonly tlsHandshakeCount: number;
   readonly protocolDistribution: { protocol: string; packet_count: number }[];
   readonly protocolCount: number;
   readonly httpRequestUris: string[];
@@ -199,6 +217,7 @@ export const parseTsharkJsonOutput = async (
   const endpoints = new Map<string, number>();
   const dns = new Map<string, Set<string>>();
   const sni = new Set<string>();
+  const handshakes = new Map<string, TlsHandshakeFacts>();
   const protocols = new Map<string, number>();
   const uris = new Set<string>();
   const observedUris = new Set<string>();
@@ -301,6 +320,75 @@ export const parseTsharkJsonOutput = async (
     }
     for (const value of field("tls.handshake.extensions_server_name"))
       if (value !== "") add(sni, value);
+    if (field("tls.handshake.type").some((value) => value === "1")) {
+      const streams = [
+        ...new Set(
+          field("tcp.stream").filter((value) => /^[0-9]+$/u.test(value)),
+        ),
+      ];
+      const stream = streams.length === 1 ? streams[0]! : null;
+      const facts = {
+        server_name:
+          field("tls.handshake.extensions_server_name").find(
+            (value) => value !== "",
+          ) ?? null,
+        record_version:
+          field("tls.record.version").find((value) => value !== "") ?? null,
+        hello_version:
+          field("tls.handshake.version").find((value) => value !== "") ?? null,
+        ciphers: field("tls.handshake.ciphersuite").filter(
+          (value) => value !== "",
+        ),
+        extensions: field("tls.handshake.extension.type").filter(
+          (value) => value !== "",
+        ),
+        curves: field("tls.handshake.extensions_supported_group").filter(
+          (value) => value !== "",
+        ),
+        ec_point_formats: field("tls.handshake.ec_point_format").filter(
+          (value) => value !== "",
+        ),
+        alpn: field("tls.handshake.extensions_alpn").filter(
+          (value) => value !== "",
+        ),
+      };
+      // One ClientHello fact set per stream and reported value basis; without
+      // a stream ID (or with an ambiguous one) the endpoint pair still keeps
+      // retransmissions of the same hello from expanding the inventory.
+      const group =
+        streams.length === 1
+          ? `stream:${stream}`
+          : `pair:${[
+              ...field("ip.src"),
+              ...field("ip.dst"),
+              ...field("ipv6.src"),
+              ...field("ipv6.dst"),
+            ]
+              .filter((value) => value !== "")
+              .join(",")}`;
+      const identity = `${group}:${JSON.stringify(facts)}`;
+      if (!handshakes.has(identity)) {
+        charge(identity);
+        const {
+          ciphers,
+          extensions,
+          curves,
+          ec_point_formats,
+          alpn,
+          ...retained
+        } = facts;
+        handshakes.set(identity, {
+          stream,
+          ...retained,
+          cipher_values: ciphers,
+          extension_types: extensions,
+          curves,
+          ec_point_formats,
+          alpn,
+          ...clientHelloFingerprints(facts),
+        });
+      }
+    }
     for (const value of new Set(field("frame.protocols"))) {
       if (value === "") continue;
       if (!protocols.has(value)) charge(value);
@@ -338,6 +426,8 @@ export const parseTsharkJsonOutput = async (
     dnsQueryCount: dns.size,
     tlsSniValues: [...sni],
     tlsSniCount: sni.size,
+    tlsHandshakes: [...handshakes.values()],
+    tlsHandshakeCount: handshakes.size,
     protocolDistribution: [...protocols]
       .sort((a, b) => b[1] - a[1] || compareUnicodeCodePoints(a[0], b[0]))
       .map(([protocol, packet_count]) => ({ protocol, packet_count })),
