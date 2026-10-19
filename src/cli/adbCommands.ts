@@ -408,4 +408,80 @@ export const registerAdbCommands = (
         package: args.package,
       }),
   });
+
+  const RUNTIME_CAPTURE_CLI_COMMANDS = CLI_COMMANDS;
+  const outputDirectory = z
+    .string()
+    .min(1)
+    .describe("Local directory for the captured artifact");
+  const durationSeconds = z
+    .number()
+    .int()
+    .min(1)
+    .max(300)
+    .default(10)
+    .describe("Device-side capture duration in seconds");
+  cli.command(RUNTIME_CAPTURE_CLI_COMMANDS.captureAndroidPerfetto, {
+    description:
+      "Capture one bounded perfetto trace from the device and digest it (read-only; <=300 s)",
+    args: z.object({ serial }),
+    options: z.object({
+      "output-directory": outputDirectory,
+      duration: durationSeconds,
+      "config-path": z
+        .string()
+        .min(1)
+        .optional()
+        .describe(
+          "Existing local perfetto text config pushed to the device tmp and removed afterwards",
+        ),
+      tag: z
+        .array(z.string().min(1).max(64))
+        .max(16)
+        .default([])
+        .describe("Extra perfetto buffer tags, repeatable"),
+    }),
+    run: ({ args, options }) =>
+      execute(
+        RUNTIME_CAPTURE_CLI_COMMANDS.captureAndroidPerfetto,
+        "capture_android_perfetto",
+        {
+          serial: args.serial,
+          output_directory: options["output-directory"],
+          duration_seconds: options.duration,
+          ...(options["config-path"] === undefined
+            ? {}
+            : { config_path: options["config-path"] }),
+          ...(options.tag.length === 0 ? {} : { tags: options.tag }),
+        },
+      ),
+  });
+  cli.command(RUNTIME_CAPTURE_CLI_COMMANDS.captureAndroidSimpleperf, {
+    description:
+      "Record one bounded simpleperf profile for a debuggable pid and digest it (<=300 s)",
+    args: z.object({ serial }),
+    options: z.object({
+      pid: z.number().int().positive().describe("Debuggable app process id"),
+      "output-directory": outputDirectory,
+      duration: durationSeconds,
+      event: z
+        .array(z.string().min(1).max(64))
+        .min(1)
+        .max(8)
+        .default(["cpu-cycles"])
+        .describe("Perf events to count, repeatable"),
+    }),
+    run: ({ args, options }) =>
+      execute(
+        RUNTIME_CAPTURE_CLI_COMMANDS.captureAndroidSimpleperf,
+        "capture_android_simpleperf",
+        {
+          serial: args.serial,
+          pid: options.pid,
+          output_directory: options["output-directory"],
+          duration_seconds: options.duration,
+          events: options.event,
+        },
+      ),
+  });
 };

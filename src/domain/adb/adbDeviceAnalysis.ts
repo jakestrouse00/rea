@@ -211,6 +211,75 @@ export const adbInputSchemas = {
       "Local directory for the bugreport archive; REA writes exactly one new zip into it",
     ),
   }),
+  capture_android_perfetto: z.strictObject({
+    serial: deviceSerialSchema.describe(
+      "Device serial exactly as `adb devices` reports it",
+    ),
+    output_directory: localPathStringSchema.describe(
+      "Local directory for the perfetto trace; REA writes exactly one new file into it",
+    ),
+    duration_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(10)
+      .describe(
+        "Trace duration passed to perfetto `-t`; perfetto exits when it elapses",
+      ),
+    config_path: localPathStringSchema
+      .describe(
+        "Existing local perfetto text config file; REA pushes it to the device's temporary directory, uses it with `perfetto -c`, and removes it afterwards",
+      )
+      .optional(),
+    tags: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[A-Za-z0-9_]+$/u, "Perfetto tags are identifiers"),
+      )
+      .max(16)
+      .optional()
+      .describe(
+        "Additional buffer tags recorded by the device's built-in perfetto when no config is supplied",
+      ),
+  }),
+  capture_android_simpleperf: z.strictObject({
+    serial: deviceSerialSchema.describe(
+      "Device serial exactly as `adb devices` reports it",
+    ),
+    pid: z
+      .number()
+      .int()
+      .positive()
+      .describe("Process id of a debuggable app process to profile"),
+    output_directory: localPathStringSchema.describe(
+      "Local directory for the simpleperf .data report; REA writes exactly one new file into it",
+    ),
+    duration_seconds: z
+      .number()
+      .int()
+      .min(1)
+      .max(300)
+      .default(10)
+      .describe(
+        "Profiling duration passed to simpleperf `--duration`; simpleperf exits when it elapses",
+      ),
+    events: z
+      .array(
+        z
+          .string()
+          .min(1)
+          .max(64)
+          .regex(/^[A-Za-z0-9._-]+$/u, "Perf events are simple identifiers"),
+      )
+      .min(1)
+      .max(8)
+      .default(["cpu-cycles"])
+      .describe("Perf event counts recorded by simpleperf record"),
+  }),
   resolve_adb_packages: z.strictObject({
     serial: deviceSerialSchema.describe(
       "Device serial exactly as `adb devices` reports it",
@@ -395,6 +464,14 @@ export const adbRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({
     operation: z.literal("collect_adb_bugreport"),
     input: adbInputSchemas.collect_adb_bugreport,
+  }),
+  z.strictObject({
+    operation: z.literal("capture_android_perfetto"),
+    input: adbInputSchemas.capture_android_perfetto,
+  }),
+  z.strictObject({
+    operation: z.literal("capture_android_simpleperf"),
+    input: adbInputSchemas.capture_android_simpleperf,
   }),
   z.strictObject({
     operation: z.literal("resolve_adb_packages"),
@@ -690,6 +767,30 @@ export const adbResultSchemas = {
     sha256: z.string().regex(/^[a-f0-9]{64}$/u),
     adb_reported_path: z.string().nullable(),
   }),
+  capture_android_perfetto: z.strictObject({
+    client,
+    serial: z.string().min(1),
+    local_path: z.string().min(1),
+    bytes: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    adb_reported_path: z.string().nullable(),
+    duration_requested_seconds: z.number().int().positive(),
+    duration_elapsed_ms: z.number().int().nonnegative().nullable(),
+    outcome: z.enum(["duration-elapsed", "unknown"]),
+  }),
+  capture_android_simpleperf: z.strictObject({
+    client,
+    serial: z.string().min(1),
+    local_path: z.string().min(1),
+    bytes: z.number().int().nonnegative(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+    adb_reported_path: z.string().nullable(),
+    pid: z.number().int().positive(),
+    events: z.array(z.string().min(1)),
+    duration_requested_seconds: z.number().int().positive(),
+    duration_elapsed_ms: z.number().int().nonnegative().nullable(),
+    outcome: z.enum(["duration-elapsed", "unknown"]),
+  }),
   resolve_adb_packages: z.strictObject({
     client,
     serial: z.string().min(1),
@@ -808,3 +909,19 @@ export type AdbAcquiredFilePartialObservation =
             readonly digest_status: "unknown";
           };
     };
+
+/**
+ * Device-profiler capture facts retained when cancellation, publication or
+ * cleanup fails around a runtime capture the device already recorded.
+ */
+export type AdbRuntimeCapturePartialObservation = {
+  readonly provider_id: "adb";
+  readonly operation: "capture_android_perfetto" | "capture_android_simpleperf";
+  readonly result: {
+    readonly serial: string;
+    readonly local_path: string;
+    readonly adb_reported_path: string | null;
+    readonly duration_requested_seconds: number;
+    readonly digest_status: "unknown";
+  };
+};

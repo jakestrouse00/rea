@@ -2,6 +2,8 @@ import type { EvidenceMcpServer } from "./EvidenceMcpServer.js";
 import type { EvidenceWriter } from "../application/investigation/InvestigationRecordPort.js";
 import { AdbDeviceAnalysisService } from "../application/adb/AdbDeviceAnalysisService.js";
 import { toolContract } from "../contracts/toolContracts.js";
+import { ADB_TOOL_CONTRACTS } from "../contracts/adb/adbToolContracts.js";
+import type { ToolContract } from "../contracts/toolContractTypes.js";
 import type { Logger } from "pino";
 import { createContractToolHandler } from "./contractToolHandler.js";
 import { toolRegistrationOptions } from "./toolRegistrationOptions.js";
@@ -21,6 +23,26 @@ export const registerAdbTools = (
     logger,
     recordEvidence,
     withAdmittedAnalysis,
+  );
+  // All ADB contracts participate in the central TOOL_CONTRACTS inventory
+  // (toolContracts.ts spreads ADB_TOOL_CONTRACTS); the capture contracts are
+  // looked up from the owning module by exact name so catalog ordering never
+  // selects an operation.
+  const perfettoContract = ADB_TOOL_CONTRACTS.find(
+    (
+      contract,
+    ): contract is Extract<
+      (typeof ADB_TOOL_CONTRACTS)[number],
+      { readonly name: "capture_android_perfetto" }
+    > => contract.name === "capture_android_perfetto",
+  );
+  const simpleperfContract = ADB_TOOL_CONTRACTS.find(
+    (
+      contract,
+    ): contract is Extract<
+      (typeof ADB_TOOL_CONTRACTS)[number],
+      { readonly name: "capture_android_simpleperf" }
+    > => contract.name === "capture_android_simpleperf",
   );
   for (const contract of [
     toolContract("inspect_adb_client"),
@@ -47,7 +69,10 @@ export const registerAdbTools = (
     toolContract("start_adb_app"),
     toolContract("start_adb_activity"),
     toolContract("stop_adb_app"),
-  ] as const) {
+    ...(perfettoContract === undefined || simpleperfContract === undefined
+      ? []
+      : [perfettoContract, simpleperfContract]),
+  ]) {
     server.registerTool(
       contract.name,
       toolRegistrationOptions(contract),

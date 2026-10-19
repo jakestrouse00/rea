@@ -4,7 +4,10 @@ import {
 } from "../../domain/adb/adbDeviceAnalysis.js";
 import type { ToolContract } from "../toolContractTypes.js";
 import { evidenceResultOf } from "../toolOutputSchemaPrimitives.js";
-import { toolContractMetadata } from "../toolEffects.js";
+import {
+  annotationsFromEffects,
+  toolContractMetadata,
+} from "../toolEffects.js";
 
 /** ADB device inspection and acquisition over a caller-supplied binary. */
 export const ADB_TOOL_CONTRACTS = [
@@ -376,6 +379,99 @@ export const ADB_TOOL_CONTRACTS = [
       {
         title: "Stop an app",
         input: { serial: "emulator-5554", package: "com.example.app" },
+      },
+    ],
+  },
+  {
+    // Registry-owned effect audit pending: effects mirror collect_adb_bugreport
+    // until toolEffects.ts integrates this contract (registry additions).
+    name: "capture_android_perfetto",
+    title: "Capture Android Perfetto",
+    effects: {
+      mutatesTarget: false,
+      mutatesSession: true,
+      writesFilesystem: true,
+      launchesProcess: true,
+      accessesNetwork: true,
+      changesUiState: false,
+      mayDiscardData: false,
+      executesForeignCode: false,
+      mutatesDevice: false,
+      idempotent: false,
+    },
+    annotations: annotationsFromEffects({
+      mutatesTarget: false,
+      mutatesSession: true,
+      writesFilesystem: true,
+      launchesProcess: true,
+      accessesNetwork: true,
+      changesUiState: false,
+      mayDiscardData: false,
+      executesForeignCode: false,
+      mutatesDevice: false,
+      idempotent: false,
+    }),
+    returnsTargetContent: true,
+    description:
+      "Capture one bounded perfetto trace from the device (`perfetto -o <staging> -t <seconds>` on the device plus `adb pull`), digesting the pulled trace. Duration is bounded at 300 seconds; perfetto exits when the duration elapses, and the result reports the requested duration and measured elapsed time. Availability of the device-side perfetto daemon varies by Android build: absent daemons keep their device refusal. Record-only; no trace analysis or device configuration change. With a caller-supplied local config, REA pushes that one file into /data/local/tmp and removes it (and the staged trace) after pulling.",
+    kind: "adb-provider",
+    inputSchema: adbInputSchemas.capture_android_perfetto,
+    outputSchema: evidenceResultOf(adbResultSchemas.capture_android_perfetto),
+    examples: [
+      {
+        title: "Capture ten seconds of system tracing",
+        input: {
+          serial: "emulator-5554",
+          output_directory: "/tmp/rea-captures",
+          duration_seconds: 10,
+        },
+      },
+    ],
+  },
+  {
+    // Registry-owned effect audit pending: effects mirror collect_adb_bugreport
+    // until toolEffects.ts integrates this contract (registry additions).
+    name: "capture_android_simpleperf",
+    title: "Capture Android Simpleperf",
+    effects: {
+      mutatesTarget: false,
+      mutatesSession: true,
+      writesFilesystem: true,
+      launchesProcess: true,
+      accessesNetwork: true,
+      changesUiState: false,
+      mayDiscardData: false,
+      executesForeignCode: false,
+      mutatesDevice: false,
+      idempotent: false,
+    },
+    annotations: annotationsFromEffects({
+      mutatesTarget: false,
+      mutatesSession: true,
+      writesFilesystem: true,
+      launchesProcess: true,
+      accessesNetwork: true,
+      changesUiState: false,
+      mayDiscardData: false,
+      executesForeignCode: false,
+      mutatesDevice: false,
+      idempotent: false,
+    }),
+    returnsTargetContent: true,
+    description:
+      "Record one bounded simpleperf profile (`simpleperf record`) for an explicitly selected pid on the device and pull the .data artifact with its digest. Duration is bounded at 300 seconds; simpleperf exits when the duration elapses, and the result reports the requested duration and measured elapsed time. Profiling a pid requires a debuggable app (or root): non-debuggable targets keep the device's own refusal as an unsupported-target error. Simpleperf availability varies by Android build. REA publishes the raw .data report without interpreting it.",
+    kind: "adb-provider",
+    inputSchema: adbInputSchemas.capture_android_simpleperf,
+    outputSchema: evidenceResultOf(adbResultSchemas.capture_android_simpleperf),
+    examples: [
+      {
+        title: "Record cpu-cycles for a pid",
+        input: {
+          serial: "emulator-5554",
+          pid: 12345,
+          output_directory: "/tmp/rea-captures",
+          duration_seconds: 10,
+        },
       },
     ],
   },

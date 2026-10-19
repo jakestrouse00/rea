@@ -377,6 +377,24 @@ export const parseBugreportCopiedPath = (stdout: string): string | null => {
   return match === null ? null : match[1]!;
 };
 
+/**
+ * Parse the device-side completion line device perfetto prints after a
+ * one-shot capture (`Wrote trace to file <path>`); null when absent.
+ */
+export const parsePerfettoWrittenPath = (stdout: string): string | null => {
+  const match =
+    /^Wrote (?:\d+ (?:bytes|events)? ?)?trace (?:to )?(?:file )?(.+)\r?$/imu.exec(
+      stdout.trim(),
+    );
+  return match === null ? null : match[1]!.trim();
+};
+
+/** Parse simpleperf's own completion report; null when nothing was reported. */
+export const parseSimpleperfReportedPath = (stdout: string): string | null => {
+  const match = /^record \S+: captured .*? on .*$/imu.exec(stdout.trim());
+  return match === null ? null : match[0];
+};
+
 /** Read the device's `Failure [REASON]` verdict from package-change output. */
 export const packageChangeFailureReason = (output: string): string | null =>
   /Failure \[([^\]]+)\]/u.exec(output)?.[1] ?? null;

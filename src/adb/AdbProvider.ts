@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants } from "node:fs";
 import {
   access,
@@ -28,6 +28,7 @@ import type {
   AdbActivityStartPartialObservation,
   AdbAcquiredFilePartialObservation,
   AdbPackagePullPartialObservation,
+  AdbRuntimeCapturePartialObservation,
   AdbRequest,
 } from "../domain/adb/adbDeviceAnalysis.js";
 import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
@@ -112,6 +113,8 @@ import {
   parseDumpsysPackageOutput,
   parseFeatureListOutput,
   parsePackageChangeOutput,
+  parsePerfettoWrittenPath,
+  parseSimpleperfReportedPath,
   parseProcessListOutput,
   parsePngDimensions,
   parseResolveActivityOutput,
@@ -152,6 +155,11 @@ const SCREEN_TIMEOUT_MS = 60_000;
 const SCREEN_MAX_OUTPUT_BYTES = 32 * 1024 * 1024;
 const BUGREPORT_TIMEOUT_MS = 600_000;
 const BUGREPORT_MAX_OUTPUT_BYTES = 1024 * 1024;
+/** Device-side capture budget plus command startup and pull overhead. */
+const RUNTIME_CAPTURE_GRACE_MS = 60_000;
+const RUNTIME_CAPTURE_MAX_OUTPUT_BYTES = 1024 * 1024;
+const SIMPLEPERF_NON_DEBUGGABLE_PATTERN =
+  /not debuggable|Cannot attach to the process|Permission denied to attach|Failed to start tracing/iu;
 const UNPARSED_LINES_REPORTED = 10;
 
 /** Carry the exact digest owner through caller-specific partial-result mapping. */
@@ -381,6 +389,24 @@ const clientIdentityResult = (
 type ClientIdentity = ReturnType<typeof clientIdentityResult>;
 type ProviderIdentity = { id: string; name: string; version: string | null };
 
+/**
+ * One completed device-profiler capture, before result-schema assembly. The
+ * recording command's own reported path is kept separately from the
+ * caller-visible published path.
+ */
+interface DeviceProfilerCaptureObservation {
+  readonly publishedPath: string;
+  readonly bytes: number;
+  readonly sha256: string;
+  readonly durationElapsedMs: number;
+  readonly reportedPath: string | null;
+  /**
+   * Removal result for the device-side temporary files; null when every file
+   * was confirmed removed.
+   */
+  readonly deviceTempCleanupFailure: string | null;
+}
+
 const reported = (
   unparsedLines: readonly string[],
   coverage: "complete" | "partial",
@@ -446,6 +472,10 @@ const hardLinksUnsupported = (cause: unknown): boolean =>
 
 const describeAdbFailure = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
+
+/** Re-observable abort probe that avoids stale property narrowing. */
+const abortedNow = (signal: AbortSignal | undefined): boolean =>
+  signal?.aborted === true;
 
 interface ScreenPublicationCloseFailure {
   readonly cause: unknown;
@@ -666,7 +696,11 @@ const runtimeRootLease = (
   });
 
 interface PendingOutputDirectoryCleanup {
-  readonly operation: "pull_adb_package" | "collect_adb_bugreport";
+  readonly operation:
+    | "pull_adb_package"
+    | "collect_adb_bugreport"
+    | "capture_android_perfetto"
+    | "capture_android_simpleperf";
   readonly path: string;
   readonly primary: AnalysisError;
   readonly remove: () => Promise<void>;
@@ -1584,6 +1618,24 @@ export class AdbProvider {
         );
       case "collect_adb_bugreport":
         return this.collectBugreport(
+          operation,
+          selection,
+          client,
+          provider,
+          request.input,
+          signal,
+        );
+      case "capture_android_perfetto":
+        return this.capturePerfetto(
+          operation,
+          selection,
+          client,
+          provider,
+          request.input,
+          signal,
+        );
+      case "capture_android_simpleperf":
+        return this.captureSimpleperf(
           operation,
           selection,
           client,
@@ -3227,5 +3279,476 @@ export class AdbProvider {
       );
     }
     return collectedResult;
+  }
+
+  /**
+   * Shared capture pipeline for one-shot device profilers: record into
+   * /data/local/tmp through an owned adb command, pull the artifact through a
+   * caller-scoped staging directory, publish it exactly once into the caller's
+   * output directory, and digest the published bytes. Device-side temporary
+   * files this capture created are removed after the pull; a failed removal is
+   * surfaced to the caller's limitations, never silently dropped.
+   */
+  async #runProfilerCapture(
+    operation: "capture_android_perfetto" | "capture_android_simpleperf",
+    selection: AdbBinarySelection,
+    input: { readonly serial: string; readonly output_directory: string },
+    capture: {
+      /** Shell arguments for the device-side recording command. */
+      readonly recordArguments: readonly string[];
+      readonly recordTimeoutMs: number;
+      readonly requestedDurationSeconds: number;
+      /** Absolute device path the recording command writes. */
+      readonly deviceArtifactPath: string;
+      /** Device files this capture created and must remove afterwards. */
+      readonly deviceTempPaths: readonly string[];
+      /** Parses the recording command's own completion report. */
+      readonly parseReportedPath: (stdout: string) => string | null;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<DeviceProfilerCaptureObservation, AnalysisError>> {
+    const directory = await prepareOutputDirectory(
+      operation,
+      input.output_directory,
+    );
+    if (!directory.ok) return directory;
+    let stagingDirectory: string;
+    let stagingIdentity: OutputDirectoryIdentity | undefined;
+    try {
+      stagingDirectory = await mkdtemp(join(directory.value, ".rea-capture-"));
+      const created = await lstat(stagingDirectory);
+      if (!created.isDirectory() || created.isSymbolicLink())
+        throw new Error(
+          `The created capture staging output is not a regular directory: ${stagingDirectory}`,
+        );
+      stagingIdentity = {
+        dev: created.dev,
+        ino: created.ino,
+        mode: created.mode,
+      };
+    } catch (cause) {
+      return err(
+        new AnalysisOutputError(
+          operation,
+          "The runtime-capture staging directory could not be created",
+          { cause },
+        ),
+      );
+    }
+    const removeDeviceTempFiles = async (): Promise<string | null> => {
+      const removed = await runAdb(
+        operation,
+        { device: input.serial },
+        selection.binary,
+        adbArguments(input.serial, [
+          "shell",
+          "rm",
+          "-f",
+          ...capture.deviceTempPaths,
+        ]),
+        {
+          timeoutMs: RUNTIME_CAPTURE_GRACE_MS,
+          maxOutputBytes: RUNTIME_CAPTURE_MAX_OUTPUT_BYTES,
+        },
+        signal,
+      );
+      return removed.ok
+        ? null
+        : `The device-side temporary files [${capture.deviceTempPaths.join(", ")}] could not be confirmed removed: ${removed.error.message}`;
+    };
+    // Ownership rule: every exit through this method either removes the
+    // staging directory itself or retains it for a caller-visible retry.
+    const releaseStaging = async (
+      primary: AnalysisError,
+    ): Promise<AnalysisError> => {
+      try {
+        await removeOwnedOutputDirectory(stagingDirectory, stagingIdentity);
+        return primary;
+      } catch (cause) {
+        return this.#retainOutputDirectoryCleanup(
+          {
+            operation,
+            path: stagingDirectory,
+            primary,
+            remove: () =>
+              removeOwnedOutputDirectory(stagingDirectory, stagingIdentity),
+          },
+          new ProviderCleanupError(
+            ADB_PROVIDER_IDENTITY.id,
+            [stagingDirectory],
+            { reason: cause instanceof Error ? cause.message : String(cause) },
+            { operation, cause },
+          ),
+        );
+      }
+    };
+    const partialObservation = (
+      localPath: string | undefined,
+    ): AdbRuntimeCapturePartialObservation => ({
+      provider_id: ADB_PROVIDER_IDENTITY.id,
+      operation,
+      result: {
+        serial: input.serial,
+        local_path: localPath ?? stagingDirectory,
+        adb_reported_path: null,
+        duration_requested_seconds: capture.requestedDurationSeconds,
+        digest_status: "unknown",
+      },
+    });
+    const startedAt = Date.now();
+    const record = await runAdb(
+      operation,
+      { device: input.serial },
+      selection.binary,
+      adbArguments(input.serial, ["shell", ...capture.recordArguments]),
+      {
+        timeoutMs: capture.recordTimeoutMs,
+        maxOutputBytes: RUNTIME_CAPTURE_MAX_OUTPUT_BYTES,
+      },
+      signal,
+    );
+    const elapsedMs = Date.now() - startedAt;
+    if (!record.ok) {
+      // A recording command that cannot start or attach reports its own
+      // refusal as an unsupported target; anything else keeps its type.
+      if (SIMPLEPERF_NON_DEBUGGABLE_PATTERN.test(record.error.message))
+        return err(
+          await releaseStaging(
+            new AnalysisUnsupportedTargetError(
+              operation,
+              input.serial,
+              record.error.message,
+              { cause: record.error },
+            ),
+          ),
+        );
+      return err(await releaseStaging(record.error));
+    }
+    const reportedPath = capture.parseReportedPath(record.value.stdout);
+    if (signal?.aborted === true)
+      return err(
+        await releaseStaging(
+          new AnalysisCancelledError(operation, {
+            cause: signal.reason,
+            partialObservation: partialObservation(undefined),
+          }),
+        ),
+      );
+    const pulled = await runAdb(
+      operation,
+      { device: input.serial, path: capture.deviceArtifactPath },
+      selection.binary,
+      adbArguments(input.serial, [
+        "pull",
+        capture.deviceArtifactPath,
+        stagingDirectory,
+      ]),
+      { timeoutMs: PULL_TIMEOUT_MS, maxOutputBytes: PULL_MAX_OUTPUT_BYTES },
+      signal,
+    );
+    if (!pulled.ok) {
+      const cleanup = await removeDeviceTempFiles();
+      if (cleanup !== null)
+        pulled.error.retainSecondaryFailure(
+          new AnalysisOutputError(operation, cleanup),
+          {},
+        );
+      return err(await releaseStaging(pulled.error));
+    }
+    const pulledPath = join(
+      stagingDirectory,
+      basename(capture.deviceArtifactPath),
+    );
+    try {
+      const artifact = await lstat(pulledPath);
+      if (!artifact.isFile() || artifact.isSymbolicLink())
+        throw new Error(
+          `adb pull did not produce a regular file at ${pulledPath}`,
+        );
+    } catch (cause) {
+      const cleanup = await removeDeviceTempFiles();
+      const error = new AnalysisOutputError(
+        operation,
+        `The pulled capture artifact could not be read back: ${pulledPath}`,
+        { cause, partialObservation: partialObservation(pulledPath) },
+      );
+      if (cleanup !== null)
+        error.retainSecondaryFailure(
+          new AnalysisOutputError(operation, cleanup),
+          {},
+        );
+      return err(await releaseStaging(error));
+    }
+    let publishedPath: string;
+    try {
+      publishedPath = await publishBugreport(pulledPath, directory.value);
+    } catch (cause) {
+      const cleanup = await removeDeviceTempFiles();
+      const error = new AnalysisOutputError(
+        operation,
+        `The pulled capture artifact could not be published: ${pulledPath}`,
+        { cause, partialObservation: partialObservation(pulledPath) },
+      );
+      if (cleanup !== null)
+        error.retainSecondaryFailure(
+          new AnalysisOutputError(operation, cleanup),
+          {},
+        );
+      return err(await releaseStaging(error));
+    }
+    const deviceTempCleanupFailure = await removeDeviceTempFiles();
+    let digest: Awaited<ReturnType<typeof hashAdbFile>>;
+    try {
+      digest = await hashAdbFile(
+        publishedPath,
+        operation,
+        signal,
+        this.#resources,
+      );
+    } catch (cause) {
+      const error =
+        cause instanceof AnalysisError
+          ? cause
+          : new AnalysisOutputError(
+              operation,
+              `The published capture artifact could not be fully digested: ${publishedPath}`,
+              { cause, partialObservation: partialObservation(publishedPath) },
+            );
+      return err(await releaseStaging(error));
+    }
+    // Re-observe abort late: the digest may have raced a caller cancel.
+    if (signal !== undefined && abortedNow(signal))
+      return err(
+        await releaseStaging(
+          new AnalysisCancelledError(operation, {
+            cause: signal.reason,
+            partialObservation: partialObservation(publishedPath),
+          }),
+        ),
+      );
+    try {
+      await removeOwnedOutputDirectory(stagingDirectory, stagingIdentity);
+    } catch (cause) {
+      const primary = this.#retainOutputDirectoryCleanup(
+        {
+          operation,
+          path: stagingDirectory,
+          primary: new AnalysisOutputError(
+            operation,
+            "The capture was published, but its staging directory could not be removed",
+          ),
+          remove: () =>
+            removeOwnedOutputDirectory(stagingDirectory, stagingIdentity),
+        },
+        new ProviderCleanupError(
+          ADB_PROVIDER_IDENTITY.id,
+          [stagingDirectory],
+          { reason: cause instanceof Error ? cause.message : String(cause) },
+          { operation, cause },
+        ),
+      );
+      primary.retainPartialObservation(partialObservation(publishedPath));
+      return err(primary);
+    }
+    return ok({
+      publishedPath,
+      bytes: digest.bytes,
+      sha256: digest.sha256,
+      durationElapsedMs: elapsedMs,
+      reportedPath,
+      deviceTempCleanupFailure,
+    });
+  }
+
+  private async capturePerfetto(
+    operation: "capture_android_perfetto",
+    selection: AdbBinarySelection,
+    client: ClientIdentity,
+    provider: ProviderIdentity,
+    input: {
+      readonly serial: string;
+      readonly output_directory: string;
+      readonly duration_seconds: number;
+      readonly config_path?: string | undefined;
+      readonly tags?: readonly string[] | undefined;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    let configDevicePath: string | null = null;
+    if (input.config_path !== undefined) {
+      try {
+        if (!(await stat(input.config_path)).isFile())
+          throw new Error("not a regular file");
+      } catch (cause) {
+        return err(
+          new AnalysisInputError(
+            operation,
+            {
+              userMessage: `config_path must be an existing regular file: ${input.config_path} (${
+                cause instanceof Error ? cause.message : String(cause)
+              })`,
+            },
+            [
+              {
+                path: ["config_path"],
+                reason: "invalid_value",
+              },
+            ],
+          ),
+        );
+      }
+      configDevicePath = `/data/local/tmp/rea-perfetto-config-${randomUUID()}`;
+      const pushed = await runAdb(
+        operation,
+        { device: input.serial, localPath: input.config_path },
+        selection.binary,
+        adbArguments(input.serial, [
+          "push",
+          input.config_path,
+          configDevicePath,
+        ]),
+        { timeoutMs: PULL_TIMEOUT_MS, maxOutputBytes: PULL_MAX_OUTPUT_BYTES },
+        signal,
+      );
+      if (!pushed.ok)
+        return err(
+          new AnalysisOutputError(
+            operation,
+            `The perfetto config could not be staged on the device: ${input.config_path}`,
+            { cause: pushed.error },
+          ),
+        );
+    }
+    const deviceArtifactPath = `/data/local/tmp/rea-perfetto-${randomUUID()}.pftrace`;
+    const observed = await this.#runProfilerCapture(
+      operation,
+      selection,
+      input,
+      {
+        recordArguments: [
+          "perfetto",
+          ...(configDevicePath === null ? [] : ["-c", configDevicePath]),
+          "-o",
+          deviceArtifactPath,
+          "-t",
+          `${String(input.duration_seconds)}s`,
+          ...(input.tags ?? []),
+        ],
+        recordTimeoutMs:
+          (input.duration_seconds + 1) * 1000 + RUNTIME_CAPTURE_GRACE_MS,
+        requestedDurationSeconds: input.duration_seconds,
+        deviceArtifactPath,
+        deviceTempPaths: [
+          deviceArtifactPath,
+          ...(configDevicePath === null ? [] : [configDevicePath]),
+        ],
+        parseReportedPath: parsePerfettoWrittenPath,
+      },
+      signal,
+    );
+    if (!observed.ok) return observed;
+    const { value } = observed;
+    return ok(
+      createAnalysisExecution(
+        {
+          client,
+          serial: input.serial,
+          local_path: value.publishedPath,
+          bytes: value.bytes,
+          sha256: value.sha256,
+          adb_reported_path: value.reportedPath,
+          duration_requested_seconds: input.duration_seconds,
+          duration_elapsed_ms: value.durationElapsedMs,
+          outcome: "duration-elapsed",
+        },
+        provider,
+        {
+          limitations: [
+            "Trace content is the device's own perfetto report; REA publishes it uninterpreted",
+            "Device-side perfetto availability varies by Android build; builds without it report their own refusal",
+            ...(value.deviceTempCleanupFailure === null
+              ? []
+              : [value.deviceTempCleanupFailure]),
+            ...(configDevicePath === null
+              ? []
+              : [
+                  "The caller-supplied perfetto config was pushed to /data/local/tmp and removed after the capture",
+                ]),
+          ],
+        },
+      ),
+    );
+  }
+
+  private async captureSimpleperf(
+    operation: "capture_android_simpleperf",
+    selection: AdbBinarySelection,
+    client: ClientIdentity,
+    provider: ProviderIdentity,
+    input: {
+      readonly serial: string;
+      readonly pid: number;
+      readonly output_directory: string;
+      readonly duration_seconds: number;
+      readonly events: readonly string[];
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const deviceArtifactPath = `/data/local/tmp/rea-simpleperf-${randomUUID()}.data`;
+    const observed = await this.#runProfilerCapture(
+      operation,
+      selection,
+      input,
+      {
+        recordArguments: [
+          "simpleperf",
+          "record",
+          "-p",
+          String(input.pid),
+          "--duration",
+          String(input.duration_seconds),
+          ...input.events.flatMap((event) => ["-e", event]),
+          "-o",
+          deviceArtifactPath,
+        ],
+        recordTimeoutMs:
+          (input.duration_seconds + 1) * 1000 + RUNTIME_CAPTURE_GRACE_MS,
+        requestedDurationSeconds: input.duration_seconds,
+        deviceArtifactPath,
+        deviceTempPaths: [deviceArtifactPath],
+        parseReportedPath: parseSimpleperfReportedPath,
+      },
+      signal,
+    );
+    if (!observed.ok) return observed;
+    const { value } = observed;
+    return ok(
+      createAnalysisExecution(
+        {
+          client,
+          serial: input.serial,
+          local_path: value.publishedPath,
+          bytes: value.bytes,
+          sha256: value.sha256,
+          adb_reported_path: value.reportedPath,
+          pid: input.pid,
+          events: [...input.events],
+          duration_requested_seconds: input.duration_seconds,
+          duration_elapsed_ms: value.durationElapsedMs,
+          outcome: "duration-elapsed",
+        },
+        provider,
+        {
+          limitations: [
+            "simpleperf writes its own .data report; REA publishes it uninterpreted",
+            "Profiling a pid requires a debuggable app (or root); non-debuggable targets keep their device refusal",
+            "Simpleperf availability varies by Android build; builds without it report their own refusal",
+            ...(value.deviceTempCleanupFailure === null
+              ? []
+              : [value.deviceTempCleanupFailure]),
+          ],
+        },
+      ),
+    );
   }
 }
