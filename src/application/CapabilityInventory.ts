@@ -364,7 +364,11 @@ const availabilityFor = (context: AvailabilityContext): Availability => {
   if (failure !== undefined)
     return {
       reason: "provider_unavailable",
-      remediation: `Adapter ${failure.providerId} could not load: ${failure.reason}. Repair the adapter installation and restart REA; other capabilities remain available.`,
+      remediation: `Adapter ${failure.providerId} could not load: ${failure.reason}.${
+        failure.remediation === undefined
+          ? " Repair the adapter installation and restart REA; other capabilities remain available."
+          : ` ${failure.remediation}`
+      }`,
     };
   const workflowAvailability = workflowAvailabilityFor(context);
   if (workflowAvailability !== null) return workflowAvailability;
@@ -410,7 +414,9 @@ const workflowAvailabilityFor = ({
 }: AvailabilityContext): Availability | null => {
   if (
     name === "inspect_go_binary" ||
+    name === "inspect_go_procedure_table" ||
     name === "inspect_rust_binary" ||
+    name === "inspect_rust_symbols" ||
     name === "inspect_electron_fuses"
   )
     return { reason: "available", remediation: null };

@@ -12,6 +12,7 @@ import {
   AnalysisInputError,
 } from "../../domain/analysisErrorCore.js";
 import { err, ok, type Result } from "../../domain/result.js";
+import { FRIDA_VERIFIED_VERSION } from "../../frida/FridaRelease.js";
 import { FridaScriptLoadCancelledError } from "./FridaInstrumentationPort.js";
 import type {
   FridaDeviceSelector,
@@ -380,6 +381,7 @@ const fridaEvidence = (
       environment: null,
       limitations: [
         "The target operating system and architecture were not reported by this observation.",
+        `The frida transport is REA's local Node binding; REA verified frida ${FRIDA_VERIFIED_VERSION} and does not attest other releases. Run rea doctor to read the observed binding release.`,
       ],
     },
   );

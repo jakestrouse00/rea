@@ -7,6 +7,7 @@ import {
 import type {
   FridaInstrumentationPort,
   FridaRemoteConnection,
+  StartFridaSessionInput,
 } from "../application/frida/FridaInstrumentationPort.js";
 import { FridaInstrumentationManager } from "../frida/FridaInstrumentationManager.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
@@ -17,7 +18,7 @@ import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { jsonValueSchema } from "../domain/jsonValue.js";
-import { err, type Result } from "../domain/result.js";
+import { err, ok, type Result } from "../domain/result.js";
 import { FRIDA_KEEPALIVE_INTERVAL_DESCRIPTION } from "../contracts/fridaToolContracts.js";
 import { isValidFridaRemoteAddress } from "../contracts/fridaRemoteAddress.js";
 import type { Logger } from "pino";
@@ -306,6 +307,228 @@ export const registerFridaCommands = (
             cleanup_error: result.value.cleanupError,
           };
         }),
+      ),
+  });
+};
+
+/**
+ * Session verbs for the one-shot CLI, pending promotion into
+ * src/cliCommandNames.ts with the rest of their registry additions.
+ * One-shot processes cannot address sessions from another process, so
+ * start reports a command-scoped session and the other verbs refuse
+ * fail-closed with that exact reason.
+ */
+const FRIDA_SESSION_CLI_COMMANDS = CLI_COMMANDS;
+
+const sessionNotRetained = (): AnalysisInputError =>
+  new AnalysisInputError("frida_session_cli", undefined, [
+    {
+      path: ["session_id"],
+      reason: "invalid_value",
+      message:
+        "One-shot CLI processes do not retain Frida sessions: each command owns a disposable provider, so a session started by an earlier `rea` process is gone. Use the MCP session tools for persistent sessions, or run `rea start-frida-session` with --script/--script-file for the command-scoped workflow.",
+    },
+  ]);
+
+/** Register Frida persistent-session CLI verbs under the disposable pattern. */
+export const registerFridaSessionCommands = (
+  cli: CliInstance,
+  logger: Logger,
+  provider: FridaInstrumentationPort = new FridaInstrumentationManager(),
+): void => {
+  const service = new FridaInstrumentationService(provider);
+  const withProviderCleanup = async <Value>(
+    operation: () => Promise<Result<Value, AnalysisError>>,
+  ): Promise<Result<Value, AnalysisError>> => {
+    const result = await operation();
+    try {
+      await provider.closeAll();
+    } catch (cause: unknown) {
+      const cleanup = new ProviderCleanupError(
+        "frida",
+        ["Frida sessions or connections"],
+        {},
+        { cause, operation: "frida_cleanup" },
+      );
+      return err(
+        result.ok
+          ? cleanup
+          : analysisErrorWithCleanupFailure(
+              result.error,
+              cleanup,
+              "frida_cleanup",
+            ),
+      );
+    }
+    return result.ok ? result : err(withRecoveredFridaCleanup(result.error));
+  };
+  const sessionSelector = z.object({
+    deviceId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Frida device identifier (default: local device)"),
+    mode: z
+      .enum(["attach", "spawn"])
+      .describe("Attach to a PID or spawn a program"),
+    target: z
+      .string()
+      .min(1)
+      .describe("Process ID for attach or program path for spawn"),
+    script: z.string().optional().describe("Inline JavaScript to load"),
+    scriptFile: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Path to JavaScript source file"),
+  });
+  cli.command(FRIDA_SESSION_CLI_COMMANDS.startFridaSession, {
+    description:
+      "Start a Frida session and close it when this command exits (command-scoped); scripts load before the cleanup",
+    args: sessionSelector,
+    run: ({ args }) =>
+      withCommandCancellation((signal) =>
+        logCliCommand(
+          logger,
+          FRIDA_SESSION_CLI_COMMANDS.startFridaSession,
+          async () => {
+            if ((args.script === undefined) === (args.scriptFile === undefined))
+              return projectAnalysisError(
+                new AnalysisInputError(
+                  FRIDA_SESSION_CLI_COMMANDS.startFridaSession,
+                  undefined,
+                  [
+                    {
+                      path: ["script"],
+                      reason: "invalid_value",
+                      message:
+                        "Provide exactly one of --script or --script-file, or neither.",
+                    },
+                  ],
+                ),
+              );
+            const pid =
+              args.mode === "attach" &&
+              /^[1-9][0-9]*$/u.test(args.target) &&
+              Number.isSafeInteger(Number(args.target))
+                ? Number(args.target)
+                : undefined;
+            if (args.mode === "attach" && pid === undefined)
+              return projectAnalysisError(
+                new AnalysisInputError(
+                  FRIDA_SESSION_CLI_COMMANDS.startFridaSession,
+                  undefined,
+                  [
+                    {
+                      path: ["target"],
+                      reason: "invalid_value",
+                      message:
+                        "attach mode needs a positive integer process ID.",
+                    },
+                  ],
+                ),
+              );
+            const startInput: StartFridaSessionInput =
+              args.mode === "attach"
+                ? {
+                    deviceId: args.deviceId ?? "local",
+                    mode: "attach",
+                    pid: pid as number,
+                  }
+                : {
+                    deviceId: args.deviceId ?? "local",
+                    mode: "spawn",
+                    program: args.target,
+                  };
+            const started = await withProviderCleanup(async () => {
+              const start = await service.startSession(startInput, signal);
+              if (!start.ok) return start;
+              if (args.script === undefined && args.scriptFile === undefined)
+                return start;
+              const loaded = await service.loadScript(
+                start.value.sessionId,
+                args.scriptFile === undefined
+                  ? { sourceKind: "inline", source: args.script ?? "" }
+                  : { sourceKind: "file", path: args.scriptFile },
+                signal,
+              );
+              if (!loaded.ok) return loaded;
+              const status = service.status(start.value.sessionId);
+              return status === undefined
+                ? start
+                : ok({ ...start.value, ...status });
+            });
+            if (!started.ok) return projectAnalysisError(started.error);
+            return {
+              command_scoped_session: true,
+              session: started.value,
+              cleanup_error: null,
+            };
+          },
+        ),
+      ),
+  });
+  const refusedWithoutRetainedSession = (command: string, args: unknown) =>
+    logCliCommand(logger, command, async () => {
+      void args;
+      return projectAnalysisError(sessionNotRetained());
+    });
+  const sessionId = z
+    .string()
+    .min(1)
+    .describe("Session identifier from start-frida-session");
+  cli.command(FRIDA_SESSION_CLI_COMMANDS.fridaSessionStatus, {
+    description:
+      "Report one session's status; refuses because one-shot CLI processes do not retain sessions",
+    args: z.object({ sessionId }),
+    run: ({ args }) =>
+      refusedWithoutRetainedSession(
+        FRIDA_SESSION_CLI_COMMANDS.fridaSessionStatus,
+        args,
+      ),
+  });
+  cli.command(FRIDA_SESSION_CLI_COMMANDS.closeFridaSession, {
+    description:
+      "Close one session; refuses because one-shot CLI processes do not retain sessions",
+    args: z.object({ sessionId }),
+    run: ({ args }) =>
+      refusedWithoutRetainedSession(
+        FRIDA_SESSION_CLI_COMMANDS.closeFridaSession,
+        args,
+      ),
+  });
+  cli.command(FRIDA_SESSION_CLI_COMMANDS.loadFridaScript, {
+    description:
+      "Load one script into a session; refuses because one-shot CLI processes do not retain sessions",
+    args: z.object({
+      sessionId,
+      script: z.string().optional().describe("Inline JavaScript to load"),
+      scriptFile: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Path to JavaScript source file"),
+    }),
+    run: ({ args }) =>
+      refusedWithoutRetainedSession(
+        FRIDA_SESSION_CLI_COMMANDS.loadFridaScript,
+        args,
+      ),
+  });
+  cli.command(FRIDA_SESSION_CLI_COMMANDS.unloadFridaScript, {
+    description:
+      "Unload one script from a session; refuses because one-shot CLI processes do not retain sessions",
+    args: z.object({
+      sessionId,
+      scriptId: z
+        .string()
+        .min(1)
+        .describe("Script id returned when the script was loaded"),
+    }),
+    run: ({ args }) =>
+      refusedWithoutRetainedSession(
+        FRIDA_SESSION_CLI_COMMANDS.unloadFridaScript,
+        args,
       ),
   });
 };

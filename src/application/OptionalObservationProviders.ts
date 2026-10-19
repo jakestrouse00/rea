@@ -18,6 +18,8 @@ export interface OptionalObservationProviders {
 export interface OptionalProviderLoadFailure {
   readonly providerId: string;
   readonly reason: string;
+  /** Recovery advice for this exact load failure, when its adapter owns one. */
+  readonly remediation?: string;
 }
 
 export type OptionalProviderLoadFailures = Readonly<

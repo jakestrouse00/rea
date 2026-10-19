@@ -266,7 +266,7 @@ export const FRIDA_TOOL_CONTRACTS = [
     ...toolContractMetadata("instrument_with_frida"),
     kind: "native-provider",
     description:
-      "Run one caller-authored Frida script against an explicitly selected process and detach when the observation window ends. The CLI and MCP share this ephemeral workflow; use MCP session operations for persistent sessions. Remote authentication is used only for this call and excluded from Evidence.",
+      "Run one caller-authored Frida script against an explicitly selected process and detach when the observation window ends. The CLI and MCP share this ephemeral workflow; use MCP session operations for persistent sessions. Remote authentication is used only for this call and excluded from Evidence. The local frida Node binding is REA's transport layer: its reported release is disclosed in Evidence limitations and rea doctor, with the REA-verified release recorded in src/frida/FridaRelease.ts.",
     inputSchema: z
       .strictObject({
         mode: z.enum(["attach", "spawn"]),

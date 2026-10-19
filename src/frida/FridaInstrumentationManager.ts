@@ -37,6 +37,7 @@ import {
   unknownFridaScript,
   unknownFridaSession,
 } from "../application/frida/fridaInputErrors.js";
+import { FRIDA_RUNTIME_PROBE_REMEDIATION } from "./FridaRelease.js";
 
 const MAX_SESSION_CAPTURE_BYTES = 16 * 1024 * 1024;
 const MAX_MESSAGE_METADATA_BYTES = 128 * 1024;
@@ -1069,6 +1070,7 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
       this.#availabilityFailure = {
         providerId: "frida",
         reason: boundedRedactedString(errorMessage(cause), 4096, []).value,
+        remediation: FRIDA_RUNTIME_PROBE_REMEDIATION,
       };
       throw cause;
     } finally {
