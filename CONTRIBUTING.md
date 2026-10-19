@@ -126,28 +126,15 @@ every workflow built on it. General-purpose interfaces are not classified as
 dedicated bypass workflows solely because caller-provided code could be misused;
 their execution and mutation authority must still be reviewed.
 
-REA does not integrate or officially distribute:
-
-- Purpose-built workflows to defeat commercial packing or code-virtualization
-  protections and automatically recover protected code.
-- Anti-debugging or anti-instrumentation evasion, or DRM, license, anti-cheat, or
-  access-control bypass workflows.
-- Exploit or attack-payload automation, credential theft, covert persistence,
-  unauthorized access, or bulk attack workflows.
-
-These boundaries apply to first-party providers, adapters, plugins, bundled
-scripts, defaults, examples, and documentation. Moving a capability into an
-optional dependency or plugin does not exempt it. Review what the integration
-exposes, including upstream defaults and raw-command or script execution paths.
-Ordinary extraction and general static deobfuscation are not excluded merely
-because the input is packed or obfuscated; assess added bypass or execution
-behavior separately.
-
-This is a product and maintenance boundary, not a judgment about a contributor's
-intentions or a declaration that all excluded research is unlawful. Contributors
-must have the rights and authorization needed for their work. A local-only design
-or an "authorized use only" disclaimer does not establish containment or settle
-legal and scope questions.
+Fork decision (maintainer, 2026-10-19): this fork does not carry the upstream
+hard-category exclusion list. Categories such as packer/virtualization handling,
+anti-debug/anti-instrumentation workflows, protection bypass, and exploit/attack
+automation are not categorically excluded here; each capability is instead
+evaluated through the fail-closed integration rule below, which governs target
+execution, injection, mutation, side effects, and verification. Contributors
+must still have the rights and authorization needed for their work; a local-only
+design or an "authorized use only" disclaimer does not establish containment or
+settle legal questions.
 
 ### Fail-closed integration
 
@@ -158,9 +145,9 @@ the proposal pending, narrow it, or decline it. Record unknowns explicitly; do n
 turn them into "none" or assumed safety. Passing CI, completed implementation,
 upstream popularity, or silence from maintainers is not scope approval.
 
-For a new provider or a capability involving target execution, injection,
-mutation, or protection recovery, seek an explicit maintainer scope decision in
-the linked issue or design discussion before substantial implementation intended
+For a new provider or a capability involving target execution, injection, or
+mutation, seek an explicit maintainer scope decision in the linked issue or
+design discussion before substantial implementation intended
 for integration. Small exploratory prototypes and draft PRs may help inform that
 decision; they do not authorize integration. The decision must cover the final
 proposed behavior; a scope expansion needs a new decision. Routine fixes and
@@ -182,8 +169,8 @@ integration:
 
 - The concrete analyst question, requested inputs and outputs, and why existing
   REA operations are insufficient.
-- Why the workflow fits this scope, its non-goals, and any protection recovery,
-  bypass, or attack automation it would expose.
+- Why the workflow fits the boundaries it declares, its non-goals, and any
+  execution, injection, mutation, or persistence effects it would expose.
 - The selected targets and every execution, injection, mutation, network, or
   persistence effect, including behavior inherited from upstream tools.
 - How the boundaries and outcome will be verified with self-owned or appropriately
