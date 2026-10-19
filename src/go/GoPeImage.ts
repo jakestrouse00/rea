@@ -107,6 +107,7 @@ export const readGoPeImage = (bytes: Buffer): GoBinaryContainer => {
         peImageSection({
           reader,
           name: sectionName,
+          address: imageBase + BigInt(virtualAddress),
           size: contentSize,
           offset,
           characteristics,
@@ -169,12 +170,14 @@ const peSectionName = (bytes: Buffer): string => {
 const peImageSection = ({
   reader,
   name,
+  address,
   size,
   offset,
   characteristics,
 }: {
   readonly reader: GoBinaryReader;
   readonly name: string;
+  readonly address: bigint;
   readonly size: number;
   readonly offset: number;
   readonly characteristics: number;
@@ -190,5 +193,11 @@ const peImageSection = ({
     (characteristics & 0x80000000) === 0 &&
     (characteristics & 0x20000000) === 0 &&
     (characteristics & 0x40) !== 0;
-  return { name, ...range, read_only: readOnly, compressed: false };
+  return {
+    name,
+    address,
+    ...range,
+    read_only: readOnly,
+    compressed: false,
+  };
 };

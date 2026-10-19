@@ -5,7 +5,9 @@ import type {
 import type { AnalysisError } from "../../domain/analysisErrorBase.js";
 import type {
   GoBinary,
+  GoProcedureTable,
   InspectGoBinaryInput,
+  InspectGoProcedureTableInput,
 } from "../../domain/go/goBinary.js";
 import type { Result } from "../../domain/result.js";
 
@@ -17,4 +19,8 @@ export interface GoBinaryPort {
     input: InspectGoBinaryInput,
     options?: ExecutionOptions,
   ): Promise<Result<GoBinary, AnalysisError>>;
+  procedureTable(
+    input: InspectGoProcedureTableInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<GoProcedureTable, AnalysisError>>;
 }

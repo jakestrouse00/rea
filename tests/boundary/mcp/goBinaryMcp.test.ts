@@ -68,6 +68,9 @@ mcpTest(
         await release.promise;
         return result;
       },
+      procedureTable: async (_input, _options) => {
+        throw new Error("unexpected procedureTable call in this test");
+      },
     });
     try {
       const client = await mcp.connect(

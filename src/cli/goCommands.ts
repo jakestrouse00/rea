@@ -37,4 +37,48 @@ export const registerGoCommands = (cli: CliInstance, logger: Logger): void => {
         );
       }),
   });
+  cli.command(CLI_COMMANDS.inspectGoProcedureTable, {
+    description:
+      "Page embedded Go procedure names, entries and table facts without target execution",
+    args: z.object({
+      path: z.string().describe("Local ELF, PE or thin Mach-O image"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .default(0)
+        .describe("Zero-based procedure-table row index where the page starts"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .default(50)
+        .describe("Maximum procedures returned in one page"),
+    }),
+    run: ({ args }) =>
+      withCommandCancellation(async (signal) => {
+        const service = createGoBinaryService();
+        return await logCliCommand(
+          logger,
+          CLI_COMMANDS.inspectGoProcedureTable,
+          async () =>
+            finishAnalysisCommand(
+              () =>
+                service.procedureTable(
+                  {
+                    path: absoluteCallerPath(args.path),
+                    offset: args.offset,
+                    limit: args.limit,
+                  },
+                  { signal },
+                ),
+              service,
+              "go-build-info",
+              "inspect_go_procedure_table",
+              signal,
+            ),
+        );
+      }),
+  });
 };

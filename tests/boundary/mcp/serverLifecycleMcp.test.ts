@@ -355,6 +355,9 @@ it("closes the bound Go and web-capture services and retries failed shutdown", a
         ),
       );
     },
+    procedureTable: async () => {
+      throw new Error("unexpected procedureTable call in this test");
+    },
     close: async () => {
       goCloseAttempts += 1;
       if (!cleanupAllowed) throw new Error("Go cleanup refused");

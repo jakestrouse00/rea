@@ -109,12 +109,69 @@ isolation.
 
 Embedded metadata is evidence of file content. It does not authenticate a
 compiler, dependency, commit or supply chain, and it does not establish runtime
-behavior. Function names, source mappings, types and decompiled code are outside
-this tool's coverage. Use the [native workflow](native-investigation.md) when
-those questions require a disassembler.
+behavior. Function names are recovered by [`inspect_go_procedure_table`](#go-procedure-table-metadata);
+source mappings, types and decompiled code are outside this tool's coverage. Use
+the [native workflow](native-investigation.md) when those questions require a
+disassembler.
+
+## Go procedure-table metadata
+
+`inspect_go_procedure_table` / `inspect-go-procedure-table` pages the Go
+runtime function table (`pclntab`) embedded in the same ELF, PE and thin
+Mach-O images: procedure names, entry and exclusive end positions, and the
+table's own header facts. Like `inspect_go_binary`, it reads only the selected
+file, installs nothing, starts no subprocess and accesses no network.
+
+```bash
+rea inspect-go-procedure-table /absolute/path/to/application --offset 0 --limit 50 --json
+```
+
+```json
+{
+  "name": "inspect_go_procedure_table",
+  "arguments": { "path": "/artifacts/application", "offset": 0, "limit": 50 }
+}
+```
+
+Discovery prefers a declared `gopclntab` section (ELF `.gopclntab`, Mach-O
+`__DATA_CONST,__gopclntab` or the era's equivalent name); otherwise it searches
+bounded read-only and data sections for the recognized 8-byte header pattern
+and validates every candidate before accepting it. Recognized header magics map
+to runtime eras: `0xfffffffa` (go1.16–1.17), `0xfffffff0` (go1.18–1.19) and
+`0xfffffff1` (go1.20+). A `0xfffffffb` magic (go1.2–1.15) is reported as
+recognized but left undecoded; its rows stay unknown instead of being guessed.
+
+Each row reports `name` resolved from the funcnametab through the function's
+name offset, the producer's `entry_offset`, and `entry_address`/`end_address`
+when a text base is established. End addresses come from the next table entry,
+or from the table sentinel row for the final function; they are not derived by
+decoding instructions. Linker holes (entries whose data offset is the reserved
+all-ones marker), out-of-range name offsets and non-UTF-8 names report
+`name: null` while keeping the row's positions.
+
+The text base comes from the pclntab `textStart` header value when the producer
+wrote one, or from a matching `moduledata` record whose slices point back at the
+located table. Recent producers (go1.26+) zero `textStart` in the image and keep
+the true base in the moduledata; the reader recovers it there and records the
+agreement in `moduledata.nfunc_matches`. When neither source establishes a base,
+addresses are `null` and relative offsets remain reported.
+
+`total` is the decoded row count and `next_offset` is `null` when the page
+exhausts it. Pages default to 50 rows with a maximum of 500; paging does not
+re-read or revalidate the artifact beyond the stable snapshot taken for the
+request. Source files and line numbers follow filetab/pcvalue records that this
+reader does not decode; absence of those fields is disclosed in the result's
+limitations rather than inferred as absence.
+
+Malformed declared gopclntab sections, unsupported containers, resource-bound
+exceedances and cancellation return the same typed failures as the build
+metadata reader. Missing table bytes do not prove that a binary contains no Go
+procedures; that remains unknown in the result's limitations.
 
 ## Real producer verification
 
 `npm run verify:go:binary` exercises compiler-built fixtures through the public
 CLI and MCP, comparing their metadata with Go's standard `debug/buildinfo`
-reader. The verification lane requires Go; normal inspection does not.
+reader. The verification lane requires Go; normal inspection does not. The
+procedure-table reader has no `verify:*` lane yet; see the tool contract for
+the current unverified coverage.

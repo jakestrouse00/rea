@@ -169,6 +169,7 @@ export const readGoElfImage = (bytes: Buffer): GoBinaryContainer => {
           bits,
           wide,
           header: offset,
+          address: reader.word(offset + (wide ? 16 : 12), bits),
         });
         // Comparing the complete fixed name avoids quadratic scans through malicious string tables.
         const expectedName = Buffer.from(".go.buildinfo\0");
@@ -239,6 +240,7 @@ const recordElfSection = (
     readonly bits: 32 | 64;
     readonly wide: boolean;
     readonly header: number;
+    readonly address: bigint;
   },
 ): void => {
   const decoded = elfSectionName(input.bytes, input.names, input.nameOffset);
@@ -247,6 +249,7 @@ const recordElfSection = (
     bits: input.bits,
     wide: input.wide,
     header: input.header,
+    address: input.address,
   };
   switch (decoded.status) {
     case "named":
@@ -293,12 +296,14 @@ const elfImageSection = ({
   wide,
   header,
   name,
+  address,
 }: {
   readonly reader: GoBinaryReader;
   readonly bits: 32 | 64;
   readonly wide: boolean;
   readonly header: number;
   readonly name: string;
+  readonly address: bigint;
 }): GoImageSection => {
   const type = reader.u32(header + 4);
   const flags = reader.word(header + 8, bits);
@@ -318,7 +323,7 @@ const elfImageSection = ({
     (flags & 1n) === 0n &&
     (flags & 4n) === 0n &&
     (flags & 2n) !== 0n;
-  return { name, ...range, read_only: readOnly, compressed };
+  return { name, address, ...range, read_only: readOnly, compressed };
 };
 
 const SHT_NOBITS = 8;

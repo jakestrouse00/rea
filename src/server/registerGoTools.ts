@@ -28,4 +28,16 @@ export const registerGoTools = (
     toolRegistrationOptions(contract),
     handler(contract),
   );
+  const procedureTableContract = toolContract("inspect_go_procedure_table");
+  server.registerTool(
+    procedureTableContract.name,
+    toolRegistrationOptions(procedureTableContract),
+    createEvidenceToolHandler(
+      server,
+      (input, options) => service.procedureTable(input, options),
+      logger,
+      recordEvidence,
+      withAdmittedAnalysis,
+    )(procedureTableContract),
+  );
 };

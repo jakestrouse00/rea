@@ -36,6 +36,9 @@ it("retains late-cancelled Go artifact Evidence through MCP and keeps the server
       if (!options?.signal) throw new Error("MCP did not forward its signal");
       return ok(report);
     },
+    procedureTable: async () => {
+      throw new Error("unexpected procedureTable call in this test");
+    },
   });
   const server = createServer(
     { kind: "session", session },

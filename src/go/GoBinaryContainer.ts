@@ -12,7 +12,7 @@ export class GoBinaryFormatFailure extends Error {
 /** Resource boundary exceeded while decoding metadata or native container structure. */
 export class GoBinaryResourceFailure extends Error {
   constructor(
-    readonly boundary: "build-info" | "structure" | "search",
+    readonly boundary: "build-info" | "structure" | "search" | "pclntab",
     readonly maximum_bytes: number,
     message: string,
   ) {
@@ -37,6 +37,7 @@ export interface GoZeroFillMapping {
 /** One named file section. Invalid declared ranges stay visible with `file_backed: false`. */
 export interface GoImageSection {
   readonly name: string;
+  readonly address: bigint;
   readonly offset: number;
   readonly size: number;
   readonly file_backed: boolean;

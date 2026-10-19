@@ -253,6 +253,7 @@ const machoImageSection = ({
     (flags & 0x80000400) === 0;
   return {
     name,
+    address: sectionAddress,
     ...range,
     file_backed: fileBacked,
     read_only: readOnly,

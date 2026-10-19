@@ -5,7 +5,11 @@ import {
   AnalysisInputError,
   AnalysisOutputError,
 } from "../../domain/analysisErrorCore.js";
-import type { GoBinary } from "../../domain/go/goBinary.js";
+import type {
+  GoBinary,
+  GoPclntab,
+  GoProcedureTable,
+} from "../../domain/go/goBinary.js";
 import { parseEvidence } from "../../domain/evidence.js";
 import { ok } from "../../domain/result.js";
 
@@ -14,6 +18,7 @@ const identity = {
   name: "Source-owned Go reader seam",
   version: "1",
 };
+const stubProcedureTable = () => Promise.resolve(ok(procedureReport));
 const report: GoBinary = {
   artifact: { path: "/artifacts/program", sha256: "a".repeat(64), bytes: 1024 },
   format: "elf",
@@ -32,6 +37,7 @@ it("rejects invalid paths and extra caller arguments before invoking the reader"
       calls += 1;
       return Promise.resolve(ok(report));
     },
+    procedureTable: stubProcedureTable,
   });
   for (const input of [
     { path: "relative" },
@@ -49,6 +55,7 @@ it("preserves unsupported subject architectures and does not duplicate metadata"
   const service = new GoBinaryService({
     identity,
     inspect: () => Promise.resolve(ok(report)),
+    procedureTable: stubProcedureTable,
   });
   const result = await service.inspect({ path: report.artifact.path });
   expect(result.ok).toBe(true);
@@ -95,6 +102,7 @@ it("preserves byte-valued build metadata and validates compiler source lengths",
   const result = await new GoBinaryService({
     identity,
     inspect: () => Promise.resolve(ok(partial)),
+    procedureTable: stubProcedureTable,
   }).inspect({ path: report.artifact.path });
   expect(result.ok).toBe(true);
   if (!result.ok) throw result.error;
@@ -110,6 +118,7 @@ it("preserves byte-valued build metadata and validates compiler source lengths",
   const invalid = await new GoBinaryService({
     identity,
     inspect: () => Promise.resolve(ok(mismatched)),
+    procedureTable: stubProcedureTable,
   }).inspect({ path: report.artifact.path });
   expect(invalid.ok).toBe(false);
   if (!invalid.ok) expect(invalid.error).toBeInstanceOf(AnalysisOutputError);
@@ -145,6 +154,7 @@ it("refuses reader identity changes and invalid original source ranges", async (
     const result = await new GoBinaryService({
       identity,
       inspect: () => Promise.resolve(ok(value)),
+      procedureTable: stubProcedureTable,
     }).inspect({ path: report.artifact.path });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBeInstanceOf(AnalysisOutputError);
@@ -162,6 +172,7 @@ it("honors cancellation before reading and after a completed observation", async
       controller.abort(reason);
       return Promise.resolve(ok(report));
     },
+    procedureTable: stubProcedureTable,
   });
   const completed = await service.inspect(
     { path: report.artifact.path },
@@ -197,6 +208,7 @@ it("keeps malformed provider output ahead of a late cancellation", async () => {
       controller.abort();
       return Promise.resolve(ok(malformed));
     },
+    procedureTable: stubProcedureTable,
   }).inspect({ path: report.artifact.path }, { signal: controller.signal });
   expect(result.ok).toBe(false);
   if (!result.ok) expect(result.error).toBeInstanceOf(AnalysisOutputError);
@@ -225,6 +237,7 @@ it.each([
         calls += 1;
         throw new Error("cancelled admission must not invoke the reader");
       },
+      procedureTable: stubProcedureTable,
     });
     const result = await service.inspect(null, { signal: controller.signal });
     expect(result.ok).toBe(false);
@@ -238,3 +251,215 @@ it.each([
       expect(reason.cleanupIncomplete).toBe(true);
   },
 );
+
+const procedureIdentity = {
+  id: "fixture-go-procedures",
+  name: "Source-owned Go procedure-table seam",
+  version: "1",
+};
+const procedureReport: GoProcedureTable = {
+  artifact: {
+    path: "/artifacts/program",
+    sha256: "a".repeat(64),
+    bytes: 4096,
+  },
+  format: "elf",
+  architecture: "amd64",
+  bits: 64,
+  byte_order: "little",
+  pclntab: {
+    location: {
+      source: "section",
+      section_name: ".gopclntab",
+      file_offset: 2048,
+      address: "0x401800",
+      bytes: 1024,
+    },
+    magic: "0xfffffff1",
+    era: "go1.20+",
+    min_lc: 1,
+    ptr_size: 8,
+    nfunc: 2,
+    nfiles: 1,
+    funcname_bytes: 33,
+    functab: { file_offset: 2112, entry_width: 8, count: 3 },
+    text_start: "0x401000",
+    text_base: { address: "0x401000", source: "pclntab-header" },
+    moduledata: {
+      found: true,
+      file_offset: 4096,
+      nfunc_matches: true,
+      text_address: "0x401000",
+    },
+    legacy: false,
+  },
+  offset: 0,
+  limit: 50,
+  total: 2,
+  procedures: [
+    {
+      index: 0,
+      name: "main.main",
+      entry_offset: 0,
+      end_offset: 3,
+      entry_address: "0x401000",
+      end_address: "0x401003",
+    },
+    {
+      index: 1,
+      name: null,
+      entry_offset: 3,
+      end_offset: 9,
+      entry_address: "0x401003",
+      end_address: "0x401009",
+    },
+  ],
+  next_offset: null,
+  limitations: ["Source-file mappings are not decoded."],
+};
+
+it("rejects invalid procedure-table paging and paths before invoking the provider", async () => {
+  let calls = 0;
+  const service = new GoBinaryService({
+    identity: procedureIdentity,
+    inspect: () => Promise.resolve(ok(report)),
+    procedureTable: () => {
+      calls += 1;
+      return Promise.resolve(ok(procedureReport));
+    },
+  });
+  for (const input of [
+    { path: "relative" },
+    { path: "/artifacts/program", limit: 0 },
+    { path: "/artifacts/program", limit: 501 },
+    { path: "/artifacts/program", offset: -1 },
+    { path: "/artifacts/program", unrelated: true },
+  ]) {
+    const result = await service.procedureTable(input);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBeInstanceOf(AnalysisInputError);
+  }
+  expect(calls).toBe(0);
+});
+
+it("wraps a procedure-table page in artifact-bound Evidence with a pclntab range", async () => {
+  const result = await new GoBinaryService({
+    identity: procedureIdentity,
+    inspect: () => Promise.resolve(ok(report)),
+    procedureTable: () => Promise.resolve(ok(procedureReport)),
+  }).procedureTable({
+    path: procedureReport.artifact.path,
+    offset: 0,
+    limit: 50,
+  });
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw result.error;
+  expect(result.value.subject).toMatchObject({
+    format: "elf",
+    architecture: "x86_64",
+    local_path: procedureReport.artifact.path,
+    digest: { sha256: procedureReport.artifact.sha256 },
+  });
+  expect(result.value.normalized_result).toEqual(procedureReport);
+  expect(result.value.raw_result).toBeNull();
+  expect(result.value.operation).toBe("inspect_go_procedure_table");
+  expect(result.value.locations).toEqual([
+    { kind: "artifact-path", path: procedureReport.artifact.path },
+    { kind: "file-offset-range", start: 2048, end: 3072 },
+  ]);
+});
+
+it("refuses procedure-table reports that change the artifact or violate paging", async () => {
+  const changed = {
+    ...procedureReport,
+    artifact: { ...procedureReport.artifact, path: "/artifacts/other" },
+  };
+  const drifted = {
+    ...procedureReport,
+    next_offset: 5,
+  };
+  if (procedureReport.pclntab === null)
+    throw new Error("fixture invariant: pclntab present");
+  const miscountedPclntab: GoPclntab = {
+    ...procedureReport.pclntab,
+    nfunc: 3,
+  };
+  const miscounted = {
+    ...procedureReport,
+    pclntab: miscountedPclntab,
+  };
+  const service = new GoBinaryService({
+    identity: procedureIdentity,
+    inspect: () => Promise.resolve(ok(report)),
+    procedureTable: () => Promise.resolve(ok(drifted)),
+  });
+  for (const value of [changed, miscounted]) {
+    const result = await new GoBinaryService({
+      identity: procedureIdentity,
+      inspect: () => Promise.resolve(ok(report)),
+      procedureTable: () => Promise.resolve(ok(value)),
+    }).procedureTable({ path: procedureReport.artifact.path });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBeInstanceOf(AnalysisOutputError);
+  }
+  const driftedResult = await service.procedureTable({
+    path: procedureReport.artifact.path,
+  });
+  expect(driftedResult.ok).toBe(false);
+  if (!driftedResult.ok)
+    expect(driftedResult.error).toBeInstanceOf(AnalysisOutputError);
+});
+
+it("keeps a tableless report valid without pclntab locations", async () => {
+  const absent: GoProcedureTable = {
+    ...procedureReport,
+    pclntab: null,
+    total: 0,
+    procedures: [],
+  };
+  const result = await new GoBinaryService({
+    identity: procedureIdentity,
+    inspect: () => Promise.resolve(ok(report)),
+    procedureTable: () => Promise.resolve(ok(absent)),
+  }).procedureTable({ path: procedureReport.artifact.path });
+  expect(result.ok).toBe(true);
+  if (!result.ok) throw result.error;
+  expect(result.value.locations).toEqual([
+    { kind: "artifact-path", path: procedureReport.artifact.path },
+  ]);
+});
+
+it("honors cancellation around the procedure-table read", async () => {
+  const controller = new AbortController();
+  const reason = { request: "late procedure-table cancellation" };
+  let calls = 0;
+  const service = new GoBinaryService({
+    identity: procedureIdentity,
+    inspect: () => Promise.resolve(ok(report)),
+    procedureTable: () => {
+      calls += 1;
+      controller.abort(reason);
+      return Promise.resolve(ok(procedureReport));
+    },
+  });
+  const completed = await service.procedureTable(
+    { path: procedureReport.artifact.path },
+    { signal: controller.signal },
+  );
+  expect(completed.ok).toBe(false);
+  if (!completed.ok) {
+    expect(completed.error).toBeInstanceOf(AnalysisCancelledError);
+    expect(completed.error.cause).toBe(reason);
+    expect(parseEvidence(completed.error.partialObservation)).toMatchObject({
+      operation: "inspect_go_procedure_table",
+      normalized_result: procedureReport,
+    });
+  }
+  const before = await service.procedureTable(
+    { path: procedureReport.artifact.path, offset: 2, limit: 1 },
+    { signal: controller.signal },
+  );
+  expect(before.ok).toBe(false);
+  if (!before.ok) expect(before.error).toBeInstanceOf(AnalysisCancelledError);
+  expect(calls).toBe(1);
+});
