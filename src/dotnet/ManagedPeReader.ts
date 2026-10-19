@@ -6,10 +6,12 @@ import {
 } from "./ManagedReaderFailure.js";
 
 interface PeSection {
+  readonly name: string;
   readonly virtualAddress: number;
   readonly virtualSize: number;
   readonly rawOffset: number;
   readonly rawSize: number;
+  readonly characteristics: number;
 }
 
 interface PeDataDirectory {
@@ -56,14 +58,19 @@ export interface ManagedPeLayout {
   readonly machine: number;
   readonly architecture: "x86" | "x86_64" | "arm" | "arm64";
   readonly optionalHeader: "pe32" | "pe32-plus";
+  readonly imageBase: bigint;
   readonly sectionCount: number;
   readonly characteristics: number;
   readonly sections: readonly PeSection[];
   readonly cli: ManagedCliHeader | null;
+  /** PE data directory 0 (exports); null when absent or zero-sized. */
+  readonly exportDirectory: PeDataDirectory | null;
   readonly cliDirectoryState: "absent" | "present" | "unreadable";
   readonly cliIssue: ManagedParseIssue | null;
   rvaToOffset(rva: number, size: number, scope: string): number;
   rvaAvailableBytes(rva: number, scope: string): number;
+  /** Non-throwing RVA mapping for lanes that treat unmapped ranges as unknown. */
+  tryRvaToOffset(rva: number, size: number, scope: string): number | null;
 }
 
 interface RvaMapping {
@@ -85,6 +92,7 @@ interface CoffHeader {
 interface OptionalHeader {
   readonly optionalOffset: number;
   readonly optionalHeader: "pe32" | "pe32-plus";
+  readonly imageBase: bigint;
   readonly directoryCountOffset: number;
   readonly directoryOffset: number;
 }
@@ -218,6 +226,10 @@ const resolveRva = (
 const mapRva = (mapping: RvaMapping): number =>
   mapping.rva === 0 && mapping.size === 0 ? 0 : resolveRva(mapping).offset;
 
+/** Treat a zero PE data-directory entry as absent. */
+const mapEntry = (directory: PeDataDirectory): PeDataDirectory | null =>
+  directory.rva === 0 && directory.size === 0 ? null : directory;
+
 const readDirectory = (bytes: Buffer, offset: number): PeDataDirectory => {
   requireRange(bytes, offset, 8, "pe.data-directory");
   return {
@@ -339,6 +351,10 @@ const readOptionalHeader = (
   return {
     optionalOffset,
     optionalHeader,
+    imageBase:
+      optionalHeader === "pe32"
+        ? BigInt(bytes.readUInt32LE(optionalOffset + 28))
+        : bytes.readBigUInt64LE(optionalOffset + 24),
     directoryCountOffset:
       optionalOffset + (optionalHeader === "pe32" ? 92 : 108),
     directoryOffset: optionalOffset + (optionalHeader === "pe32" ? 96 : 112),
@@ -360,10 +376,12 @@ const readSections = (
   for (let index = 0; index < coff.sectionCount; index += 1) {
     const offset = sectionOffset + index * 40;
     const section = {
+      name: bytes.toString("latin1", offset, offset + 8).replace(/\0.*$/u, ""),
       virtualSize: bytes.readUInt32LE(offset + 8),
       virtualAddress: bytes.readUInt32LE(offset + 12),
       rawSize: bytes.readUInt32LE(offset + 16),
       rawOffset: bytes.readUInt32LE(offset + 20),
+      characteristics: bytes.readUInt32LE(offset + 36),
     };
     if (section.rawSize > 0)
       requireRange(
@@ -445,15 +463,28 @@ export const readManagedPeLayout = (bytes: Buffer): ManagedPeLayout => {
     machine: coff.machine,
     architecture: architectureFor(coff.machine, cliDirectoryState !== "absent"),
     optionalHeader: optional.optionalHeader,
+    imageBase: optional.imageBase,
     sectionCount: coff.sectionCount,
     characteristics: coff.characteristics,
     sections,
     cli,
+    exportDirectory:
+      optional.directoryOffset + 8 > optional.optionalOffset + coff.optionalSize
+        ? null
+        : mapEntry(readDirectory(bytes, optional.directoryOffset)),
     cliDirectoryState,
     cliIssue,
     rvaToOffset: (rva, size, scope) =>
       mapRva({ bytes, sections, rva, size, scope }),
     rvaAvailableBytes: (rva, scope) =>
       resolveRva({ bytes, sections, rva, size: 1, scope }).available,
+    tryRvaToOffset: (rva, size, scope) => {
+      try {
+        return mapRva({ bytes, sections, rva, size, scope });
+      } catch (cause: unknown) {
+        if (cause instanceof ManagedReaderFailure) return null;
+        throw cause;
+      }
+    },
   };
 };
