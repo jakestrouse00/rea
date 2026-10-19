@@ -351,8 +351,26 @@ def failure_reply(error):
     if isinstance(error, CaptureFailure):
         return {"ok": False, "reason": error.reason, "message": str(error), "pointer": error.pointer}
     if isinstance(error, MemoryError):
-        return {"ok": False, "reason": "resource-limit", "message": "Native decoder exhausted its 768 MiB address-space budget.", "pointer": ""}
+        return {"ok": False, "reason": "resource-limit", "message": "Native decoder exhausted its retained memory budget.", "pointer": ""}
     return {"ok": False, "reason": "decoder", "message": "Offline native decoder failed unexpectedly: " + type(error).__name__ + ".", "pointer": ""}
+
+
+def bound_address_space(soft):
+    """Apply the address-space soft ceiling, and the hard ceiling on Linux.
+
+    Linux accepts a soft and hard ceiling pair. macOS cannot lower a hard
+    limit, so the inherited hard ceiling is kept and only the soft value is
+    applied; macOS kernels do not enforce RLIMIT_AS, which the owning adapter
+    discloses in its limitations. No caller-visible claim depends on an
+    enforcement this helper cannot observe.
+    """
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (soft, soft))
+    except (ValueError, OSError):
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (soft, resource.RLIM_INFINITY))
+        except (ValueError, OSError):
+            pass
 
 
 class OfflineCapture:
@@ -360,7 +378,7 @@ class OfflineCapture:
         loader.add_option("rea_request_path", str, "", "REA private offline capture request")
 
     def running(self):
-        resource.setrlimit(resource.RLIMIT_AS, (768 * 1024 * 1024, 768 * 1024 * 1024))
+        bound_address_space(768 * 1024 * 1024)
         resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
         resource.setrlimit(resource.RLIMIT_FSIZE, (OUTPUT_BYTES, OUTPUT_BYTES))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))

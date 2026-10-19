@@ -7,20 +7,26 @@ import type { HistoricalCaptureFormatAdapter } from "./HistoricalCaptureFormatAd
 import { MITMPROXY_CAPTURE_PROVIDER_IDENTITY } from "./CaptureRelease.js";
 const OPERATION = "inspect_web_network_capture";
 const MITMDUMP_REQUIREMENT =
-  "Native capture decoding requires Linux and an absolute REA_MITMDUMP_COMMAND path to caller-supplied mitmdump 12.2.3; HAR needs no external engine.";
+  "Native capture decoding requires Linux or macOS and an absolute REA_MITMDUMP_COMMAND path to caller-supplied mitmdump 12.2.3; HAR needs no external engine.";
 
-/** Native mitmproxy decoding is offline and uses only an explicitly configured Linux tool. */
+/** Native mitmproxy decoding is offline and uses only an explicitly configured tool. */
 export class MitmproxyCaptureAdapter implements HistoricalCaptureFormatAdapter {
   readonly format = "mitmproxy";
   readonly identity = MITMPROXY_CAPTURE_PROVIDER_IDENTITY;
-  constructor(readonly environment: Readonly<NodeJS.ProcessEnv>) {}
+  readonly limitations = [
+    "The decoder applies its own CPU, file-size and core-dump ceilings and requests a 768 MiB address-space soft limit; that ceiling is kernel-enforced only on Linux, because macOS cannot lower hard resource limits and does not enforce RLIMIT_AS.",
+  ];
+  constructor(
+    readonly environment: Readonly<NodeJS.ProcessEnv>,
+    readonly platform: NodeJS.Platform = process.platform,
+  ) {}
   async command(
     requestPath: string,
     runtimePath: string,
   ): Promise<{ command: string; arguments: readonly string[] }> {
     const command = this.environment.REA_MITMDUMP_COMMAND;
     if (
-      process.platform !== "linux" ||
+      (this.platform !== "linux" && this.platform !== "darwin") ||
       command === undefined ||
       !isAbsolute(command)
     )
