@@ -229,7 +229,8 @@ export const attachedScenarioLeaseKey = (
   return JSON.stringify([discovery.href, targetId]);
 };
 
-const acquireAttachedScenario = (
+/** One CDP attach target serves one scenario at a time; shared with the pydoll driver. */
+export const acquireAttachedScenario = (
   scenario: Extract<BrowserScenario["browser"], { readonly mode: "connect" }>,
   signal: AbortSignal | undefined,
 ): Promise<AttachedScenarioLease> => {
@@ -293,7 +294,8 @@ const acquireAttachedScenario = (
   });
 };
 
-const allowedBrowserEnvironment = (
+/** Browser child environment allowlist shared by browser-scenario drivers. */
+export const allowedBrowserEnvironment = (
   environment: Readonly<Record<string, string | undefined>>,
 ): Record<string, string | undefined> => {
   const allowed = [
@@ -500,6 +502,7 @@ class AttachedScenarioEnvironmentOwner {
 export const failBrowserScenarioOperation = async (
   cleanup: AnalysisCleanupLease,
   primaryFailure: unknown,
+  providerId: string = PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY.id,
 ): Promise<never> => {
   try {
     await withPlaywrightExecutionBoundary(
@@ -510,13 +513,9 @@ export const failBrowserScenarioOperation = async (
     const primary =
       primaryFailure instanceof AnalysisError
         ? primaryFailure
-        : new ProviderAdapterError(
-            PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY.id,
-            OPERATION,
-            {
-              cause: primaryFailure,
-            },
-          );
+        : new ProviderAdapterError(providerId, OPERATION, {
+            cause: primaryFailure,
+          });
     const failure = new BrowserObservationError(OPERATION, "cleanup_failed", {
       cause,
       cleanup: {

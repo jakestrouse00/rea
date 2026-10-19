@@ -55,6 +55,17 @@ profile for this request; it does not start your fixture server or install a
 browser. A schema-valid scenario does not prove that the executable or target
 is available on the host.
 
+## Driver selection
+
+REA drives scenarios through Playwright by default. Set
+`REA_BROWSER_SCENARIO_DRIVER=pydoll` to select the pydoll driver, which needs
+`REA_PYDOLL_COMMAND` to name an absolute Python interpreter with
+`pydoll-python` installed; the value may carry flags, split on single spaces.
+Connect-mode scenarios require an explicit `cdp_endpoint` and `target_id` for
+an already-running browser; the driver never discovers or defaults either.
+Set `REA_PYDOLL_BRIDGE_LOG=DEBUG` to raise the bridge child's diagnostics
+above its pinned WARNING level.
+
 ## Interaction example: capture the visible result
 
 The default final URL answers "where did the page end up?", not "what did the

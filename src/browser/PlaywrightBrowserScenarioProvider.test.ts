@@ -115,6 +115,7 @@ const artifactState = (
 };
 
 class FakeSession implements BrowserScenarioSessionPort {
+  readonly driver = "playwright" as const;
   readonly product = "Fake Chromium";
   readonly version = "1";
   readonly initialUrl = "about:blank";

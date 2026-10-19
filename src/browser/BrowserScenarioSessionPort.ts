@@ -11,6 +11,8 @@ import type { SanitizedBrowserUrl } from "../domain/browserObservation.js";
 type SnapshotKind = BrowserScenario["capture"]["after_each_step"][number];
 
 export interface BrowserScenarioSessionPort {
+  /** The driving implementation; observation claims differ between drivers. */
+  readonly driver: "playwright" | "pydoll";
   readonly mode: "launch" | "connect";
   readonly processOwnership: "provider-owned" | "external";
   readonly product: string;

@@ -11,19 +11,22 @@ import type {
 } from "playwright-core";
 
 import type { SanitizedBrowserUrl } from "../domain/browserObservation.js";
-import {
-  browserScenarioEventSchema,
-  type BrowserScenarioEvent,
+import type {
+  BrowserScenarioEvent,
+  BrowserScenarioEventAdmission,
 } from "../domain/browserScenarioCaptureValues.js";
 import type { BrowserScenarioSecrets } from "./BrowserScenarioSecrets.js";
-import type { BrowserNetworkContentSelection } from "../domain/browserNetworkEvidence.js";
-import type { BrowserNetworkHeaders } from "../domain/browserNetworkEvidence.js";
-import type { BrowserScenarioCaptureLimits } from "../domain/browserScenarioCaptureLimits.js";
 import type {
-  BrowserScenarioEventAdmission,
-  BrowserScenarioEventBudgetReason,
-  BrowserScenarioEventOmissions,
-} from "../domain/browserScenarioCaptureValues.js";
+  BrowserNetworkContentSelection,
+  BrowserNetworkHeaders,
+} from "../domain/browserNetworkEvidence.js";
+import type { BrowserScenarioCaptureLimits } from "../domain/browserScenarioCaptureLimits.js";
+import type { BrowserScenarioEventOmissions } from "../domain/browserScenarioCaptureValues.js";
+import type { BrowserScenarioEventBudgetReason } from "../domain/browserScenarioCaptureValues.js";
+import {
+  BrowserScenarioEventBudget,
+  type BrowserScenarioUnindexedEvent,
+} from "./BrowserScenarioEventBudget.js";
 import { DEFAULT_BROWSER_SCENARIO_CAPTURE_LIMITS } from "../domain/browserScenarioCaptureLimits.js";
 import { PlaywrightScenarioNetwork } from "./network/PlaywrightScenarioNetwork.js";
 
@@ -37,12 +40,6 @@ type EventName =
   | "popups"
   | "downloads";
 
-type UnindexedEvent = BrowserScenarioEvent extends infer Event
-  ? Event extends BrowserScenarioEvent
-    ? Omit<Event, "sequence" | "step_index">
-    : never
-  : never;
-
 interface EventCaptureOptions {
   readonly page: Page;
   readonly context?: BrowserContext;
@@ -55,41 +52,14 @@ interface EventCaptureOptions {
   readonly signal?: AbortSignal;
 }
 
-// Conservative allocation accounting includes UTF-16 storage and worst-case
-// JSON escaping. Check before schema cloning; never serialize to measure.
-const MAX_LISTENER_OWNERS = 2048;
-const allocationCost = (value: unknown, remaining: number): number => {
-  if (typeof value === "string") return value.length * 8 + 2;
-  if (value === null || typeof value !== "object") return 32;
-  let cost = 2;
-  for (const key in value) {
-    if (!Object.hasOwn(value, key)) continue;
-    const item = (value as Record<string, unknown>)[key];
-    cost += key.length * 8 + 4 + allocationCost(item, remaining - cost);
-    if (cost > remaining) break;
-  }
-  return cost;
-};
-
 type EventKind = BrowserScenarioEvent["kind"];
+// Playwright listeners retain one owner per observed browser object; the
+// bounded owner count stops unbounded retained-listener growth in shared
+// contexts, where popup discovery can attach many descendant pages.
+const MAX_LISTENER_OWNERS = 2048;
 /** Arrival-ordered Playwright event capture with current-step attribution. */
 export class PlaywrightScenarioEvents {
-  private readonly items: BrowserScenarioEvent[] = [];
-  private retainedCost = 0;
-  private dropped = 0;
-  private readonly omittedKinds = new Map<
-    EventKind,
-    { count: number; reasons: Set<BrowserScenarioEventBudgetReason> }
-  >();
-  private readonly omittedNetwork = new Map<
-    string,
-    {
-      readonly kinds: Set<EventKind>;
-      readonly reasons: Set<BrowserScenarioEventBudgetReason>;
-    }
-  >();
-  private stepIndex = 0;
-  private sequence = 0;
+  private budget: BrowserScenarioEventBudget;
   private readonly enabled: ReadonlySet<EventName>;
   private readonly secrets: BrowserScenarioSecrets;
   private readonly limits: BrowserScenarioCaptureLimits;
@@ -99,7 +69,6 @@ export class PlaywrightScenarioEvents {
   private readonly network: PlaywrightScenarioNetwork | undefined;
   private stopNetwork: (() => void) | undefined;
   private readonly stopListeners = new Map<object, Set<() => void>>();
-  private sealed = false;
 
   constructor(options: EventCaptureOptions) {
     const network = options.network ?? {
@@ -110,6 +79,10 @@ export class PlaywrightScenarioEvents {
     this.enabled = new Set(options.enabled);
     if (network.request_body || network.response_body || network.header_values)
       this.enabled = new Set([...this.enabled, "network"]);
+    this.budget = new BrowserScenarioEventBudget({
+      secrets: options.secrets,
+      ...(options.limits === undefined ? {} : { limits: options.limits }),
+    });
     this.secrets = options.secrets;
     this.limits = options.limits ?? DEFAULT_BROWSER_SCENARIO_CAPTURE_LIMITS;
     this.ownsContext = options.ownsContext === true;
@@ -172,15 +145,15 @@ export class PlaywrightScenarioEvents {
   }
 
   setStep(index: number): void {
-    this.stepIndex = index;
+    this.budget.setStep(index);
   }
 
   nextSequence(): number {
-    return this.sequence + 1;
+    return this.budget.nextSequence();
   }
 
   lastSequence(): number {
-    return this.sequence;
+    return this.budget.lastSequence();
   }
 
   /** Drain selected network content and freeze the result before browser teardown. */
@@ -192,7 +165,7 @@ export class PlaywrightScenarioEvents {
     try {
       await this.network?.finish();
     } finally {
-      this.sealed = true;
+      this.budget.seal();
     }
   }
 
@@ -203,7 +176,7 @@ export class PlaywrightScenarioEvents {
         `Popup ${family} events before Page discovery are unavailable; later events are retained.`,
     );
     const gaps = [...popupGaps, ...(this.network?.limitations() ?? [])];
-    if (this.dropped > 0)
+    if (this.budget.result().dropped > 0)
       gaps.push(
         "Browser event collection reached a selected resource budget; per-kind omissions and affected network transaction IDs are listed in events.omissions, and event coverage is incomplete.",
       );
@@ -221,101 +194,37 @@ export class PlaywrightScenarioEvents {
     readonly items: readonly BrowserScenarioEvent[];
     readonly omissions: BrowserScenarioEventOmissions;
   } {
-    const omittedKinds = new Map(
-      [...this.omittedKinds].map(
-        ([kind, omission]) =>
-          [
-            kind,
-            { count: omission.count, reasons: new Set(omission.reasons) },
-          ] as const,
-      ),
-    );
+    const base = this.budget.result();
     return {
-      retained: this.items.length,
-      dropped: this.dropped,
-      items: this.items,
+      retained: base.retained,
+      dropped: base.dropped,
+      items: base.items,
       omissions: {
-        by_kind: [...omittedKinds]
-          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-          .map(([kind, omission]) => ({
-            kind,
-            count: omission.count,
-            reasons: [...omission.reasons].sort(),
-          })),
-        network_transactions: [...this.omittedNetwork]
-          .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-          .map(([transaction_id, omission]) => ({
-            transaction_id,
-            omitted_kinds: [...omission.kinds].sort(),
-            reasons: [...omission.reasons].sort(),
-          })),
+        ...base.omissions,
         network_transaction_range:
           this.network?.omittedTransactionRange() ?? null,
       },
     };
   }
 
-  private push(event: UnindexedEvent): BrowserScenarioEventAdmission {
-    this.sequence += 1;
-    const cost =
-      allocationCost(event, this.limits.max_event_allocation_bytes) + 128;
-    const reason = this.admissionReason(cost);
-    if (this.sealed || reason !== undefined) {
-      const finalReason = reason ?? "max-events";
-      this.omitEvent(event.kind, finalReason);
-      return {
-        status: "omitted",
-        sequence: this.sequence,
-        reason: finalReason,
-      };
-    }
-    this.retainedCost += cost;
-    const parsed = browserScenarioEventSchema.parse({
-      ...event,
-      sequence: this.sequence,
-      step_index: this.stepIndex,
-    });
-    this.items.push(parsed);
-    return { status: "retained", sequence: this.sequence };
+  private push(
+    event: BrowserScenarioUnindexedEvent,
+  ): BrowserScenarioEventAdmission {
+    return this.budget.push(event);
   }
 
   private admitText(kind: EventKind, ...values: readonly string[]): boolean {
-    return this.admitProducerText(kind, values, false).status === "retained";
+    return (
+      this.budget.admitProducerText(kind, values, false).status === "retained"
+    );
   }
 
-  /** Admit conservative output cost before running redaction or cloning. */
   private admitProducerText(
     kind: EventKind,
     values: Iterable<string>,
     networkMetadata: boolean,
   ): BrowserScenarioEventAdmission {
-    let cost = 4096;
-    for (const value of values) {
-      cost += this.secrets.redactionAllocationCost(value.length);
-    }
-    const reason =
-      networkMetadata &&
-      cost > this.limits.max_network_metadata_allocation_bytes
-        ? "max-network-metadata-allocation-bytes"
-        : this.admissionReason(cost);
-    if (reason !== undefined) {
-      this.sequence += 1;
-      this.omitEvent(kind, reason);
-      return { status: "omitted", sequence: this.sequence, reason };
-    }
-    return { status: "retained", sequence: this.sequence + 1 };
-  }
-
-  private admissionReason(
-    cost: number,
-  ): BrowserScenarioEventBudgetReason | undefined {
-    if (this.sealed || this.items.length >= this.limits.max_events)
-      return "max-events";
-    if (cost > this.limits.max_event_allocation_bytes)
-      return "max-event-allocation-bytes";
-    if (cost > this.limits.max_total_event_allocation_bytes - this.retainedCost)
-      return "max-total-event-allocation-bytes";
-    return undefined;
+    return this.budget.admitProducerText(kind, values, networkMetadata);
   }
 
   private admitContentBody(input: {
@@ -327,63 +236,20 @@ export class PlaywrightScenarioEvents {
     readonly allocationBytes: number;
     readonly mediaType: string | undefined;
   }): BrowserScenarioEventAdmission {
-    const kind = "network-content";
-    const eventCost =
-      allocationCost(
-        {
-          kind,
-          sequence: this.sequence + 1,
-          step_index: this.stepIndex,
-          transaction_id: input.transactionId,
-          source_event_sequence: input.sourceEventSequence,
-          phase: input.phase,
-          headers: input.headers,
-          body: {
-            state: "captured",
-            representation:
-              input.phase === "request"
-                ? "browser-exposed-request-bytes"
-                : "playwright-response-body-bytes",
-            encoding: "base64",
-            content: null,
-            bytes: input.observedBytes,
-            sha256: "0".repeat(64),
-            media_type: null,
-            redacted: false,
-          },
-        },
-        this.limits.max_event_allocation_bytes,
-      ) -
-      64 +
-      input.allocationBytes +
-      (input.mediaType === undefined
-        ? 0
-        : Math.max(
-            input.mediaType.length * 8 + 2,
-            this.secrets.redactionAllocationCost(input.mediaType.length),
-          )) +
-      128;
-    const reason = this.admissionReason(eventCost);
-    if (reason !== undefined) {
-      this.sequence += 1;
-      this.omitEvent(kind, reason);
-      return { status: "omitted", sequence: this.sequence, reason };
-    }
-    return { status: "retained", sequence: this.sequence + 1 };
+    return this.budget.admitContentBody({
+      ...input,
+      representation:
+        input.phase === "request"
+          ? "browser-exposed-request-bytes"
+          : "playwright-response-body-bytes",
+    });
   }
 
   private omitEvent(
     kind: EventKind,
     reason: BrowserScenarioEventBudgetReason,
   ): void {
-    this.dropped += 1;
-    let omission = this.omittedKinds.get(kind);
-    if (omission === undefined) {
-      omission = { count: 0, reasons: new Set() };
-      this.omittedKinds.set(kind, omission);
-    }
-    omission.count += 1;
-    omission.reasons.add(reason);
+    this.budget.omitEvent(kind, reason);
   }
 
   private omitNetwork(
@@ -391,18 +257,12 @@ export class PlaywrightScenarioEvents {
     kind: EventKind,
     reason: BrowserScenarioEventBudgetReason,
   ): void {
-    let omission = this.omittedNetwork.get(transactionId);
-    if (omission === undefined) {
-      omission = { kinds: new Set(), reasons: new Set() };
-      this.omittedNetwork.set(transactionId, omission);
-    }
-    omission.kinds.add(kind);
-    omission.reasons.add(reason);
+    this.budget.omitNetwork(transactionId, kind, reason);
   }
 
   private admitOwner(kind: EventKind): boolean {
     if (this.stopListeners.size < MAX_LISTENER_OWNERS) return true;
-    this.sequence += 1;
+    this.budget.bump();
     this.omitEvent(kind, "max-listener-owners");
     return false;
   }

@@ -72,6 +72,7 @@ const initializePage = async (
 };
 
 export class PlaywrightScenarioSession implements BrowserScenarioSessionPort {
+  readonly driver = "playwright" as const;
   readonly mode: "launch" | "connect";
   readonly processOwnership: "provider-owned" | "external";
   readonly product = "Chromium";

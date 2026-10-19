@@ -29,3 +29,11 @@ export const PLAYWRIGHT_ELECTRON_ACTIVE_PROVIDER_IDENTITY: ProviderIdentity =
     name: "REA Playwright active Electron observation provider",
     version: "1",
   });
+
+/** Identity available without loading the PydollBrowserScenarioProvider implementation. */
+export const PYDOLL_BROWSER_SCENARIO_PROVIDER_IDENTITY: ProviderIdentity =
+  Object.freeze({
+    id: "rea-pydoll-browser-scenario",
+    name: "REA pydoll browser scenario capture provider",
+    version: "1",
+  });

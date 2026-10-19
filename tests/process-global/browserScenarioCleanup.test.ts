@@ -56,6 +56,7 @@ const scenario = browserScenarioSchema.parse({
 // Controlled session failures exercise the real provider and cleanup owner;
 // this fixture opens no browser process or profile directory.
 class RetrySession implements BrowserScenarioSessionPort {
+  readonly driver = "playwright" as const;
   readonly mode = "launch";
   readonly processOwnership = "provider-owned";
   readonly product = "Fixture Chromium";

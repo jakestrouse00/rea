@@ -387,17 +387,20 @@ const runScenario = async (
   return capture;
 };
 
-/** Controlled Playwright/CDP scenario driver with exact process ownership. */
+/** Controlled serial scenario driver over an injected session opener; default identity is Playwright. */
 export class PlaywrightBrowserScenarioProvider implements BrowserScenarioCapturePort {
   #tail: Promise<void> = Promise.resolve();
   #closing = false;
   #closePromise: Promise<void> | undefined;
   readonly #pendingCleanup = new Set<AnalysisCleanupLease>();
 
-  constructor(private readonly openSession: BrowserScenarioSessionOpener) {}
+  constructor(
+    private readonly openSession: BrowserScenarioSessionOpener,
+    private readonly identityOverride: ProviderIdentity = PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY,
+  ) {}
 
   identity(): ProviderIdentity {
-    return PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY;
+    return this.identityOverride;
   }
 
   captureScenario(
@@ -435,14 +438,12 @@ export class PlaywrightBrowserScenarioProvider implements BrowserScenarioCapture
       const primary =
         cause instanceof AnalysisError
           ? cause
-          : new ProviderAdapterError(
-              PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY.id,
-              OPERATION,
-              { cause },
-            );
+          : new ProviderAdapterError(this.identityOverride.id, OPERATION, {
+              cause,
+            });
       if (retained.length === 0) return err(primary);
       const cleanup = new ProviderCleanupError(
-        PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY.id,
+        this.identityOverride.id,
         retained.flatMap((lease) => lease.cleanupResources ?? []),
         { reason: "Browser scenario cleanup capabilities remain retained." },
         { operation: OPERATION, cause },
@@ -502,7 +503,7 @@ export class PlaywrightBrowserScenarioProvider implements BrowserScenarioCapture
     if (failures.length === 0) return undefined;
     if (failures.length === 1) return failures[0];
     return new ProviderCleanupError(
-      PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY.id,
+      this.identityOverride.id,
       failures.flatMap((failure) => failure.cleanupResources),
       { reason: "One or more browser scenario resources remain owned." },
       {

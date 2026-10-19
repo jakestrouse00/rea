@@ -13,11 +13,40 @@ import { AnalysisError } from "../domain/analysisErrorBase.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
-import { PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY } from "./providerIdentities.js";
+import {
+  PLAYWRIGHT_BROWSER_SCENARIO_PROVIDER_IDENTITY,
+  PYDOLL_BROWSER_SCENARIO_PROVIDER_IDENTITY,
+} from "./providerIdentities.js";
 
 const OPERATION = "capture_browser_scenario" as const;
 
-const browserScenarioLimitations = (
+const pydollScenarioLimitations = (
+  session: BrowserScenarioSessionPort,
+  events: readonly BrowserScenarioEvent[],
+): readonly string[] => {
+  const capturedResponseBody = events.some(
+    (event) =>
+      event.kind === "network-content" &&
+      event.phase === "response" &&
+      event.body.state === "captured",
+  );
+  return [
+    "Event sequence records provider receipt order; simultaneous browser causality is not inferred.",
+    "Network content is retained only when selected; CDP Network.getResponseBody bytes are browser-supplied results and are not guaranteed to match wire bytes.",
+    "Captured response-body bytes are read from CDP Network.getResponseBody, which the browser may satisfy from its own cache or settlement state; transaction identity does not verify that retained bytes came from the original wire transaction.",
+    "Request bytes are limited to what CDP exposes; not_exposed does not establish body absence or multipart file coverage.",
+    "Network content reads settle within bounded windows and the observer does not request bodies from unfinished responses.",
+    ...(capturedResponseBody
+      ? [
+          "Response bodies provenance is CDP-level; the pydoll bridge does not refetch request URLs.",
+        ]
+      : []),
+    "pydoll scenario events do not expose request initiator stacks; receipt order does not prove causality.",
+    ...((session.eventLimitations?.() ?? []) as readonly string[]),
+  ];
+};
+
+const playwrightScenarioLimitations = (
   session: BrowserScenarioSessionPort,
   scenario: BrowserScenario,
   events: readonly BrowserScenarioEvent[],
@@ -57,6 +86,26 @@ const browserScenarioLimitations = (
         ]
       : []),
   ];
+};
+
+/** Compose driver-specific claims with the generic attach limitations. */
+const browserScenarioLimitations = (
+  session: BrowserScenarioSessionPort,
+  scenario: BrowserScenario,
+  events: readonly BrowserScenarioEvent[],
+): string[] => {
+  if (session.driver === "pydoll")
+    return [
+      ...pydollScenarioLimitations(session, events),
+      "Storage values are hashed only after declared-secret redaction.",
+      ...(session.mode === "connect"
+        ? [
+            "CDP attachment cannot recover pre-attach events or guarantee launch-time context options.",
+            `Attached locale ${scenario.environment.locale} applies to Intl formatting only; navigator.language(s) and Accept-Language remain caller-controlled. Use launch mode for matching page and request languages.`,
+          ]
+        : []),
+    ];
+  return playwrightScenarioLimitations(session, scenario, events);
 };
 
 /** Project one session into the common capture fields used by success and failure. */
