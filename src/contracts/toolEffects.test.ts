@@ -88,6 +88,20 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   inspect_adb_package: "reports install times without changing the device",
   list_adb_processes: "lists running processes without changing the device",
   inspect_web_event_listeners: "states it does not evaluate JavaScript",
+  inspect_go_procedure_table:
+    "reads pcln-table metadata without executing the target",
+  inspect_rust_symbols: "reads symbol tables without executing the binary",
+  inspect_nativeaot_types: "inspects structures without executing target code",
+  inspect_windows_minidump: "states it does not execute the dump",
+  inspect_wer_report: "parses report text without target execution",
+  inspect_pdb_symbols: "runs llvm-pdbutil, a local engine, never the target",
+  inspect_crx_extension: "states it does not execute code",
+  inspect_xpi_extension: "states it does not execute code",
+  inspect_pyinstaller_archive:
+    "states it never executes or extracts entry contents",
+  capture_ios_screenshot: "states REA never installs the Xcode DDI",
+  list_ios_apps: "states it performs no install, removal, or data access",
+  inspect_ios_provisioning: "states it has no install or removal path at all",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

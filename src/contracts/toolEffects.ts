@@ -126,7 +126,9 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   inspect_go_binary: evidence,
+  inspect_go_procedure_table: evidence,
   inspect_rust_binary: evidence,
+  inspect_rust_symbols: evidence,
   inspect_sqlite_database: effects({
     mutatesSession: true,
     writesFilesystem: true,
@@ -186,6 +188,29 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
     accessesNetwork: true,
   }),
+  // Fork extension tools (2026-10-19): file-structure parsers and the
+  // Windows offline-artifact lane. See docs/non-goals.md for the scope note.
+  inspect_windows_minidump: evidence,
+  inspect_wer_report: evidence,
+  inspect_pdb_symbols: nativeEvidence,
+  inspect_nativeaot_types: evidence,
+  inspect_godot_pck: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  inspect_vpk_archive: evidence,
+  inspect_gamemaker_data: evidence,
+  inspect_rpa_archive: evidence,
+  inspect_rpgmaker_asset_prefixes: evidence,
+  // CRX3 copies the inner ZIP payload into a private temp file for the
+  // trusted archive reader; XPI and PyInstaller parse in place.
+  inspect_crx_extension: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+  }),
+  inspect_xpi_extension: evidence,
+  inspect_pyinstaller_archive: evidence,
   inspect_recorded_crash: effects({
     mutatesSession: true,
     writesFilesystem: true,
@@ -404,6 +429,66 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
   }),
   collect_adb_bugreport: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  capture_android_perfetto: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  capture_android_simpleperf: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  // iOS device plane (pymobiledevice3 lane): reads launch the caller-configured
+  // launcher over usbmuxd; captures stage artifacts into a private runtime root.
+  list_ios_devices: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  inspect_ios_device: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  read_ios_syslog: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  list_ios_crash_reports: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  list_ios_apps: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  inspect_ios_provisioning: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  capture_ios_screenshot: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  inspect_ios_crash: effects({
     mutatesSession: true,
     launchesProcess: true,
     writesFilesystem: true,

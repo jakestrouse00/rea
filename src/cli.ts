@@ -6,10 +6,17 @@ import { createDirectAnalysis } from "./composition/directAnalysis.js";
 import { registerEvmCommands } from "./cli/evmCommands.js";
 import { registerGoCommands } from "./cli/goCommands.js";
 import { registerRustCommands } from "./cli/rustCommands.js";
+import { registerWindowsArtifactsCommands } from "./cli/windowsArtifactsCommands.js";
+import { registerNativeAotCommands } from "./cli/nativeAotCommands.js";
+import { registerGamedataCommands } from "./cli/gamedataCommands.js";
+import { registerContainersCommands } from "./cli/containersCommands.js";
 import { registerSqliteCommands } from "./cli/sqliteCommands.js";
 import { registerAnalysisViewCommands } from "./cli/analysisViewCommands.js";
 import { registerBinaryDiagnosticsCommands } from "./cli/binaryDiagnosticsCommands.js";
-import { registerFridaCommands } from "./cli/fridaCommands.js";
+import {
+  registerFridaCommands,
+  registerFridaSessionCommands,
+} from "./cli/fridaCommands.js";
 import type { FridaInstrumentationPort } from "./application/frida/FridaInstrumentationPort.js";
 import { Cli } from "incur";
 import { normalizeCliArguments } from "./cliOutput.js";
@@ -30,6 +37,7 @@ import { registerPcapCommands } from "./cli/pcapCommands.js";
 import { registerFlutterCommands } from "./cli/flutterCommands.js";
 import { registerJebCommands } from "./cli/jebCommands.js";
 import { registerAdbCommands } from "./cli/adbCommands.js";
+import { registerIdeviceCommands } from "./cli/ideviceCommands.js";
 import { registerEvidenceCommands } from "./cliEvidenceCommands.js";
 import { registerProcessCommands } from "./cli/processCommands.js";
 import { registerBrowserCommands } from "./cli/browserCommands.js";
@@ -117,6 +125,10 @@ export const createCli = (
   registerEvmCommands(cli, logger, environment);
   registerGoCommands(cli, logger);
   registerRustCommands(cli, logger);
+  registerWindowsArtifactsCommands(cli, logger);
+  registerNativeAotCommands(cli, logger);
+  registerGamedataCommands(cli, logger);
+  registerContainersCommands(cli, logger);
   registerSqliteCommands(cli, logger, environment);
   registerArtifactCommands(cli, logger, analysis.runProviderAnalysis);
   registerManagedCommands(cli, logger, analysis.runProviderAnalysis);
@@ -126,10 +138,12 @@ export const createCli = (
   registerFlutterCommands(cli, logger);
   registerJebCommands(cli, logger, environment);
   registerAdbCommands(cli, logger, environment);
+  registerIdeviceCommands(cli, logger, environment);
   registerFirmwareCommands(cli, logger, environment);
   registerBinaryDiagnosticsCommands(cli, logger, environment);
   registerAnalysisViewCommands(cli, logger);
   registerFridaCommands(cli, logger, fridaInstrumentation);
+  registerFridaSessionCommands(cli, logger);
   registerEvidenceCommands(cli, logger);
   registerProcessCommands(cli, logger, environment);
   registerBrowserCommands(cli, logger);

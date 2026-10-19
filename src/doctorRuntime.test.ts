@@ -204,6 +204,25 @@ it("exposes jadx through the doctor provider selector", () => {
   expect(DOCTOR_PROVIDER_IDS).toContain("jadx");
 });
 
+it("exposes frida through the doctor provider selector", () => {
+  expect(DOCTOR_PROVIDER_IDS).toContain("frida");
+});
+
+it("exposes the bundled frida binding's readiness through the provider inspections", async () => {
+  const host = createSystemDoctorHost({});
+  const inspection = (await host.providerInspections?.())?.find(
+    ({ id }) => id === "frida",
+  );
+  expect(inspection).toMatchObject({
+    configured: true,
+    registrationEnvironment: {},
+  });
+  expect(inspection?.providerVersion === null).toBe(false);
+  expect(
+    inspection?.checks.map(({ name, ok }) => ({ name, ok })),
+  ).toStrictEqual([{ name: "runtime", ok: true }]);
+});
+
 it("carries a validated REA_JADX_MCP_JAR into the provider registration environment", async () => {
   const root = await createTestTempDirectory("rea-jadx-registration-");
   const jar = join(root, "jadx-headless-mcp.jar");

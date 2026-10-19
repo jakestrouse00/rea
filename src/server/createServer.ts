@@ -26,7 +26,9 @@ import { createElectronFuseService } from "../composition/electronFuses.js";
 import type { ElectronFuseService } from "../application/electron/ElectronFuseService.js";
 import { registerGoTools } from "./registerGoTools.js";
 import { createRustBinaryService } from "../composition/rust.js";
+import { createRustSymbolsService } from "../composition/rust.js";
 import type { RustBinaryService } from "../application/rust/RustBinaryService.js";
+import type { RustSymbolsService } from "../application/rust/RustSymbolsService.js";
 import { registerRustTools } from "./registerRustTools.js";
 import type { RecordedCrashService } from "../application/binaryDiagnostics/RecordedCrashService.js";
 import { registerAnalysisViewTool } from "./registerAnalysisViewTool.js";
@@ -115,6 +117,22 @@ import { createJebAnalysisProvider } from "../composition/jeb.js";
 import type { AdbDeviceAnalysisPort } from "../application/adb/AdbDeviceAnalysisPort.js";
 import { AdbDeviceAnalysisService } from "../application/adb/AdbDeviceAnalysisService.js";
 import { createAdbDeviceAnalysisProvider } from "../composition/adb.js";
+import type { IdeviceAnalysisPort } from "../application/idevice/IdevicePort.js";
+import { IdeviceAnalysisService } from "../application/idevice/IdeviceAnalysisService.js";
+import { createIdeviceAnalysisProvider } from "../composition/idevice.js";
+import { registerIdeviceTools } from "./registerIdeviceTools.js";
+import { createWindowsArtifactsService } from "../composition/windowsArtifacts.js";
+import type { WindowsArtifactsService } from "../application/windowsArtifacts/WindowsArtifactsService.js";
+import { createNativeAotArtifactService } from "../composition/nativeAot.js";
+import type { NativeAotArtifactService } from "../application/nativeAot/NativeAotArtifactService.js";
+import { createGameDataService } from "../composition/gamedata.js";
+import type { GameDataService } from "../gamedata/GameDataService.js";
+import { createContainerInspectionService } from "../composition/containers.js";
+import type { ContainerInspectionService } from "../application/containers/ContainerInspectionService.js";
+import { registerWindowsArtifactsTools } from "./registerWindowsArtifactsTools.js";
+import { registerNativeAotTools } from "./registerNativeAotTools.js";
+import { registerGamedataTools } from "./registerGamedataTools.js";
+import { registerContainersTools } from "./registerContainersTools.js";
 import { registerManagedWorkflowTools } from "./registerManagedWorkflowTools.js";
 import { registerOfficialTools } from "./registerOfficialTools.js";
 import { registerGuidedPrompts } from "./registerPrompts.js";
@@ -159,6 +177,7 @@ export interface CreateServerOptions {
   readonly binaryLayout?: BinaryLayoutService;
   readonly goBinary?: GoBinaryService;
   readonly rustBinary?: RustBinaryService;
+  readonly rustSymbols?: RustSymbolsService;
   readonly electronFuses?: ElectronFuseService;
   readonly recordedCrash?: RecordedCrashService;
   readonly firmwareAnalysis?: FirmwareAnalysisPort;
@@ -173,6 +192,11 @@ export interface CreateServerOptions {
   readonly flutterAnalysis?: FlutterBuildAnalysisPort;
   readonly jebAnalysis?: JebAnalysisPort;
   readonly adbDeviceAnalysis?: AdbDeviceAnalysisPort;
+  readonly ideviceDeviceAnalysis?: IdeviceAnalysisPort;
+  readonly windowsArtifacts?: WindowsArtifactsService;
+  readonly nativeAot?: NativeAotArtifactService;
+  readonly gameData?: GameDataService;
+  readonly containerInspection?: ContainerInspectionService;
   readonly browserObservation?: BrowserObservationPort;
   readonly browserScenarioCapture?: BrowserScenarioCapturePort;
   readonly electronObservation?: ElectronObservationPort;
@@ -311,6 +335,7 @@ export const createServer = (
     options.webModuleTrace ?? createWebModuleTraceService(environment);
   const goBinary = options.goBinary ?? createGoBinaryService();
   const rustBinary = options.rustBinary ?? createRustBinaryService();
+  const rustSymbols = options.rustSymbols ?? createRustSymbolsService();
   const peResources = createPeResourcesService();
   const electronFuses = options.electronFuses ?? createElectronFuseService();
   const webNetworkCapture =
@@ -369,6 +394,14 @@ export const createServer = (
   const jeb = options.jebAnalysis ?? createJebAnalysisProvider(environment);
   const adbDevice =
     options.adbDeviceAnalysis ?? createAdbDeviceAnalysisProvider(environment);
+  const idevice =
+    options.ideviceDeviceAnalysis ?? createIdeviceAnalysisProvider(environment);
+  const windowsArtifacts =
+    options.windowsArtifacts ?? createWindowsArtifactsService(environment);
+  const nativeAot = options.nativeAot ?? createNativeAotArtifactService();
+  const gameData = options.gameData ?? createGameDataService();
+  const containerInspection =
+    options.containerInspection ?? createContainerInspectionService();
   const cutter = new CutterBridgeService(
     new CutterBridgeClient(providerEnvironment),
   );
@@ -384,6 +417,11 @@ export const createServer = (
       apktool.close(),
       jeb.close(),
       adbDevice.close(),
+      idevice.close(),
+      windowsArtifacts.close(),
+      nativeAot.close(),
+      gameData.close(),
+      containerInspection.close(),
       flutter.close(),
       pcap.close(),
       evmInterface.close(),
@@ -394,6 +432,7 @@ export const createServer = (
       webModuleTrace.close(),
       goBinary.close(),
       rustBinary.close(),
+      rustSymbols.close(),
       peResources.close(),
       electronFuses.close(),
       webNetworkCapture.close(),
@@ -454,6 +493,7 @@ export const createServer = (
     artifactResources,
     goBinary,
     rustBinary,
+    rustSymbols,
     peResources,
     electronFuses,
     webNetworkCapture,
@@ -566,6 +606,41 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerIdeviceTools(
+    server,
+    new IdeviceAnalysisService(idevice),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerWindowsArtifactsTools(
+    server,
+    windowsArtifacts,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerNativeAotTools(
+    server,
+    nativeAot,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerGamedataTools(
+    server,
+    gameData,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerContainersTools(
+    server,
+    containerInspection,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerPcapTools(
     server,
     new PcapAnalysisService(pcap),
@@ -654,6 +729,7 @@ const registerConfiguredAnalysisTools = (
     withAdmittedAnalysis,
     goBinary,
     rustBinary,
+    rustSymbols,
     peResources,
     webNetworkCapture,
   }: ServerToolContext,
@@ -714,6 +790,7 @@ const registerConfiguredAnalysisTools = (
     toolLogger,
     recordEvidence,
     withAdmittedAnalysis,
+    rustSymbols,
   );
   registerWasmTools(
     server,
@@ -822,6 +899,7 @@ const createSessionRecorders = (
 interface ServerToolContext extends ReturnType<typeof createSessionRecorders> {
   readonly goBinary: GoBinaryService;
   readonly rustBinary: RustBinaryService;
+  readonly rustSymbols: RustSymbolsService;
   readonly peResources: PeResourcesService;
   readonly electronFuses: ElectronFuseService;
   readonly webNetworkCapture: WebNetworkCaptureService;

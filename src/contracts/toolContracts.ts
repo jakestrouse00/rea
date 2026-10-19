@@ -34,6 +34,11 @@ import { REVERSE_ENGINEERING_TOOL_CONTRACTS } from "./reverseEngineeringToolCont
 import { GDB_TOOL_CONTRACTS } from "./gdbToolContracts.js";
 import { RIZIN_DEBUG_TOOL_CONTRACTS } from "./rizinDebugToolContracts.js";
 import { FRIDA_TOOL_CONTRACTS } from "./fridaToolContracts.js";
+import { WINDOWS_ARTIFACTS_TOOL_CONTRACTS } from "./windowsArtifacts/windowsArtifactsToolContracts.js";
+import { NATIVE_AOT_TOOL_CONTRACTS } from "./managed/nativeAotToolContracts.js";
+import { GAME_DATA_TOOL_CONTRACTS } from "./gamedata/gamedataToolContracts.js";
+import { CONTAINER_TOOL_CONTRACTS } from "./containers/containersToolContracts.js";
+import { IDEVICE_TOOL_CONTRACTS } from "./idevice/ideviceToolContracts.js";
 
 /** Complete ordered public inventory used by registration and verification. */
 export const TOOL_CONTRACTS = [
@@ -46,6 +51,11 @@ export const TOOL_CONTRACTS = [
   ...EVM_TOOL_CONTRACTS,
   ...GO_TOOL_CONTRACTS,
   ...RUST_TOOL_CONTRACTS,
+  ...NATIVE_AOT_TOOL_CONTRACTS,
+  ...WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
+  ...GAME_DATA_TOOL_CONTRACTS,
+  ...CONTAINER_TOOL_CONTRACTS,
+  ...IDEVICE_TOOL_CONTRACTS,
   ...WASM_TOOL_CONTRACTS,
   ...SQLITE_TOOL_CONTRACTS,
   ...CAPTURE_TOOL_CONTRACTS,

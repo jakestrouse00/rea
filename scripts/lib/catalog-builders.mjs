@@ -46,6 +46,7 @@ export const toolFamilyCatalog = (sources) => {
       contracts: [
         ...sources.managedContracts.MANAGED_TOOL_CONTRACTS,
         ...sources.managedWorkflowContracts.MANAGED_WORKFLOW_TOOL_CONTRACTS,
+        ...sources.nativeAotContracts.NATIVE_AOT_TOOL_CONTRACTS,
       ],
     },
     {
@@ -87,6 +88,27 @@ export const toolFamilyCatalog = (sources) => {
       id: "adb",
       surface: "adb-provider",
       contracts: sources.adbContracts.ADB_TOOL_CONTRACTS,
+    },
+    {
+      id: "windowsArtifacts",
+      surface: "windows-artifacts-provider",
+      contracts:
+        sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
+    },
+    {
+      id: "gamedata",
+      surface: "gamedata-provider",
+      contracts: sources.gamedataContracts.GAME_DATA_TOOL_CONTRACTS,
+    },
+    {
+      id: "containers",
+      surface: "containers-provider",
+      contracts: sources.containerContracts.CONTAINER_TOOL_CONTRACTS,
+    },
+    {
+      id: "idevice",
+      surface: "ios-device-provider",
+      contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
     },
     {
       id: "browser",
@@ -325,6 +347,44 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.adbProvider.ADB_PROVIDER_IDENTITY,
       contracts: sources.adbContracts.ADB_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.windowsMinidumpProvider.WINDOWS_MINIDUMP_PROVIDER_IDENTITY,
+      contracts:
+        sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS.filter(
+          ({ name }) => name === "inspect_windows_minidump",
+        ),
+    },
+    {
+      identity: sources.windowsWerProvider.WINDOWS_WER_PROVIDER_IDENTITY,
+      contracts:
+        sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS.filter(
+          ({ name }) => name === "inspect_wer_report",
+        ),
+    },
+    {
+      identity: sources.pdbProvider.PDB_PROVIDER_IDENTITY,
+      contracts:
+        sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS.filter(
+          ({ name }) => name === "inspect_pdb_symbols",
+        ),
+    },
+    {
+      identity: sources.nativeAotProvider.NATIVE_AOT_PROVIDER_IDENTITY,
+      contracts: sources.nativeAotContracts.NATIVE_AOT_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.gamedataProvider.GAME_DATA_PROVIDER_IDENTITY,
+      contracts: sources.gamedataContracts.GAME_DATA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.containerIdentity.CONTAINER_PROVIDER_IDENTITY,
+      contracts: sources.containerContracts.CONTAINER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.ideviceProvider.IDEVICE_PROVIDER_IDENTITY,
+      contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

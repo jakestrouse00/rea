@@ -8,6 +8,10 @@ import { inspectJadxProvider } from "./android/JadxDoctor.js";
 import { inspectSystemGhidraProvider } from "./ghidra/GhidraDoctor.js";
 import { inspectIdaRegistration } from "./ida/IdaDoctor.js";
 import { inspectKunaProvider } from "./kuna/KunaDoctor.js";
+import { inspectFridaRuntimeProvider } from "./frida/FridaDoctor.js";
+import { inspectIdeviceProvider } from "./idevice/IdeviceDoctor.js";
+import { inspectWindowsArtifacts } from "./windows/WindowsArtifactsDoctor.js";
+import { inspectLlvmPdbutil } from "./pdb/PdbDoctor.js";
 import { readIdaConfiguration } from "./ida/IdaConfiguration.js";
 import { parseJebMcpEndpoint } from "./jeb/JebMcpEndpoint.js";
 import { selectLinuxPrivateDisplayStrategy } from "./hopper/LinuxPrivateDisplayProbe.js";
@@ -64,6 +68,12 @@ export const createSystemDoctorHost = (
       await inspectKunaProvider(environment, process.platform, {
         fileCloseResources,
       }),
+      await inspectFridaRuntimeProvider(),
+      await inspectIdeviceProvider(environment, process.platform, {
+        fileCloseResources,
+      }),
+      await inspectLlvmPdbutil(environment),
+      await inspectWindowsArtifacts(),
     ],
     linuxDemoRuntimeCheck: () =>
       inspectLinuxHopperDemoRuntime(environment, signal),
