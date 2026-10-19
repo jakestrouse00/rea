@@ -25,6 +25,7 @@ const POLICY_REASONS = new Set<BrowserExclusionReason>([
   "unsupported_url",
   "unattributed_origin",
   "not_approved",
+  "stealth_safe_requested",
   "out_of_target_scope",
 ]);
 

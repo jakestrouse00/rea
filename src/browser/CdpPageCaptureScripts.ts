@@ -111,6 +111,12 @@ const captureScriptSource = async (
   state: ScriptDraftState,
 ): Promise<WebPageInspection["scripts"]["items"][number]["source"]> => {
   const { context } = state;
+  // Events routed from Debugger without an REA enable are never consumed for
+  // source reads in stealth-safe mode, so no Debugger command is ever sent.
+  if (context.input.stealth_safe === true)
+    return sourceExcluded(
+      "stealth-safe attach: script sources require enabling the Debugger domain, which was not permitted",
+    );
   const content = requiredScriptSource(
     await context.connection.send(
       "Debugger.getScriptSource",

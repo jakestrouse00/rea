@@ -156,7 +156,7 @@ export const BROWSER_TOOL_CONTRACTS = [
     name: "inspect_web_page",
     ...toolContractMetadata("inspect_web_page"),
     description:
-      "Passively inspect one selected page target through CDP without evaluating JavaScript, navigating, clicking, closing, or mutating the page. If no origin filter is supplied, capture is scoped to the target's current origin. Returns DOM structure, accessibility, scripts, resources, attach-window network and console metadata, workers, and redacted storage inventory as Evidence.",
+      "Passively inspect one selected page target through CDP without evaluating JavaScript, navigating, clicking, closing, or mutating the page. If no origin filter is supplied, capture is scoped to the target's current origin. Returns DOM structure, accessibility, scripts, resources, attach-window network and console metadata, workers, and redacted storage inventory as Evidence. With stealth_safe, the attacher never sends Runtime.enable or Debugger.enable; script inventory, script sources, and console events are then reported as missing with explicit reasons instead of being captured.",
     kind: "browser-provider",
     inputSchema: inspectWebPageInputSchema,
     outputSchema: inspectionOutputSchema,
@@ -174,7 +174,7 @@ export const BROWSER_TOOL_CONTRACTS = [
     name: "analyze_web_bundle",
     ...toolContractMetadata("analyze_web_bundle"),
     description:
-      "Capture JavaScript source from one selected CDP page and statically derive a chunk graph, route and endpoint candidates, vendor fingerprints, page-declared WebMCP metadata, and optionally fetch source maps from the selected target origin or explicitly requested origins. JavaScript is parsed but never executed.",
+      "Capture JavaScript source from one selected CDP page and statically derive a chunk graph, route and endpoint candidates, vendor fingerprints, page-declared WebMCP metadata, and optionally fetch source maps from the selected target origin or explicitly requested origins. JavaScript is parsed but never executed. With stealth_safe, the attacher never sends Runtime.enable or Debugger.enable; the script inventory and script sources are then reported as missing with explicit reasons instead of being captured.",
     kind: "browser-provider",
     inputSchema: analyzeWebBundleInputSchema,
     outputSchema: bundleOutputSchema,

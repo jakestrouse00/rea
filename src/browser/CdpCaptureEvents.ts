@@ -124,6 +124,15 @@ export class CdpCaptureEvents implements CdpCaptureEventsState {
   ingest(event: CdpEvent): void {
     const params = recordValue(event.params);
     if (params === undefined) return;
+    // Stealth-safe attach never enables Runtime or Debugger, so events routed
+    // from those domains on this session carry no REA-side capture authority;
+    // their sections stay reported as missing with the caller's reason.
+    if (
+      this.input.stealth_safe === true &&
+      (event.method.startsWith("Runtime.") ||
+        event.method.startsWith("Debugger."))
+    )
+      return;
     switch (event.method) {
       case "Runtime.executionContextCreated":
         handlers.handleExecutionContextCreated(this, params);

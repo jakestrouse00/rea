@@ -35,6 +35,7 @@ const browserExclusionReasonSchema = z.enum([
   "unsupported_url",
   "unattributed_origin",
   "not_approved",
+  "stealth_safe_requested",
   "out_of_target_scope",
   "provider_unavailable",
   "invalid_protocol_value",

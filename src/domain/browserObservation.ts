@@ -178,6 +178,12 @@ const inspectWebPageInputFacts = {
   ...browserInput,
   target_id: z.string().trim().min(1),
   observation_ms: z.number().int().min(0).default(500),
+  stealth_safe: z
+    .boolean()
+    .default(false)
+    .describe(
+      "Attach without sending domain enables whose enablement is detectable by the page (Runtime, Debugger). Script inventory, script sources, and console events are then reported as missing with explicit reasons instead of captured; network, frames, DOM, accessibility, resources, workers, and storage metadata capture is unaffected.",
+    ),
   include_accessibility_text: z.boolean().default(false),
   include_console_text: z.boolean().default(false),
   include_json_body_shapes: z.boolean().default(false),

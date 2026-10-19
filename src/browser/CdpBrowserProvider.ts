@@ -89,6 +89,8 @@ const CLEANUP_DOMAINS = [
   "Page",
   "WebMCP",
 ] as const;
+/** Domains a stealth-safe attach enabled; never-enabled domains get no disables. */
+const STEALTH_SAFE_CLEANUP_DOMAINS = ["Network", "Page"] as const;
 
 /** Passive browser observation through a selected user-owned CDP endpoint. */
 export class CdpBrowserProvider implements BrowserObservationPort {
@@ -309,6 +311,9 @@ export class CdpBrowserProvider implements BrowserObservationPort {
       async (session) => await capturePage({ ...session, operation }),
       this.#owner,
       (captured) => captured.inspection,
+      input.stealth_safe === true
+        ? STEALTH_SAFE_CLEANUP_DOMAINS
+        : CLEANUP_DOMAINS,
     );
   }
 }
@@ -338,6 +343,7 @@ const withTargetSession = async <
   work: (session: CdpTargetOperationSession<Input>) => Promise<Output>,
   owner: CdpTargetSessionOwner,
   partialObservation?: (output: Output) => AnalysisPartialObservation,
+  cleanupDomains: readonly string[] = CLEANUP_DOMAINS,
 ): Promise<Output> => {
   const endpoint = await openCdpEndpoint(
     input.cdp_endpoint,
@@ -389,7 +395,7 @@ const withTargetSession = async <
     if (targetSession !== undefined)
       await closeCdpTargetSession(
         targetSession,
-        CLEANUP_DOMAINS,
+        cleanupDomains,
         options.signal,
         owner,
       );

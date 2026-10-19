@@ -51,6 +51,9 @@ interface CaptureState {
   readonly startedAt: string;
 }
 
+const STEALTH_SAFE_ATTACH_LIMITATION =
+  "Stealth-safe attach: Runtime and Debugger domains were not enabled, so script inventory, script sources, and console activity were not captured and are reported as stealth_safe_requested; network, frames, DOM, accessibility, resources, workers, and storage capture are unaffected.";
+
 interface CapturedSections {
   readonly attachedUrl: string;
   readonly frames: WebPageInspection["frames"];
@@ -86,6 +89,9 @@ export const capturePage = async (
       "Raw network headers, bodies, cookies, storage values, console objects, and WebSocket payloads are never retained; explicitly requested primitive console text is retained verbatim, while payload captures retain value-free shapes.",
       "Source maps are reported only as declarative URLs and are not fetched.",
       "URL-less scripts and console events without an allowed source URL are excluded because their origin cannot be proven.",
+      ...(context.input.stealth_safe === true
+        ? [STEALTH_SAFE_ATTACH_LIMITATION]
+        : []),
       ...(context.target.attached === null
         ? [
             "CDP discovery omitted the target attachment state; attached is reported as unknown.",
@@ -161,6 +167,30 @@ const captureAuthorizedPage = async (
       storageCapture.keysExclusion,
       null,
     );
+  if (input.stealth_safe === true) {
+    state.events.completeness.exclude(
+      "scripts",
+      "stealth_safe_requested",
+      null,
+    );
+    state.events.completeness.exclude(
+      "console_events",
+      "stealth_safe_requested",
+      null,
+    );
+    if (input.include_console_text)
+      state.events.completeness.exclude(
+        "console_text",
+        "stealth_safe_requested",
+        null,
+      );
+    if (input.include_script_sources)
+      state.events.completeness.exclude(
+        "script_sources",
+        "stealth_safe_requested",
+        null,
+      );
+  }
   await report(context.progress, 3, "Normalizing browser evidence");
   const completedFrameResult = await authorizedMainFrame({
     connection: context.connection,
@@ -257,7 +287,12 @@ const authorizeObservationWindow = async (
   if (mainFrame === undefined)
     throw new BrowserObservationError("inspect_web_page", "target_not_allowed");
   events.beginAuthorizedFrame(mainFrame.frame_id);
-  await enableObservationDomains(connection, sessionId, signal);
+  await enableObservationDomains(
+    connection,
+    sessionId,
+    signal,
+    context.input.stealth_safe,
+  );
   await report(context.progress, 2, "Observing page events");
   await delayWithCancellation(
     context.input.observation_ms,
@@ -387,9 +422,15 @@ const enableObservationDomains = async (
   connection: CdpConnection,
   sessionId: string | undefined,
   signal?: AbortSignal,
+  stealthSafe = false,
 ): Promise<void> => {
-  await connection.send("Runtime.enable", {}, sessionId, signal);
-  await connection.send("Debugger.enable", {}, sessionId, signal);
+  // Runtime and Debugger enables are page-visible (they reroute console and
+  // script events); a stealth-safe attach omits them and reports the sections
+  // that depend on those domains as missing instead of silently enabling.
+  if (stealthSafe === false) {
+    await connection.send("Runtime.enable", {}, sessionId, signal);
+    await connection.send("Debugger.enable", {}, sessionId, signal);
+  }
   await connection.send("Network.enable", {}, sessionId, signal);
 };
 
