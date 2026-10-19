@@ -1,6 +1,8 @@
 import {
   inspectRustBinaryInputSchema,
+  inspectRustSymbolsInputSchema,
   rustBinarySchema,
+  rustSymbolsReportSchema,
 } from "../../domain/rust/rustBinary.js";
 import type { ToolContract } from "../toolContractTypes.js";
 import { toolContractMetadata } from "../toolEffects.js";
@@ -20,6 +22,21 @@ export const RUST_TOOL_CONTRACTS = [
       {
         title: "Inspect an embedded Rust dependency list",
         input: { path: "/artifacts/application" },
+      },
+    ],
+  },
+  {
+    name: "inspect_rust_symbols",
+    ...toolContractMetadata("inspect_rust_symbols"),
+    kind: "artifact-provider",
+    description:
+      "Inspect paged symbol-table entries of an explicit local ELF or thin Mach-O image with inline Rust name demangling. Reads ELF symtab (preferred) or dynsym, or the Mach-O LC_SYMTAB nlist entries, without installing Rust, opening a disassembler, executing the target, writing temporary files or accessing the network. Each entry keeps the exact mangled name, the detected mangling format (legacy _ZN, v0 _R, or other for names that use no Rust scheme), the demangled path or a per-entry failure reason, the symbol value in hexadecimal, the declared size when the table stores one, the binding class (local, global, weak, unknown), the section index for defined symbols, and a file offset mapped from the symbol value or null when the value is unmapped or ambiguous. Returns the requested page in the table's named-symbol order with offset and limit, plus summary counts over the full table (declared, named, mangled by format, examined completeness) and the returned page (demangled success and failure). Pages are bounded to 500 entries and every table is admitted to 200000 symbols with oversized tables reported incomplete rather than truncated silently. Symbol names are file content and do not authenticate the compiler or prove which source built the binary. PE symbol tables are not read and keep the table null. Malformed tables receive typed failures rather than partial success.",
+    inputSchema: inspectRustSymbolsInputSchema,
+    outputSchema: evidenceResultOf(rustSymbolsReportSchema),
+    examples: [
+      {
+        title: "Inspect the first page of a Rust symbol table",
+        input: { path: "/artifacts/application", offset: 0, limit: 50 },
       },
     ],
   },

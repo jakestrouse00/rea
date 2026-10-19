@@ -1,4 +1,5 @@
 import { readStableArtifact } from "../artifacts/readStableArtifact.js";
+import { z } from "zod";
 import {
   ArtifactFileCleanupFailure,
   assertArtifactReadActive,
@@ -10,6 +11,7 @@ import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
 import type { ExecutionOptions } from "../application/AnalysisProvider.js";
 import type { RustBinaryPort } from "../application/rust/RustBinaryPort.js";
+import type { RustSymbolsPort } from "../application/rust/RustSymbolsPort.js";
 import { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   AnalysisAccessDeniedError,
@@ -23,11 +25,22 @@ import {
 import {
   RUST_AUDITABLE_FORMAT_VERSIONS,
   rustBinarySchema,
+  rustSymbolsReportSchema,
   type InspectRustBinaryInput,
+  type InspectRustSymbolsInput,
   type RustBinary,
+  type RustSymbolEntry,
+  type RustSymbolsReport,
 } from "../domain/rust/rustBinary.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { err, ok, type Result } from "../domain/result.js";
+import {
+  GoBinaryFormatFailure,
+  GoBinaryResourceFailure,
+} from "../go/GoBinaryContainer.js";
+import { readGoBinaryContainer } from "../go/GoBinaryImage.js";
+import { classifyRustMangling, demangleRustSymbol } from "./RustDemangle.js";
+import { readRustSymbolTable, symbolFileOffset } from "./RustSymbolTable.js";
 import { readRustBinaryImage } from "./RustBinaryImage.js";
 import {
   RUST_BINARY_INPUT_BYTES,
@@ -42,10 +55,10 @@ export const RUST_BINARY_PROVIDER_IDENTITY = {
   name: "REA Rust dependency reader",
   version: "1",
 } as const;
-const OPERATION = "inspect_rust_binary";
+const PROVIDER_ID = RUST_BINARY_PROVIDER_IDENTITY.id;
 
-/** Stable in-process dependency inspection without subprocesses, temporary files, or a Rust toolchain. */
-export class RustBinaryProvider implements RustBinaryPort {
+/** Stable in-process inspection without subprocesses, temporary files, or a Rust toolchain. */
+export class RustBinaryProvider implements RustBinaryPort, RustSymbolsPort {
   readonly identity = RUST_BINARY_PROVIDER_IDENTITY;
   readonly #resources = new ArtifactResourceScope();
 
@@ -59,10 +72,10 @@ export class RustBinaryProvider implements RustBinaryPort {
       )
         throw cause;
       const error = new ProviderCleanupError(
-        RUST_BINARY_PROVIDER_IDENTITY.id,
+        PROVIDER_ID,
         cause.cleanup.resources,
         { reason: cause.cleanup.reason },
-        { cause, operation: OPERATION },
+        { cause, operation: "inspect_rust_binary" },
       );
       bindArtifactFileCleanup(cause, error);
       throw error;
@@ -76,51 +89,365 @@ export class RustBinaryProvider implements RustBinaryPort {
   ): Promise<Result<RustBinary, AnalysisError>> {
     try {
       return await this.#resources.run(async () => {
-        const snapshot = await readStableArtifact(
-          input.path,
-          RUST_BINARY_INPUT_BYTES,
-          options?.signal,
-          undefined,
+        const snapshot = await readRustArtifact(
+          input,
           this.#resources,
+          options,
         );
-        assertArtifactReadActive(options?.signal);
         const image = readRustBinaryImage(snapshot.bytes);
         const report = {
           ...image,
-          artifact: {
-            path: input.path,
-            sha256: snapshot.sha256,
-            bytes: snapshot.bytes.length,
-          },
+          artifact: artifactFor(input.path, snapshot),
           limitations: limitationsFor(image),
         };
         if (
           Buffer.byteLength(JSON.stringify(report), "utf8") > RUST_OUTPUT_BYTES
         )
           throw outputLimit(input.path);
-        const parsed = rustBinarySchema.safeParse(report);
-        if (!parsed.success)
-          throw new AnalysisOutputError(
-            OPERATION,
-            "Rust reader produced an invalid dependency report.",
-            { cause: parsed.error },
-          );
+        const parsed = parsedReport(
+          "inspect_rust_binary",
+          rustBinarySchema,
+          report,
+        );
         assertArtifactReadActive(options?.signal);
-        return ok(parsed.data);
+        return parsed;
       });
     } catch (cause: unknown) {
       return err(failureFor(cause, input.path, options?.signal));
     }
   }
+
+  /** Read one symbol table, demangling the requested page inline. */
+  async symbols(
+    input: InspectRustSymbolsInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<RustSymbolsReport, AnalysisError>> {
+    try {
+      return await this.#resources.run(async () => {
+        const snapshot = await readRustArtifact(
+          input,
+          this.#resources,
+          options,
+        );
+        const container = admitContainer(snapshot.bytes);
+        const table = readRustSymbolTable(snapshot.bytes, container);
+        if (table === null) {
+          const report = {
+            artifact: artifactFor(input.path, snapshot),
+            format: container.format,
+            architecture: container.architecture,
+            bits: container.bits,
+            byte_order: container.byte_order,
+            table: null,
+            offset: input.offset,
+            limit: input.limit,
+            entries: [],
+            summary: {
+              declared_symbols: 0,
+              named_symbols: 0,
+              complete: false,
+              mangled_legacy: 0,
+              mangled_v0: 0,
+              mangled_other: 0,
+              demangled_ok: 0,
+              demangled_failed: 0,
+            },
+            limitations: [
+              "This container format has no symbol table reader here. PE symbol tables are not read; no symbol facts are claimed.",
+            ],
+          };
+          const parsed = parsedReport(
+            "inspect_rust_symbols",
+            rustSymbolsReportSchema,
+            report,
+          );
+          assertArtifactReadActive(options?.signal);
+          return parsed;
+        }
+        let legacy = 0;
+        let v0 = 0;
+        let other = 0;
+        for (const symbol of table.symbols) {
+          const format = classifyRustMangling(symbol.name);
+          if (format === "legacy") legacy += 1;
+          else if (format === "v0") v0 += 1;
+          else other += 1;
+        }
+        const page = table.symbols.slice(
+          input.offset,
+          input.offset + input.limit,
+        );
+        const entries: RustSymbolEntry[] = [];
+        let ok_ = 0;
+        let failed = 0;
+        for (const symbol of page) {
+          const format = classifyRustMangling(symbol.name);
+          const demangle =
+            format === "other"
+              ? {
+                  demangled: null,
+                  failure_reason: "Name does not use a Rust mangling scheme",
+                }
+              : demangleRustSymbol(symbol.name);
+          if (demangle.demangled === null) failed += 1;
+          else ok_ += 1;
+          entries.push({
+            index: symbol.index,
+            mangled: symbol.name,
+            format,
+            demangled: demangle.demangled,
+            demangle_failure_reason:
+              demangle.demangled === null ? demangle.failure_reason : null,
+            value_hex: `0x${symbol.value.toString(16)}`,
+            size: symbol.size,
+            binding: symbol.binding,
+            section_index: symbol.section_index,
+            file_offset: symbolFileOffset(container, symbol.value),
+          });
+        }
+        const report = {
+          artifact: artifactFor(input.path, snapshot),
+          format: container.format,
+          architecture: container.architecture,
+          bits: container.bits,
+          byte_order: container.byte_order,
+          table: table.table,
+          offset: input.offset,
+          limit: input.limit,
+          entries,
+          summary: {
+            declared_symbols: table.declared_count,
+            named_symbols: table.symbols.length,
+            complete: table.complete,
+            mangled_legacy: legacy,
+            mangled_v0: v0,
+            mangled_other: other,
+            demangled_ok: ok_,
+            demangled_failed: failed,
+          },
+          limitations: symbolLimitations(table.table, table.other_table),
+        };
+        const parsed = parsedReport(
+          "inspect_rust_symbols",
+          rustSymbolsReportSchema,
+          report,
+        );
+        assertArtifactReadActive(options?.signal);
+        return parsed;
+      });
+    } catch (cause: unknown) {
+      return err(
+        failureFor(cause, input.path, options?.signal, "inspect_rust_symbols"),
+      );
+    }
+  }
 }
+
+interface RustSnapshot {
+  readonly bytes: Buffer;
+  readonly sha256: string;
+}
+
+const failureFor = (
+  cause: unknown,
+  path: string,
+  signal?: AbortSignal,
+  operation = "inspect_rust_binary",
+): AnalysisError => {
+  const primary =
+    cause instanceof ArtifactFileCleanupFailure &&
+    cause.fileCleanupFailure.outcome.kind === "failed"
+      ? failureForPrimary(
+          cause.fileCleanupFailure.outcome.cause,
+          path,
+          operation,
+        )
+      : cause instanceof ArtifactFileCleanupFailure && signal?.aborted
+        ? new AnalysisCancelledError(operation, { cause: signal.reason })
+        : failureForPrimary(cause, path, operation);
+  if (!(cause instanceof ArtifactReaderFailure) || cause.cleanup === undefined)
+    return primary;
+  const cleanup = new ProviderCleanupError(
+    PROVIDER_ID,
+    cause.cleanup.resources,
+    { reason: cause.cleanup.reason },
+    { cause, operation },
+  );
+  const error = analysisErrorWithCleanupFailure(primary, cleanup, operation);
+  bindArtifactFileCleanup(cause, error);
+  return error;
+};
+
+const failureForPrimary = (
+  cause: unknown,
+  path: string,
+  operation: string,
+): AnalysisError => {
+  if (cause instanceof AnalysisError) return cause;
+  if (cause instanceof RustAuditableResourceFailure)
+    return new AnalysisResourceConstraintError(
+      operation,
+      cause.constraint.resource,
+      `Selected artifact ${path}: ${cause.message}`,
+      cause.constraint.reported_limits,
+      { cause },
+    );
+  if (cause instanceof RustAuditableFormatFailure)
+    return cause.kind === "unsupported"
+      ? new AnalysisUnsupportedTargetError(operation, path, cause.message, {
+          cause,
+        })
+      : new AnalysisInputError(operation, { cause }, [
+          {
+            path: ["path"],
+            reason: "invalid_format",
+            message: `Selected artifact ${path}: ${cause.message}`,
+          },
+        ]);
+  if (cause instanceof GoBinaryResourceFailure)
+    return new AnalysisResourceConstraintError(
+      operation,
+      "memory",
+      `Selected artifact ${path}: ${cause.message}`,
+      { maximum_bytes: cause.maximum_bytes },
+      { cause },
+    );
+  if (cause instanceof GoBinaryFormatFailure)
+    return cause.kind === "unsupported"
+      ? new AnalysisUnsupportedTargetError(operation, path, cause.message, {
+          cause,
+        })
+      : new AnalysisInputError(operation, { cause }, [
+          {
+            path: ["path"],
+            reason: "invalid_format",
+            message: `Selected artifact ${path}: ${cause.message}`,
+          },
+        ]);
+  return artifactFailure(cause, path, operation);
+};
 
 const outputLimit = (path: string) =>
   new AnalysisResourceConstraintError(
-    OPERATION,
+    "inspect_rust_binary",
     "transport",
     `Complete Rust metadata for ${path} exceeds the inline output budget; no partial success is returned.`,
     { maximum_output_bytes: RUST_OUTPUT_BYTES },
   );
+
+const artifactFailure = (
+  cause: unknown,
+  path: string,
+  operation: string,
+): AnalysisError => {
+  if (cause instanceof ArtifactReaderFailure)
+    return artifactReaderFailure(cause, path, operation);
+  if (cause instanceof Error && "code" in cause) {
+    const code = String(cause.code);
+    if (code === "EACCES" || code === "EPERM")
+      return new AnalysisAccessDeniedError(operation, path, code, { cause });
+    if (["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"].includes(code))
+      return new AnalysisInputError(operation, { cause }, [
+        {
+          path: ["path"],
+          reason: "invalid_value",
+          message: `Selected artifact could not be read (${code}): ${path}.`,
+        },
+      ]);
+  }
+  return new ProviderAdapterError(PROVIDER_ID, operation, {
+    cause,
+    diagnostics: {
+      path,
+      reason: cause instanceof Error ? cause.message : String(cause),
+    },
+  });
+};
+
+const artifactReaderFailure = (
+  cause: ArtifactReaderFailure,
+  path: string,
+  operation: string,
+): AnalysisError => {
+  if (cause.reason === "integrity")
+    return new AnalysisArtifactChangedError(operation, path, cause.message, {
+      cause,
+    });
+  if (cause.reason === "cancelled")
+    return new AnalysisCancelledError(operation, { cause: cause.cause });
+  if (cause.reason === "limit")
+    return new AnalysisResourceConstraintError(
+      operation,
+      "file-size",
+      cause.message,
+      { maximum_input_bytes: RUST_BINARY_INPUT_BYTES },
+      { cause },
+    );
+  if (cause.reason === "path")
+    return new AnalysisInputError(operation, { cause }, [
+      { path: ["path"], reason: "invalid_format", message: cause.message },
+    ]);
+  return new ProviderAdapterError(PROVIDER_ID, operation, {
+    cause,
+    diagnostics: { path, reason: cause.message },
+  });
+};
+
+const readRustArtifact = async (
+  input: { readonly path: string },
+  scope: ArtifactResourceScope,
+  options?: ExecutionOptions,
+): Promise<RustSnapshot> => {
+  const snapshot = await readStableArtifact(
+    input.path,
+    RUST_BINARY_INPUT_BYTES,
+    options?.signal,
+    undefined,
+    scope,
+  );
+  assertArtifactReadActive(options?.signal);
+  return { bytes: snapshot.bytes, sha256: snapshot.sha256 };
+};
+
+const admitContainer = (bytes: Buffer) => readGoBinaryContainer(bytes);
+
+const artifactFor = (
+  path: string,
+  snapshot: RustSnapshot,
+): RustBinary["artifact"] => ({
+  path,
+  sha256: snapshot.sha256,
+  bytes: snapshot.bytes.length,
+});
+
+const parsedReport = <Schema extends z.ZodType>(
+  operation: string,
+  schema: Schema,
+  report: z.infer<Schema>,
+): Result<z.infer<Schema>, AnalysisError> => {
+  const parsed = schema.safeParse(report);
+  if (!parsed.success)
+    throw new AnalysisOutputError(
+      operation,
+      "Rust reader produced an invalid report.",
+      { cause: parsed.error },
+    );
+  return ok(parsed.data as z.infer<Schema>);
+};
+
+const symbolLimitations = (
+  table: "symtab" | "dynsym" | "lc_symtab",
+  otherTable: "symtab" | "dynsym" | null,
+): string[] => [
+  "Symbol names, values, sizes and bindings are table content. They do not authenticate package ownership or prove which compiler produced the binary.",
+  "Symbol values are mapped to file offsets using file-backed segments alone. Unmapped or ambiguous values, and values inside uninitialized memory, keep a null file offset.",
+  "Demangling is bounded to 16384 bytes of mangled input per symbol and 16384 characters of output. Failures are per-entry reasons and never fail the page.",
+  ...(otherTable === null
+    ? []
+    : [
+        `Both symtab and dynsym sections are present; only the ${table} entries were returned to keep paging reproducible.`,
+      ]),
+];
 
 const limitationsFor = (
   image: ReturnType<typeof readRustBinaryImage>,
@@ -176,112 +503,4 @@ const rustcLimitation = (
   return [
     "Read-only data contains more than one /rustc/<40-hex>/ path, so a single rustc commit is unknown.",
   ];
-};
-
-const failureForPrimary = (cause: unknown, path: string): AnalysisError => {
-  if (cause instanceof AnalysisError) return cause;
-  if (cause instanceof RustAuditableResourceFailure)
-    return new AnalysisResourceConstraintError(
-      OPERATION,
-      cause.constraint.resource,
-      `Selected artifact ${path}: ${cause.message}`,
-      cause.constraint.reported_limits,
-      { cause },
-    );
-  if (cause instanceof RustAuditableFormatFailure)
-    return cause.kind === "unsupported"
-      ? new AnalysisUnsupportedTargetError(OPERATION, path, cause.message, {
-          cause,
-        })
-      : new AnalysisInputError(OPERATION, { cause }, [
-          {
-            path: ["path"],
-            reason: "invalid_format",
-            message: `Selected artifact ${path}: ${cause.message}`,
-          },
-        ]);
-  return artifactFailure(cause, path);
-};
-
-const failureFor = (
-  cause: unknown,
-  path: string,
-  signal?: AbortSignal,
-): AnalysisError => {
-  const primary =
-    cause instanceof ArtifactFileCleanupFailure &&
-    cause.fileCleanupFailure.outcome.kind === "failed"
-      ? failureForPrimary(cause.fileCleanupFailure.outcome.cause, path)
-      : cause instanceof ArtifactFileCleanupFailure && signal?.aborted
-        ? new AnalysisCancelledError(OPERATION, { cause: signal.reason })
-        : failureForPrimary(cause, path);
-  if (!(cause instanceof ArtifactReaderFailure) || cause.cleanup === undefined)
-    return primary;
-  const cleanup = new ProviderCleanupError(
-    RUST_BINARY_PROVIDER_IDENTITY.id,
-    cause.cleanup.resources,
-    { reason: cause.cleanup.reason },
-    { cause, operation: OPERATION },
-  );
-  const error = analysisErrorWithCleanupFailure(primary, cleanup, OPERATION);
-  bindArtifactFileCleanup(cause, error);
-  return error;
-};
-
-const artifactFailure = (cause: unknown, path: string): AnalysisError => {
-  if (cause instanceof ArtifactReaderFailure)
-    return artifactReaderFailure(cause, path);
-  if (cause instanceof Error && "code" in cause) {
-    if (cause.code === "EACCES" || cause.code === "EPERM")
-      return new AnalysisAccessDeniedError(OPERATION, path, cause.code, {
-        cause,
-      });
-    if (
-      ["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"].includes(
-        String(cause.code),
-      )
-    )
-      return new AnalysisInputError(OPERATION, { cause }, [
-        {
-          path: ["path"],
-          reason: "invalid_value",
-          message: `Selected artifact could not be read (${String(cause.code)}): ${path}.`,
-        },
-      ]);
-  }
-  return new ProviderAdapterError(RUST_BINARY_PROVIDER_IDENTITY.id, OPERATION, {
-    cause,
-    diagnostics: {
-      path,
-      reason: cause instanceof Error ? cause.message : String(cause),
-    },
-  });
-};
-
-const artifactReaderFailure = (
-  cause: ArtifactReaderFailure,
-  path: string,
-): AnalysisError => {
-  if (cause.reason === "integrity")
-    return new AnalysisArtifactChangedError(OPERATION, path, cause.message, {
-      cause,
-    });
-  if (cause.reason === "cancelled")
-    return new AnalysisCancelledError(OPERATION, { cause: cause.cause });
-  if (cause.reason === "limit")
-    return new AnalysisResourceConstraintError(
-      OPERATION,
-      "file-size",
-      cause.message,
-      { maximum_input_bytes: RUST_BINARY_INPUT_BYTES },
-      { cause },
-    );
-  if (cause.reason === "path")
-    return new AnalysisInputError(OPERATION, { cause }, [
-      { path: ["path"], reason: "invalid_format", message: cause.message },
-    ]);
-  return new ProviderAdapterError(RUST_BINARY_PROVIDER_IDENTITY.id, OPERATION, {
-    cause,
-    diagnostics: { path, reason: cause.message },
-  });
 };

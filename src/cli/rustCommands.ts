@@ -1,5 +1,8 @@
 import { z } from "incur";
-import { createRustBinaryService } from "../composition/rust.js";
+import {
+  createRustBinaryService,
+  createRustSymbolsService,
+} from "../composition/rust.js";
 import { CLI_COMMANDS } from "../cliCommandNames.js";
 import { logCliCommand } from "../cliLogging.js";
 import { finishAnalysisCommand } from "./finishAnalysisCommand.js";
@@ -32,6 +35,45 @@ export const registerRustCommands = (
             service,
             "rust-auditable",
             "inspect_rust_binary",
+            signal,
+          ),
+        );
+      }),
+  });
+  cli.command(CLI_COMMANDS.inspectRustSymbols, {
+    description:
+      "Inspect bounded, paged symbol-table entries with inline Rust demangling",
+    args: z.object({
+      path: z.string().describe("Local ELF, PE or thin Mach-O image"),
+      offset: z
+        .number()
+        .int()
+        .min(0)
+        .describe("First symbol of the page in the table's named-symbol order"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .describe("Maximum number of symbol entries to return"),
+    }),
+    run: ({ args }) =>
+      withCommandCancellation((signal) => {
+        const service = createRustSymbolsService();
+        return logCliCommand(logger, CLI_COMMANDS.inspectRustSymbols, () =>
+          finishAnalysisCommand(
+            () =>
+              service.symbols(
+                {
+                  path: absoluteCallerPath(args.path),
+                  offset: args.offset,
+                  limit: args.limit,
+                },
+                { signal },
+              ),
+            service,
+            "rust-auditable",
+            "inspect_rust_symbols",
             signal,
           ),
         );

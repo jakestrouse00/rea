@@ -294,3 +294,171 @@ const checkRustc = (
     seen.add(entry.hash);
   }
 };
+
+/**
+ * Bounded symbol-table paging input. The offset addresses the ordered
+ * named-symbol list within one table, not a raw table index, so a page is
+ * reproducible across calls on unchanged bytes.
+ */
+export const inspectRustSymbolsInputSchema = z.strictObject({
+  path: localPathStringSchema.describe(
+    "Absolute filesystem path to the selected executable or library",
+  ),
+  offset: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(200_000)
+    .optional()
+    .default(0)
+    .describe("First symbol of the page in the table's named-symbol order"),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(500)
+    .optional()
+    .default(50)
+    .describe("Maximum number of symbol entries to return"),
+});
+
+/** One examined symbol with its inline demangling outcome. */
+export const rustSymbolEntrySchema = z
+  .strictObject({
+    index: index.describe("Zero-based position within the symbol table"),
+    mangled: z.string().min(1).describe("Exact symbol-table name"),
+    format: z
+      .enum(["legacy", "v0", "other"])
+      .describe("Rust mangling scheme, or other for names that do not use one"),
+    demangled: z
+      .string()
+      .nullable()
+      .describe("Demangled path, or null when demangling failed"),
+    demangle_failure_reason: z
+      .string()
+      .nullable()
+      .describe("Why the name is not demangled, or null on success"),
+    value_hex: z
+      .string()
+      .regex(/^0x[0-9a-f]+$/u)
+      .describe("Symbol value in lowercase hexadecimal"),
+    size: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "Symbol size in bytes, or null when the table does not store one",
+      ),
+    binding: z.enum(["local", "global", "weak", "unknown"]),
+    section_index: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "Defined symbol's section index, preserving undefined symbols as null",
+      ),
+    file_offset: z
+      .number()
+      .int()
+      .nonnegative()
+      .nullable()
+      .describe(
+        "File offset mapped from the symbol value, or null when the value is not mapped or is ambiguous",
+      ),
+  })
+  .superRefine((entry, context) => {
+    if ((entry.demangled === null) !== (entry.demangle_failure_reason !== null))
+      issue(
+        context,
+        ["demangled"],
+        "Demangling outcome and failure reason disagree.",
+      );
+  });
+
+/** Counts over the complete table and the returned page. */
+export const rustSymbolsSummarySchema = z.strictObject({
+  declared_symbols: index.describe("Symbols the table declares"),
+  named_symbols: index.describe(
+    "Symbols with a retained non-empty name in this table",
+  ),
+  complete: z
+    .boolean()
+    .describe(
+      "Whether every declared named symbol was examined within the count limit",
+    ),
+  mangled_legacy: index.describe(
+    "Named symbols detected as legacy-mangled across the full table",
+  ),
+  mangled_v0: index.describe(
+    "Named symbols detected as v0-mangled across the full table",
+  ),
+  mangled_other: index.describe(
+    "Named symbols using no Rust mangling scheme across the full table",
+  ),
+  demangled_ok: index.describe(
+    "Entries in the returned page whose demangling succeeded",
+  ),
+  demangled_failed: index.describe(
+    "Entries in the returned page whose demangling failed or was not attempted",
+  ),
+});
+
+/** Bounded paged symbol observation from one symbol table. */
+export const rustSymbolsReportSchema = z
+  .strictObject({
+    artifact: z.strictObject({
+      path: localPathStringSchema,
+      sha256: digestSchema,
+      bytes: index,
+    }),
+    format: z.enum(["elf", "pe", "macho"]),
+    architecture: z.string(),
+    bits: z.union([z.literal(32), z.literal(64)]),
+    byte_order: z.enum(["little", "big"]),
+    /** Examined table; null when the container format has none to read. */
+    table: z.enum(["symtab", "dynsym", "lc_symtab"]).nullable(),
+    offset: index,
+    limit: z.number().int().min(1),
+    entries: z.array(rustSymbolEntrySchema),
+    summary: rustSymbolsSummarySchema,
+    limitations: z.array(z.string()),
+  })
+  .superRefine((report, context) => {
+    if (report.entries.length > report.limit)
+      issue(context, ["entries"], "Symbol page exceeds the requested limit.");
+    if (report.table === null && report.entries.length > 0)
+      issue(
+        context,
+        ["table"],
+        "A symbol page was returned without an examined table.",
+      );
+    for (const [position, entry] of report.entries.entries()) {
+      if (
+        entry.file_offset !== null &&
+        !inside(report.artifact.bytes, entry.file_offset, 1)
+      )
+        issue(
+          context,
+          ["entries", position, "file_offset"],
+          "Symbol file offset is outside the selected artifact.",
+        );
+    }
+    const demangledOk = report.entries.filter(
+      (entry) => entry.demangled !== null,
+    ).length;
+    if (demangledOk !== report.summary.demangled_ok)
+      issue(
+        context,
+        ["summary"],
+        "Page demangling counts disagree with returned entries.",
+      );
+  });
+
+export type RustSymbolEntry = z.infer<typeof rustSymbolEntrySchema>;
+export type RustSymbolsSummary = z.infer<typeof rustSymbolsSummarySchema>;
+export type RustSymbolsReport = z.infer<typeof rustSymbolsReportSchema>;
+export type InspectRustSymbolsInput = z.infer<
+  typeof inspectRustSymbolsInputSchema
+>;
