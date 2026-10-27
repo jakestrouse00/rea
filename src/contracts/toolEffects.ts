@@ -495,6 +495,33 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  // Discovery lane: reads host-provided tables and devices; the mDNS browse,
+  // Bluetooth inquiry and the gated subnet sweep emit packets this host
+  // originates.
+  list_network_neighbors: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  browse_lan_services: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  list_usb_devices: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  list_bluetooth_devices: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  probe_subnet_reachability: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
   resolve_adb_packages: effects({
     mutatesSession: true,
     launchesProcess: true,

@@ -121,6 +121,10 @@ import type { IdeviceAnalysisPort } from "../application/idevice/IdevicePort.js"
 import { IdeviceAnalysisService } from "../application/idevice/IdeviceAnalysisService.js";
 import { createIdeviceAnalysisProvider } from "../composition/idevice.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
+import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
+import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
+import { createDiscoveryAnalysisProvider } from "../composition/discovery.js";
+import { registerDiscoveryTools } from "./registerDiscoveryTools.js";
 import { createWindowsArtifactsService } from "../composition/windowsArtifacts.js";
 import type { WindowsArtifactsService } from "../application/windowsArtifacts/WindowsArtifactsService.js";
 import { createNativeAotArtifactService } from "../composition/nativeAot.js";
@@ -193,6 +197,7 @@ export interface CreateServerOptions {
   readonly jebAnalysis?: JebAnalysisPort;
   readonly adbDeviceAnalysis?: AdbDeviceAnalysisPort;
   readonly ideviceDeviceAnalysis?: IdeviceAnalysisPort;
+  readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
   readonly gameData?: GameDataService;
@@ -396,6 +401,8 @@ export const createServer = (
     options.adbDeviceAnalysis ?? createAdbDeviceAnalysisProvider(environment);
   const idevice =
     options.ideviceDeviceAnalysis ?? createIdeviceAnalysisProvider(environment);
+  const discovery =
+    options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
     options.windowsArtifacts ?? createWindowsArtifactsService(environment);
   const nativeAot = options.nativeAot ?? createNativeAotArtifactService();
@@ -418,6 +425,7 @@ export const createServer = (
       jeb.close(),
       adbDevice.close(),
       idevice.close(),
+      discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
       gameData.close(),
@@ -609,6 +617,13 @@ export const createServer = (
   registerIdeviceTools(
     server,
     new IdeviceAnalysisService(idevice),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerDiscoveryTools(
+    server,
+    new DiscoveryAnalysisService(discovery),
     toolLogger,
     recordEvidence,
     analysisAdmission,

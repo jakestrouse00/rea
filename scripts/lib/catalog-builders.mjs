@@ -111,6 +111,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
     },
     {
+      id: "discovery",
+      surface: "discovery-provider",
+      contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
+    },
+    {
       id: "browser",
       surface: "browser-provider",
       contracts: [
@@ -385,6 +390,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.ideviceProvider.IDEVICE_PROVIDER_IDENTITY,
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,
+      contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

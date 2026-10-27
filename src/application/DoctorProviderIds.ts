@@ -6,6 +6,7 @@ export const DOCTOR_PROVIDER_IDS = [
   "jadx",
   "kuna",
   "idevice",
+  "discovery",
   "llvm-pdbutil",
   "windows-artifacts",
   "frida",

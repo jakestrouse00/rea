@@ -10,6 +10,7 @@ import { inspectIdaRegistration } from "./ida/IdaDoctor.js";
 import { inspectKunaProvider } from "./kuna/KunaDoctor.js";
 import { inspectFridaRuntimeProvider } from "./frida/FridaDoctor.js";
 import { inspectIdeviceProvider } from "./idevice/IdeviceDoctor.js";
+import { inspectDiscoveryProvider } from "./discovery/DiscoveryDoctor.js";
 import { inspectWindowsArtifacts } from "./windows/WindowsArtifactsDoctor.js";
 import { inspectLlvmPdbutil } from "./pdb/PdbDoctor.js";
 import { readIdaConfiguration } from "./ida/IdaConfiguration.js";
@@ -70,6 +71,9 @@ export const createSystemDoctorHost = (
       }),
       await inspectFridaRuntimeProvider(),
       await inspectIdeviceProvider(environment, process.platform, {
+        fileCloseResources,
+      }),
+      await inspectDiscoveryProvider(environment, process.platform, {
         fileCloseResources,
       }),
       await inspectLlvmPdbutil(environment),

@@ -39,6 +39,7 @@ import { NATIVE_AOT_TOOL_CONTRACTS } from "./managed/nativeAotToolContracts.js";
 import { GAME_DATA_TOOL_CONTRACTS } from "./gamedata/gamedataToolContracts.js";
 import { CONTAINER_TOOL_CONTRACTS } from "./containers/containersToolContracts.js";
 import { IDEVICE_TOOL_CONTRACTS } from "./idevice/ideviceToolContracts.js";
+import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 
 /** Complete ordered public inventory used by registration and verification. */
 export const TOOL_CONTRACTS = [
@@ -56,6 +57,7 @@ export const TOOL_CONTRACTS = [
   ...GAME_DATA_TOOL_CONTRACTS,
   ...CONTAINER_TOOL_CONTRACTS,
   ...IDEVICE_TOOL_CONTRACTS,
+  ...DISCOVERY_TOOL_CONTRACTS,
   ...WASM_TOOL_CONTRACTS,
   ...SQLITE_TOOL_CONTRACTS,
   ...CAPTURE_TOOL_CONTRACTS,
