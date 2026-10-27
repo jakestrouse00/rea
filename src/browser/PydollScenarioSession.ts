@@ -12,7 +12,10 @@ import {
 } from "../artifacts/AnalysisCleanupLease.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
 import { cleanupOwnedProcessGroup } from "../process/ProcessOwnership.js";
-import { AnalysisCapabilityUnavailableError } from "../domain/analysisErrorCore.js";
+import {
+  AnalysisCapabilityUnavailableError,
+  AnalysisInputError,
+} from "../domain/analysisErrorCore.js";
 import { BrowserObservationError } from "../domain/browserObservationError.js";
 import { AnalysisError } from "../domain/analysisErrorBase.js";
 import type { SanitizedBrowserUrl } from "../domain/browserObservation.js";
@@ -261,6 +264,17 @@ const serializeAction = (
         step_id: action.step_id,
         duration_ms: action.duration_ms,
       };
+    case "request":
+      // Session admission refuses request steps for this bridge; this keeps
+      // the serialization exhaustive for the typed action union.
+      throw new AnalysisInputError(OPERATION, undefined, [
+        {
+          path: ["actions"],
+          reason: "invalid_value" as const,
+          message:
+            "The pydoll bridge does not perform declarative request steps; select the Playwright browser lane for scenarios whose actions include a request step.",
+        },
+      ]);
   }
 };
 
@@ -647,9 +661,18 @@ export class PydollScenarioSession implements BrowserScenarioSessionPort {
     },
   ): Promise<PydollScenarioSession> {
     throwIfScenarioCancelled(options.signal);
-    const secrets = BrowserScenarioSecrets.resolve(scenario, environment);
-    if (secrets === undefined)
-      throw new BrowserObservationError(OPERATION, "secret_unavailable");
+    if (scenario.actions.some(({ action }) => action === "request"))
+      throw new AnalysisInputError(OPERATION, undefined, [
+        {
+          path: ["actions"],
+          reason: "invalid_value" as const,
+          message:
+            "The pydoll bridge does not perform declarative request steps; select the Playwright browser lane for scenarios whose actions include a request step.",
+        },
+      ]);
+    const resolved = BrowserScenarioSecrets.resolve(scenario, environment);
+    if (!resolved.ok) throw resolved.error;
+    const secrets = resolved.value;
     const verified = await verifyBridgeCommand(environment, options.signal);
     const sessionDir = await mkdtemp(join(tmpdir(), "rea-pydoll-session-"));
     await chmod(sessionDir, 0o700);

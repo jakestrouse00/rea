@@ -16,7 +16,7 @@ export interface GoBinaryPort {
   readonly identity: ProviderIdentity;
   close?(): Promise<void>;
   inspect(
-    input: InspectGoBinaryInput,
+    input: Omit<InspectGoBinaryInput, "detail">,
     options?: ExecutionOptions,
   ): Promise<Result<GoBinary, AnalysisError>>;
   procedureTable(

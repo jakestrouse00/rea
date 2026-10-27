@@ -2,7 +2,7 @@ import { parseConfig } from "../../../../src/config/parseConfig.js";
 import { GhidraProvider } from "../../../../src/ghidra/GhidraProvider.js";
 import { fixtureDosLoadImage } from "../../../../src/ghidra/GhidraLoadImage.fixture.js";
 import { jsonValueSchema } from "../../../../src/domain/jsonValue.js";
-import { artifactFilePrimaryFailure } from "../../../../src/artifacts/ArtifactFileOperation.js";
+import { artifactFilePrimaryFacts } from "../../../../src/artifacts/ArtifactFileOperation.js";
 import { AnalysisCancelledError } from "../../../../src/domain/analysisErrorCore.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -448,6 +448,35 @@ it.each([false, true])(
   },
 );
 
+it("hashes snapshot section ranges in the same pass as the whole-file digest", async () => {
+  const client = clientFor(new FixtureLauncher());
+  const started = await client.start();
+  if (!started.ok) throw started.error;
+  onTestFinished(async () => {
+    await client.close();
+  });
+  const bytes = readFileSync(fixturePath);
+  const digest = (chunk: Buffer): string =>
+    createHash("sha256").update(chunk).digest("hex");
+  const result = await client.hashTargetSnapshotRanges([
+    { start: 0, end: 4 },
+    { start: 4, end: bytes.length },
+    { start: 2, end: 2 },
+  ]);
+  expect(result).toEqual({
+    ok: true,
+    value: {
+      sha256: digest(bytes),
+      bytes: bytes.length,
+      rangeSha256: [
+        digest(bytes.subarray(0, 4)),
+        digest(bytes.subarray(4)),
+        digest(Buffer.alloc(0)),
+      ],
+    },
+  });
+});
+
 it("reports snapshot descriptor cleanup immediately and resolves its exact error on retry", async () => {
   const client = clientFor(new FixtureLauncher());
   const started = await client.start();
@@ -741,7 +770,10 @@ it("keeps a snapshot read failure primary across late cancellation and failed cl
   if (result.ok) throw new Error("Expected read and cleanup failure");
   expect(result.error.kind).toBe("protocol");
   expect(result.error.cancellation).toBeUndefined();
-  expect(artifactFilePrimaryFailure(result.error.cause)).toBe(physical);
+  expect(artifactFilePrimaryFacts(result.error.cause)).toEqual({
+    cause: physical,
+    origin: "owned-or-classified",
+  });
   expect(result.error.partialObservation).toBeUndefined();
   expect(result.error.cleanupFailure?.cleanupIncomplete).toBe(true);
   allowClose = true;

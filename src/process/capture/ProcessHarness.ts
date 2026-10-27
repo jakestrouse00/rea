@@ -5,6 +5,10 @@ import { parseProcessCapture } from "../../domain/process/processCaptureParsing.
 import { err, ok, type Result } from "../../domain/result.js";
 import { AnalysisCapabilityUnavailableError } from "../../domain/analysisErrorCore.js";
 import { AnalysisError } from "../../domain/analysisErrorBase.js";
+import {
+  createProcessTerminalFinalizer,
+  retainTerminalObservationFailure,
+} from "./ProcessTerminalObservation.js";
 import { analysisErrorWithCleanupFailure } from "../../domain/analysisErrorCleanup.js";
 import {
   describeProcessCaptureExecutionFailure,
@@ -29,6 +33,7 @@ import { TerminalRenderer } from "./TerminalRenderer.js";
 import type { ProcessTimer } from "./ProcessTimer.js";
 import {
   createBoundedProcessTextNormalizer,
+  createProcessIdentifierLookup,
   type BoundedProcessTextNormalization,
 } from "./ProcessNormalization.js";
 import { selectCapturedProcessGroupIds } from "../ProcessOwnershipProcessTree.js";
@@ -52,7 +57,7 @@ import {
   describeUnverifiedCause,
   type ProcessCaptureResourceCleanupOptions,
   ProcessCaptureResourceScope,
-  type TerminalCaptureRetention,
+  captureExitObservation,
 } from "./ProcessCaptureLifecycle.js";
 import {
   assertNotCancelled,
@@ -73,6 +78,7 @@ import {
   type ProcessCaptureProgressTracker,
 } from "./ProcessCaptureProgress.js";
 import type { ProcessOwnershipBaseline } from "../ProcessOwnership.js";
+import { ProcessOwnershipEvidenceOwner } from "../ProcessOwnershipEvidence.js";
 import {
   observeProcessStartIdentity,
   signalProcessWithStartIdentity,
@@ -86,8 +92,12 @@ interface StartedCaptureRuntime {
   readonly startedAt: Date;
   readonly executableIdentity: ReturnType<typeof observeLaunchedExecutable>;
   readonly lastOutput: () => number;
-  readonly terminalRetention: () => TerminalCaptureRetention;
+  readonly terminalObservation: ReturnType<
+    typeof createProcessTerminalFinalizer
+  >;
   readonly stopSampler: ReturnType<typeof startProcessSampler>;
+  /** One ownership ledger shared by observations and final cleanup for this run. */
+  readonly ownershipEvidence: ProcessOwnershipEvidenceOwner;
   /** Signals the captured root only while its launch-time start identity still matches. */
   readonly signalRoot: (signal: "SIGTERM" | "SIGKILL") => Promise<{
     readonly delivery: "signaled" | "gone" | "identity-changed" | "unverified";
@@ -166,8 +176,12 @@ const cleanupFailedStartup = async (options: {
   readonly timers: Set<ProcessTimer>;
   readonly terminal: IPty | undefined;
   readonly renderer: TerminalRenderer | undefined;
+  readonly terminalObservation:
+    | ReturnType<typeof createProcessTerminalFinalizer>
+    | undefined;
   readonly runId: string;
   readonly captureBaseline: ProcessOwnershipBaseline;
+  readonly ownershipEvidence: ProcessOwnershipEvidenceOwner;
   readonly scenario: ProcessScenario;
   readonly cleanupHost?: ProcessCaptureCleanupHost;
   readonly observations?: ProcessCaptureObservationBuffer;
@@ -182,25 +196,13 @@ const cleanupFailedStartup = async (options: {
           options.observations.process_samples.value,
         ).filter((groupId) => groupId !== options.terminal?.pid)
       : undefined;
-  if (options.observations !== undefined && options.renderer !== undefined) {
-    try {
-      options.observations.rendered_frames = {
-        state: "available",
-        value: await options.renderer.frames(),
-      };
-    } catch (cause: unknown) {
-      options.observations.rendered_frames = {
-        state: "unavailable",
-        reason: `Rendered terminal frame collection failed: ${cause instanceof Error ? cause.message : "unknown failure"}`,
-      };
-    }
-  }
   const cleanupOptions: ProcessCaptureResourceCleanupOptions = {
     timers: options.timers,
     terminal: options.terminal,
-    renderer: options.renderer,
+    renderer: options.terminalObservation ?? options.renderer,
     runId: options.runId,
     captureBaseline: options.captureBaseline,
+    ownershipEvidence: options.ownershipEvidence,
     ...(sampledProcessGroupIds === undefined ? {} : { sampledProcessGroupIds }),
     temporaryRoot: options.temporaryRoot,
     ...(options.cleanupHost === undefined ? {} : { host: options.cleanupHost }),
@@ -209,11 +211,17 @@ const cleanupFailedStartup = async (options: {
     options.resourceScope === undefined
       ? await releaseProcessResources(cleanupOptions)
       : await options.resourceScope.release(cleanupOptions);
+  let cause = options.cause;
+  if (options.terminalObservation !== undefined) {
+    const terminal = await options.terminalObservation.complete();
+    if (!terminal.ok)
+      cause = retainTerminalObservationFailure(cause, terminal.error);
+  }
   const cleanupFailure = cleanupReportFailure(cleanupOutcome.report);
   if (cleanupFailure !== undefined) {
     resolveProcessResult(
       undefined,
-      options.cause,
+      cause,
       cleanupOutcome,
       options.observations,
       {
@@ -224,7 +232,7 @@ const cleanupFailedStartup = async (options: {
       },
     );
   }
-  throw options.cause;
+  throw cause;
 };
 
 const createTerminalRenderer = (
@@ -250,6 +258,7 @@ interface StartCaptureRuntimeOptions {
   readonly temporaryRoot: string;
   readonly runId: string;
   readonly ownershipBaseline: ProcessOwnershipBaseline;
+  readonly ownershipEvidence: ProcessOwnershipEvidenceOwner;
   readonly cleanupHost?: ProcessCaptureCleanupHost;
   readonly resourceScope?: ProcessCaptureResourceScope;
   readonly observationBuffer: ProcessCaptureObservationBuffer;
@@ -268,8 +277,13 @@ const startCaptureRuntime = async (
   options: StartCaptureRuntimeOptions,
 ): Promise<StartedCaptureRuntime> => {
   const { scenario } = options;
+  const { ownershipEvidence } = options;
   let renderer: TerminalRenderer | undefined;
   let terminal: IPty | undefined;
+  let terminalObservation:
+    | ReturnType<typeof createProcessTerminalFinalizer>
+    | undefined;
+  let stopSampler: ReturnType<typeof startProcessSampler> | undefined;
   try {
     const { spawn } = await import("@lydell/node-pty");
     const selectedExecutable = await observeSelectedExecutable(
@@ -281,10 +295,14 @@ const startCaptureRuntime = async (
     const startedAt = new Date();
     const started = monotonicProcessCaptureClock();
     let lastOutput = started;
+    const identifiers = createProcessIdentifierLookup(
+      options.samples,
+      () => terminal?.pid ?? -1,
+    );
     const normalizeText = createBoundedProcessTextNormalizer(
       scenario,
       options.temporaryRoot,
-      () => terminal?.pid ?? -1,
+      identifiers,
     );
     renderer = createTerminalRenderer(
       scenario,
@@ -317,14 +335,20 @@ const startCaptureRuntime = async (
       onOutput: () => (lastOutput = monotonicProcessCaptureClock()),
       renderer,
       normalizeText,
+      identifiers,
     });
+    terminalObservation = createProcessTerminalFinalizer(
+      renderer,
+      terminalRetention,
+      options.observationBuffer,
+    );
     scheduleScenarioInteractions({
       ...options,
       getTerminal: () => terminal,
       renderer,
       started,
     });
-    const stopSampler = startProcessSampler({
+    stopSampler = startProcessSampler({
       rootPid: terminal.pid,
       runId: options.runId,
       started,
@@ -335,11 +359,12 @@ const startCaptureRuntime = async (
     return {
       renderer,
       terminal,
+      ownershipEvidence,
       started,
       startedAt,
       executableIdentity,
       lastOutput: () => lastOutput,
-      terminalRetention,
+      terminalObservation,
       stopSampler,
       signalRoot: retainRootSignaller(
         terminal.pid,
@@ -349,13 +374,17 @@ const startCaptureRuntime = async (
       ),
     };
   } catch (cause: unknown) {
+    for (const timer of options.timers) timer.cancel();
+    await stopSampler?.();
     return cleanupFailedStartup({
       cause,
       timers: options.timers,
       terminal,
       renderer,
+      terminalObservation,
       runId: options.runId,
       captureBaseline: options.ownershipBaseline,
+      ownershipEvidence,
       scenario,
       ...(options.cleanupHost === undefined
         ? {}
@@ -374,6 +403,7 @@ const finishProcessRun = async (options: {
   readonly timers: Set<ProcessTimer>;
   readonly runId: string;
   readonly captureBaseline: ProcessOwnershipBaseline;
+  readonly ownershipEvidence: ProcessOwnershipEvidenceOwner;
   readonly cleanupHost?: ProcessCaptureCleanupHost;
   readonly temporaryRoot: string;
   readonly scenario: ProcessScenario;
@@ -389,7 +419,9 @@ const finishProcessRun = async (options: {
   readonly signal?: AbortSignal;
 }): Promise<ProcessCapture> => {
   options.progress.closeLive();
+  for (const timer of options.timers) timer.cancel();
   await options.stopSampler();
+  let { capture, executionFailure } = options;
   const sampledProcessGroupIds =
     options.runtime === undefined
       ? undefined
@@ -400,9 +432,10 @@ const finishProcessRun = async (options: {
   const cleanupOptions: ProcessCaptureResourceCleanupOptions = {
     timers: options.timers,
     terminal: options.runtime?.terminal,
-    renderer: options.runtime?.renderer,
+    renderer: options.runtime?.terminalObservation,
     runId: options.runId,
     captureBaseline: options.captureBaseline,
+    ownershipEvidence: options.ownershipEvidence,
     ...(sampledProcessGroupIds === undefined ? {} : { sampledProcessGroupIds }),
     temporaryRoot: options.temporaryRoot,
     ...(options.cleanupHost === undefined ? {} : { host: options.cleanupHost }),
@@ -411,8 +444,15 @@ const finishProcessRun = async (options: {
     options.resourceScope === undefined
       ? await releaseProcessResources(cleanupOptions)
       : await options.resourceScope.release(cleanupOptions);
+  if (options.runtime !== undefined && capture === undefined) {
+    const terminal = await options.runtime.terminalObservation.complete();
+    if (!terminal.ok)
+      executionFailure = retainTerminalObservationFailure(
+        executionFailure,
+        terminal.error,
+      );
+  }
   const cleanup = cleanupOutcome.report;
-  let { capture, executionFailure } = options;
   if (executionFailure === undefined && options.signal?.aborted)
     executionFailure = processCaptureCancelled(options.signal.reason);
   const observedExit =
@@ -469,6 +509,7 @@ const finishProcessRun = async (options: {
 };
 
 const completeCapture = async (options: {
+  readonly timers: ReadonlySet<ProcessTimer>;
   readonly scenario: ProcessScenario;
   readonly hostPlatform: NodeJS.Platform;
   readonly runtime: StartedCaptureRuntime;
@@ -498,15 +539,19 @@ const completeCapture = async (options: {
     throw processCaptureCancelled(options.signal?.reason);
   let settlement: Awaited<ReturnType<typeof observeSettlement>>;
   try {
-    settlement = await observeSettlement(
-      options.runId,
-      selectCapturedProcessGroupIds(runtime.terminal.pid, options.samples),
-      scenario.settle_ms,
-      options.recordEvent,
-      options.hostPlatform,
-      options.signal,
-      options.onLiveProgress,
-    );
+    settlement = await observeSettlement({
+      runId: options.runId,
+      processGroupIds: selectCapturedProcessGroupIds(
+        runtime.terminal.pid,
+        options.samples,
+      ),
+      ownershipEvidence: runtime.ownershipEvidence,
+      settleMs: scenario.settle_ms,
+      recordEvent: options.recordEvent,
+      platform: options.hostPlatform,
+      signal: options.signal,
+      onLiveProgress: options.onLiveProgress,
+    });
   } catch (cause: unknown) {
     options.observationBuffer.settlement = {
       state: "unavailable",
@@ -518,6 +563,7 @@ const completeCapture = async (options: {
     state: "available",
     value: settlement,
   };
+  for (const timer of options.timers) timer.cancel();
   const sampling = await runtime.stopSampler();
   const samplingPartial = sampling.partial;
   await settleProcessCaptureJournal(options.eventJournal);
@@ -528,7 +574,12 @@ const completeCapture = async (options: {
       scenario,
       options.signal,
       options.before,
-      options.resourceScope,
+      {
+        ...(options.resourceScope === undefined
+          ? {}
+          : { cleanup: options.resourceScope }),
+        observerPaths: [options.temporaryRoot],
+      },
     );
   } catch (cause: unknown) {
     if (cause instanceof ProcessCaptureSnapshotFailure)
@@ -545,7 +596,9 @@ const completeCapture = async (options: {
               reason: unavailableReason("Final filesystem snapshot", cause),
             },
     };
-    throw cause;
+    throw cause instanceof ProcessCaptureSnapshotFailure
+      ? cause.failureForCaller()
+      : cause;
   }
   options.observationBuffer.filesystem_snapshots = {
     ...options.observationBuffer.filesystem_snapshots,
@@ -555,20 +608,9 @@ const completeCapture = async (options: {
     },
   };
   options.recordEvent("filesystem_checkpoints", 1);
-  let renderedFrames: Awaited<ReturnType<TerminalRenderer["frames"]>>;
-  try {
-    renderedFrames = await runtime.renderer.frames();
-  } catch (cause: unknown) {
-    options.observationBuffer.rendered_frames = {
-      state: "unavailable",
-      reason: unavailableReason("Rendered terminal frame collection", cause),
-    };
-    throw cause;
-  }
-  options.observationBuffer.rendered_frames = {
-    state: "available",
-    value: renderedFrames,
-  };
+  const terminal = await runtime.terminalObservation.complete();
+  if (!terminal.ok) throw terminal.error;
+  const { renderedFrames, retention } = terminal.value;
   const checkpoints: UnverifiedProcessCapture["filesystem_checkpoints"] = [
     {
       name: "before",
@@ -609,7 +651,7 @@ const completeCapture = async (options: {
     before: options.before,
     after,
     truncationDetails: {
-      ...runtime.terminalRetention(),
+      ...retention,
       rendered_terminal: runtime.renderer.retention(),
       filesystem_before: options.before.coverage,
       filesystem_after: after.coverage,
@@ -704,6 +746,7 @@ const runProcessScenario = async (
     throw cause;
   }
   const { temporaryRoot, runId, ownershipBaseline, before } = prepared;
+  const ownershipEvidence = new ProcessOwnershipEvidenceOwner();
   const journal = createProcessCaptureJournal();
   const { entries: eventJournal, recordEvent } = journal;
   recordEvent("filesystem_checkpoints", 0);
@@ -730,6 +773,7 @@ const runProcessScenario = async (
       temporaryRoot,
       runId,
       ownershipBaseline,
+      ownershipEvidence,
       ...(cleanupHost === undefined ? {} : { cleanupHost }),
       ...(resourceScope === undefined ? {} : { resourceScope }),
       observationBuffer: observations,
@@ -784,17 +828,10 @@ const runProcessScenario = async (
       };
     observations.exit = {
       state: "available",
-      value: {
-        code:
-          exit.reason === "exited" && exit.exitCode >= 0 ? exit.exitCode : null,
-        signal: exit.signal ?? null,
-        reason: exit.reason,
-        ...(exit.finalization === undefined
-          ? {}
-          : { finalization: exit.finalization }),
-      },
+      value: captureExitObservation(exit),
     };
     capture = await completeCapture({
+      timers,
       scenario,
       hostPlatform,
       runtime,
@@ -815,35 +852,13 @@ const runProcessScenario = async (
     });
   } catch (cause: unknown) {
     executionFailure = normalizeCaptureFailure(cause, signal);
-    if (
-      runtime !== undefined &&
-      observations.rendered_frames.state === "unavailable" &&
-      observations.rendered_frames.reason.startsWith(
-        "Rendered terminal frames were not collected",
-      )
-    ) {
-      try {
-        observations.rendered_frames = {
-          state: "available",
-          value: await runtime.renderer.frames(),
-        };
-      } catch (renderCause: unknown) {
-        const renderFailure =
-          renderCause instanceof Error
-            ? renderCause.message
-            : "unknown failure";
-        observations.rendered_frames = {
-          state: "unavailable",
-          reason: `Rendered terminal frame collection failed: ${renderFailure}`,
-        };
-      }
-    }
   }
   return finishProcessRun({
     runtime,
     timers,
     runId,
     captureBaseline: ownershipBaseline,
+    ownershipEvidence,
     ...(cleanupHost === undefined ? {} : { cleanupHost }),
     temporaryRoot,
     scenario,

@@ -1,5 +1,5 @@
 import type { ExecutionOptions } from "../application/AnalysisProvider.js";
-import { createAnalysisExecutionEvidence } from "../application/AnalysisProvider.js";
+import { createAnalysisExecutionEvidence } from "../domain/analysisObservation.js";
 import { completeProviderEvidence } from "../application/ProviderOperationExecution.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
@@ -10,10 +10,10 @@ import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js"
 import {
   gamedataInputSchemas,
   type GamedataOperation,
+  type GamedataRequest,
 } from "../domain/gamedata/gamedataRequests.js";
 import type { Evidence } from "../domain/evidence.js";
 import { err, type Result } from "../domain/result.js";
-import type { GamedataRequest } from "../domain/gamedata/gamedataRequests.js";
 import type { GameDataPort } from "./GameDataPort.js";
 import { isAbsolute } from "node:path";
 

@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { GoBinaryFormatFailure } from "../go/GoBinaryContainer.js";
-import { readGoBinaryContainer } from "../go/GoBinaryImage.js";
+import { BinaryFormatFailure } from "../native/metadata/BinaryContainer.js";
+import { readBinaryContainer } from "../native/metadata/readBinaryContainer.js";
 import {
   RUST_SYMBOL_COUNT_LIMIT,
   readRustSymbolTable,
@@ -169,7 +169,7 @@ it("reads ELF symtab rows with bindings, sections, and mapped values", () => {
       },
     ],
   });
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   expect(container.format).toBe("elf");
   const table = readRustSymbolTable(bytes, container);
   expect(table?.table).toBe("symtab");
@@ -208,7 +208,7 @@ it("falls back to dynsym and keeps the section linkage unknown-preserving", () =
       },
     ],
   });
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   const table = readRustSymbolTable(bytes, container);
   expect(table?.table).toBe("dynsym");
   expect(table?.other_table).toBeNull();
@@ -229,9 +229,9 @@ it("rejects a symbol table whose link is not a string table", () => {
       },
     ],
   });
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   expect(() => readRustSymbolTable(bytes, container)).toThrow(
-    GoBinaryFormatFailure,
+    BinaryFormatFailure,
   );
 });
 
@@ -241,7 +241,7 @@ it("marks tables declared beyond the symbol count limit incomplete", () => {
     declaredSymtab: RUST_SYMBOL_COUNT_LIMIT + 1,
     symtabEntries: [],
   });
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   const table = readRustSymbolTable(bytes, container);
   expect(table?.declared_count).toBe(RUST_SYMBOL_COUNT_LIMIT + 1);
   expect(table?.complete).toBe(false);
@@ -372,7 +372,7 @@ it("reads LC_SYMTAB nlists and maps symbol values through segments", () => {
       value: 0n,
     },
   ]);
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   expect(container.format).toBe("macho");
   const table = readRustSymbolTable(bytes, container);
   expect(table?.table).toBe("lc_symtab");
@@ -408,7 +408,7 @@ it("reads 32-bit Mach-O nlists", () => {
       value: 0x10000080n,
     },
   ]);
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   const table = readRustSymbolTable(bytes, container);
   expect(table?.table).toBe("lc_symtab");
   expect(table?.symbols[0]?.name).toBe("_ZN7example5STATEE");
@@ -418,8 +418,8 @@ it("reads 32-bit Mach-O nlists", () => {
 
 it("rejects a second LC_SYMTAB command", () => {
   const bytes = machoImage(true, MACHO_NAMES, [], 2);
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   expect(() => readRustSymbolTable(bytes, container)).toThrow(
-    GoBinaryFormatFailure,
+    BinaryFormatFailure,
   );
 });

@@ -205,7 +205,9 @@ it("accepts a literal UTF-8 replacement character without changing its value", a
     ["rea", "mcp"],
   );
   expect(result.status).toBe("configured");
-  expect(await readFile(`${configPath}.rea.backup`)).toEqual(original);
+  expect(
+    Buffer.compare(await readFile(`${configPath}.rea.backup`), original),
+  ).toBe(0);
   expect(JSON.parse(await readFile(configPath, "utf8")).label).toBe("\uFFFD");
 });
 
@@ -280,7 +282,15 @@ describe("client configuration write failures", () => {
             format,
             configPath: join(root, `config.${format}`),
           }),
-        ).toEqual({ status: "failed", reason: "write" });
+        ).toMatchObject({
+          status: "failed",
+          reason: "write",
+          failure: {
+            operation: "publish",
+            path: join(root, `config.${format}`),
+            systemCode: expect.stringMatching(/^(?:EACCES|EPERM)$/u),
+          },
+        });
       } finally {
         await chmod(root, 0o700);
       }

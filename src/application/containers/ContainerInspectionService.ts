@@ -476,7 +476,7 @@ const inspectCrxExtension = async (
   let reader: ZipArtifactReader | undefined;
   let handleOwner: OwnedFileHandle | undefined;
   try {
-    const handle = await openRegularFile(path, {
+    const { handle } = await openRegularFile(path, {
       symlinks: "reject",
       signal,
     }).catch((cause: unknown) => {
@@ -866,7 +866,7 @@ const producePyInstallerFacts = async (
   return await withOwnedRegularFile(
     path,
     { ...(signal === undefined ? {} : { signal }), symlinks: "reject" },
-    async (handle) => {
+    async ({ handle }) => {
       const metadata = await handle.stat();
       const fileBytes = metadata.size;
       const bytes = handleBytes(handle, path, operation, signal);

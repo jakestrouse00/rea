@@ -90,7 +90,6 @@ describe("parseRpaPickleIndex", () => {
 
 // oxlint-disable-next-line max-lines-per-function -- one golden archive suite shares the fixture builders; splitting describe blocks would rebuild the same bytes without new semantics.
 describe("parseRpaArchive", () => {
-  // oxlint-disable-next-line max-lines-per-function -- one golden assertion set over one built archive; splitting it would rebuild the same bytes without new semantics.
   it("deobfuscates stored offsets and lengths by XOR with the header key", () => {
     const plaintext = [
       {

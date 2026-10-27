@@ -1,8 +1,8 @@
 import {
-  GoBinaryFormatFailure,
-  GoBinaryReader,
-  type GoBinaryContainer,
-} from "../go/GoBinaryContainer.js";
+  BinaryFormatFailure,
+  BinaryReader,
+  type BinaryContainer,
+} from "../native/metadata/BinaryContainer.js";
 import { readElfFixedHeader } from "../domain/elfFixedHeader.js";
 
 /** Highest symbol count admitted from one table; the rest is reported incomplete. */
@@ -38,7 +38,7 @@ export interface RustSymbolTable {
  */
 export const readRustSymbolTable = (
   bytes: Buffer,
-  container: GoBinaryContainer,
+  container: BinaryContainer,
 ): RustSymbolTable | null => {
   if (container.format === "pe") return null;
   if (container.format === "macho")
@@ -48,7 +48,7 @@ export const readRustSymbolTable = (
 
 /** Map one symbol value to a file offset without treating ambiguity as fact. */
 export const symbolFileOffset = (
-  container: GoBinaryContainer,
+  container: BinaryContainer,
   value: bigint,
 ): number | null => {
   if (value === 0n) return null;
@@ -76,37 +76,37 @@ export const symbolFileOffset = (
 // ELF: symtab (preferred) or dynsym with its linked string table.
 // ---------------------------------------------------------------------------
 
-/** GoBinaryReader has no byte-width primitive; read through validated ranges. */
-const u8At = (reader: GoBinaryReader, offset: number): number => {
+/** BinaryReader has no byte-width primitive; read through validated ranges. */
+const u8At = (reader: BinaryReader, offset: number): number => {
   const range = reader.range(offset, 1, "8-bit field");
   return range[0] ?? 0;
 };
 
 const readElfSymbolTable = (
   bytes: Buffer,
-  container: GoBinaryContainer,
+  container: BinaryContainer,
 ): RustSymbolTable => {
   const fixed = readElfFixedHeader(bytes);
-  if (!fixed.ok) throw new GoBinaryFormatFailure("malformed", fixed.error);
-  const reader = new GoBinaryReader(bytes, fixed.value.byteOrder === "little");
+  if (!fixed.ok) throw new BinaryFormatFailure("malformed", fixed.error);
+  const reader = new BinaryReader(bytes, fixed.value.byteOrder === "little");
   const wide = container.bits === 64;
   const bits = wide ? 64 : 32;
   const shOffset = reader.word(wide ? 40 : 32, bits);
   let shCount = reader.u16(wide ? 60 : 48);
   const shWidth = reader.u16(wide ? 58 : 46);
   if (shWidth < (wide ? 64 : 40))
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF section header width is invalid",
     );
   if (shOffset === 0n)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "unsupported",
       "ELF image has no section header table",
     );
   if (shCount === 0) {
     if (shWidth < (wide ? 64 : 40))
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "ELF extended section header width is invalid",
       );
@@ -116,13 +116,13 @@ const readElfSymbolTable = (
       "ELF section zero",
     ).offset;
     if (reader.u32(zero + 4) !== 0)
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "ELF initial section for extended numbering must have SHT_NULL type",
       );
     const extended = reader.word(zero + (wide ? 32 : 20), bits);
     if (extended < 0xff00n || extended > BigInt(Number.MAX_SAFE_INTEGER))
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "ELF extended section count is invalid",
       );
@@ -141,7 +141,7 @@ const readElfSymbolTable = (
   const dynsym = sections.findIndex((section) => section.type === 11);
   const primary = symtab >= 0 ? symtab : dynsym;
   if (primary < 0)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "unsupported",
       "ELF image declares neither a symtab nor a dynsym section",
     );
@@ -151,7 +151,7 @@ const readElfSymbolTable = (
       (section, index) => index > primary && section.type === primaryType,
     )
   )
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF image declares more than one symbol table",
     );
@@ -165,7 +165,7 @@ const readElfSymbolTable = (
     const nameOffset = reader.u32(entry);
     if (nameOffset === 0) continue;
     if (nameOffset >= strings.size)
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "ELF symbol name offset is outside its string table",
       );
@@ -212,7 +212,7 @@ interface ElfSectionHeader {
 }
 
 const elfSectionHeader = (
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   header: number,
   wide: boolean,
 ): ElfSectionHeader => {
@@ -227,7 +227,7 @@ const elfSectionHeader = (
 };
 
 const elfSymbolRange = (
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   section: ElfSectionHeader,
   wide: boolean,
 ): {
@@ -238,12 +238,12 @@ const elfSymbolRange = (
   const width =
     section.entsize === 0n ? (wide ? 24 : 16) : Number(section.entsize);
   if (width !== (wide ? 24 : 16))
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF symbol entry width is invalid",
     );
   if (section.size % BigInt(width) !== 0n)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF symbol table size is not a multiple of its entry width",
     );
@@ -252,24 +252,24 @@ const elfSymbolRange = (
     section.size > BigInt(Number.MAX_SAFE_INTEGER) ||
     section.offset + section.size > BigInt(reader.bytes.length)
   )
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF symbol table range is outside the file",
     );
   const count = Number(section.size / BigInt(width));
   if (count === 0)
-    throw new GoBinaryFormatFailure("malformed", "ELF symbol table is empty");
+    throw new BinaryFormatFailure("malformed", "ELF symbol table is empty");
   return { offset: Number(section.offset), count, width };
 };
 
 const elfStringTable = (
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   sections: readonly ElfSectionHeader[],
   link: number,
 ): { readonly offset: number; readonly size: number } => {
   const table = sections[link];
   if (table === undefined || table.type !== 3)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF symbol table does not link to a string table",
     );
@@ -278,7 +278,7 @@ const elfStringTable = (
     table.size > BigInt(Number.MAX_SAFE_INTEGER) ||
     table.offset + table.size > BigInt(reader.bytes.length)
   )
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "ELF string table range is outside the file",
     );
@@ -289,7 +289,7 @@ const cString = (bytes: Buffer, start: number, end: number): string => {
   const limit = Math.min(start + RUST_SYMBOL_NAME_BYTES, end);
   const nul = bytes.subarray(start, limit).indexOf(0);
   if (nul < 0)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "Symbol name is not terminated inside its string table",
     );
@@ -306,14 +306,14 @@ const safeSize = (value: bigint): number | null =>
 
 const readMachoSymbolTable = (
   bytes: Buffer,
-  container: GoBinaryContainer,
+  container: BinaryContainer,
 ): RustSymbolTable => {
   const wide = container.bits === 64;
-  const reader = new GoBinaryReader(bytes, container.byte_order === "little");
+  const reader = new BinaryReader(bytes, container.byte_order === "little");
   const headerSize = wide ? 32 : 28;
   const headerStart = reader.range(0, headerSize, "Mach-O header");
   if (headerStart.length === 0)
-    throw new GoBinaryFormatFailure("malformed", "Mach-O header is empty");
+    throw new BinaryFormatFailure("malformed", "Mach-O header is empty");
   const count = reader.u32(16);
   const commandBytes = reader.u32(20);
   const commandStart = reader.table(
@@ -327,14 +327,14 @@ const readMachoSymbolTable = (
   let offset = commandStart;
   for (let index = 0; index < count; index += 1) {
     if (offset + 8 > end)
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "Mach-O load command is truncated",
       );
     const command = reader.u32(offset);
     const size = reader.u32(offset + 4);
     if (size < 8 || size % 4 !== 0 || size > end - offset)
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "Mach-O load command size is invalid or truncated",
       );
@@ -342,17 +342,17 @@ const readMachoSymbolTable = (
     offset += size;
   }
   if (offset !== end)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "Mach-O load-command byte count does not match its commands",
     );
   if (symtabCommands.length === 0)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "unsupported",
       "Mach-O image declares no LC_SYMTAB load command",
     );
   if (symtabCommands.length > 1)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "Mach-O image declares more than one LC_SYMTAB load command",
     );
@@ -379,7 +379,7 @@ const readMachoSymbolTable = (
     const strx = reader.u32(entry);
     if (strx === 0) continue;
     if (strx >= strings.size)
-      throw new GoBinaryFormatFailure(
+      throw new BinaryFormatFailure(
         "malformed",
         "Mach-O symbol name offset is outside its string table",
       );

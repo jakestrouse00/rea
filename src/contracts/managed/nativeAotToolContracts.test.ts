@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { NATIVE_AOT_TOOL_CONTRACTS } from "./nativeAotToolContracts.js";
 
-const contract = NATIVE_AOT_TOOL_CONTRACTS[0];
+const contract = NATIVE_AOT_TOOL_CONTRACTS.find(
+  (entry) => entry.name === "inspect_nativeaot_types",
+)!;
 
 describe("inspect_nativeaot_types contract", () => {
   it("binds the read-only managed-provider contract with truthful derived annotations", () => {

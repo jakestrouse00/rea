@@ -1,4 +1,5 @@
 import type { EvidenceMcpServer } from "./EvidenceMcpServer.js";
+import type { EvidenceLookup } from "../application/EvidenceInputResolver.js";
 import type { RustBinaryService } from "../application/rust/RustBinaryService.js";
 import type { RustSymbolsService } from "../application/rust/RustSymbolsService.js";
 import type { EvidenceWriter } from "../application/investigation/InvestigationRecordPort.js";
@@ -6,7 +7,7 @@ import { toolContract } from "../contracts/toolContracts.js";
 import type { Logger } from "pino";
 import type { WithAdmittedAnalysis } from "./analysisAdmission.js";
 import { createEvidenceToolHandler } from "./contractToolHandler.js";
-import { toolRegistrationOptions } from "./toolRegistrationOptions.js";
+import { applicationToolRegistrationOptions } from "./toolRegistrationOptions.js";
 
 /** Bind the exact Rust contracts to their shared workflows and owning session Evidence ledger. */
 export const registerRustTools = (
@@ -16,18 +17,20 @@ export const registerRustTools = (
   recordEvidence?: EvidenceWriter["recordEvidence"],
   withAdmittedAnalysis?: WithAdmittedAnalysis,
   symbolsService?: RustSymbolsService,
+  evidenceById?: EvidenceLookup,
 ): void => {
   const contract = toolContract("inspect_rust_binary");
   const handler = createEvidenceToolHandler(
     server,
-    (input, options) => service.inspect(input, options),
+    (input, options) =>
+      service.inspect(input, options, { recordEvidence, evidenceById }),
     logger,
     recordEvidence,
     withAdmittedAnalysis,
   );
   server.registerTool(
     contract.name,
-    toolRegistrationOptions(contract),
+    applicationToolRegistrationOptions(contract),
     handler(contract),
   );
   const symbolsContract = toolContract("inspect_rust_symbols");

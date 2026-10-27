@@ -1,12 +1,12 @@
-import { readGoBinaryContainer } from "./GoBinaryImage.js";
+import { observedUtf8 } from "./GoBinaryImage.js";
+import { readBinaryContainer } from "../native/metadata/readBinaryContainer.js";
 import {
-  GoBinaryFormatFailure,
-  GoBinaryResourceFailure,
-  GoBinaryReader,
-  goUtf8,
+  BinaryFormatFailure,
+  BinaryResourceFailure,
+  BinaryReader,
   mappedFileOffset,
-  type GoBinaryContainer,
-} from "./GoBinaryContainer.js";
+  type BinaryContainer,
+} from "../native/metadata/BinaryContainer.js";
 
 /** Runtime producer eras distinguished only by the pclntab magic word. */
 export type GoPclntabEra =
@@ -96,6 +96,51 @@ interface PclntabCandidate {
   readonly bytes: number;
 }
 
+interface GoSectionView {
+  readonly name: string | null;
+  readonly address: bigint;
+  readonly offset: number;
+  readonly size: number;
+  readonly file_backed: boolean;
+  readonly compressed: boolean;
+  readonly read_only: boolean;
+}
+
+/**
+ * Uniform section view across container formats. ELF and Mach-O sections
+ * carry an exact declared address; PE addresses derive from the preferred
+ * image base, which `readBinaryContainer` supplies for every well-formed PE
+ * image, so a section without one contributes no mapped candidates.
+ */
+const sectionViews = (container: BinaryContainer): readonly GoSectionView[] =>
+  container.sections.flatMap((section) => {
+    if (section.format === "pe") {
+      if (container.image_base === undefined) return [];
+      return [
+        {
+          name: section.name,
+          address: container.image_base + BigInt(section.virtual_address),
+          offset: section.offset,
+          size: section.size,
+          file_backed: section.file_backed,
+          compressed: section.compressed,
+          read_only: section.read_only,
+        },
+      ];
+    }
+    return [
+      {
+        name: section.name,
+        address: section.address,
+        offset: section.offset,
+        size: section.size,
+        file_backed: section.file_backed,
+        compressed: section.compressed,
+        read_only: section.read_only,
+      },
+    ];
+  });
+
 /**
  * Locate and validate one pclntab alongside its native container, or report
  * absence without guessing causes. A declared gopclntab section is producer
@@ -109,7 +154,7 @@ export const readGoPclntabImage = (
   readonly container: GoBinaryContainer;
   readonly pclntab: GoPclntabTable | null;
 } => {
-  const container = readGoBinaryContainer(bytes);
+  const container = readBinaryContainer(bytes);
   const { declared, searched } = pclntabCandidates(container);
   for (const candidate of declared)
     return {
@@ -123,7 +168,7 @@ export const readGoPclntabImage = (
     if (seen.has(identity)) continue;
     seen.add(identity);
     if (span.bytes > remaining)
-      throw new GoBinaryResourceFailure(
+      throw new BinaryResourceFailure(
         "search",
         MAX_SEARCH_BYTES,
         "Go pclntab discovery exceeds the cumulative 256 MiB search budget",
@@ -221,7 +266,7 @@ const pclntabCandidates = (
     };
   const declared: PclntabCandidate[] = [];
   const searched: PclntabCandidate[] = [];
-  for (const section of container.sections) {
+  for (const section of sectionViews(container)) {
     if (!section.file_backed || section.compressed || section.size === 0)
       continue;
     let fileOffset: number | null = null;
@@ -238,7 +283,7 @@ const pclntabCandidates = (
     // A section with an unusable declared mapping still contributes its raw
     // declared bytes to the search pool; unmapped spans cannot hide a table.
     const candidate: PclntabCandidate = {
-      declared: section.name.includes("gopclntab"),
+      declared: section.name?.includes("gopclntab") === true,
       section_name: section.name,
       file_offset: fileOffset ?? section.offset,
       address: section.address,
@@ -246,7 +291,7 @@ const pclntabCandidates = (
     };
     if (candidate.declared) declared.push(candidate);
     else if (fileOffset !== null) {
-      if (isPclntabDataSection(section.name) || section.read_only)
+      if (isPclntabDataSection(section.name ?? "") || section.read_only)
         searched.push(candidate);
     }
   }
@@ -272,10 +317,10 @@ const parsePclntab = (
   candidate: PclntabCandidate,
   declared: boolean,
 ): GoPclntabTable | null => {
-  const reader = new GoBinaryReader(bytes, container.byte_order === "little");
+  const reader = new BinaryReader(bytes, container.byte_order === "little");
   const reject = (reason: string) => {
     if (!declared) return null;
-    throw new GoBinaryFormatFailure("malformed", reason);
+    throw new BinaryFormatFailure("malformed", reason);
   };
   if (candidate.bytes < FIXED_HEADER_BYTES)
     return reject("Go pclntab header is truncated");
@@ -283,7 +328,7 @@ const parsePclntab = (
   try {
     magic = reader.u32(candidate.file_offset);
   } catch (cause: unknown) {
-    if (cause instanceof GoBinaryFormatFailure) return reject(cause.message);
+    if (cause instanceof BinaryFormatFailure) return reject(cause.message);
     throw cause;
   }
   if (magic === LEGACY_MAGIC) {
@@ -372,7 +417,7 @@ const parsePclntab = (
   const entryWidth = layout ? 8 : 2 * ptrSize;
   const ftabBytes = (BigInt(nf) + 1n) * BigInt(entryWidth);
   if (ftabBytes > BigInt(MAX_TABLE_BYTES))
-    throw new GoBinaryResourceFailure(
+    throw new BinaryResourceFailure(
       "pclntab",
       MAX_TABLE_BYTES,
       "Go pclntab function table exceeds the 16 MiB structural decoding budget",
@@ -469,7 +514,7 @@ const nextOffsetAfter = (
 };
 
 const functabIsSorted = (
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   ftabFileOffset: number,
   nfunc: number,
   entryWidth: number,
@@ -512,7 +557,7 @@ interface ModuledataProbe {
 const findModuledata = (
   bytes: Buffer,
   container: GoBinaryContainer,
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   probe: ModuledataProbe,
 ): GoModuledataFacts => {
   let remaining = MAX_TABLE_BYTES;
@@ -549,10 +594,10 @@ const moduledataSpans = (
         bytes: mapping.size,
       }));
   const spans: PclntabCandidate[] = [];
-  for (const section of container.sections) {
+  for (const section of sectionViews(container)) {
     if (!section.file_backed || section.compressed || section.size === 0)
       continue;
-    if (!isModuledataSection(section.name)) continue;
+    if (!isModuledataSection(section.name ?? "")) continue;
     spans.push({
       declared: false,
       section_name: section.name,
@@ -567,7 +612,7 @@ const moduledataSpans = (
 const scanModuledata = (
   bytes: Buffer,
   span: PclntabCandidate,
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   probe: ModuledataProbe,
 ): GoModuledataFacts | null => {
   const width = probe.ptrSize;
@@ -587,7 +632,7 @@ const MODULEDATA_WORDS = 24;
 
 const moduledataAt = (
   fileOffset: number,
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   probe: ModuledataProbe,
 ): GoModuledataFacts | null => {
   const width = probe.ptrSize === 8 ? 64 : 32;
@@ -623,11 +668,11 @@ const procedureRow = (
   const functab = table.functab;
   const funcnametab = table.funcnametab;
   if (functab === null || funcnametab === null || table.nfunc === null)
-    throw new GoBinaryFormatFailure(
+    throw new BinaryFormatFailure(
       "malformed",
       "Go procedure rows require a decoded modern pclntab",
     );
-  const reader = new GoBinaryReader(bytes, table.magic !== 0xfffffffb);
+  const reader = new BinaryReader(bytes, table.magic !== 0xfffffffb);
   const spanEnd = table.location.file_offset + table.location.bytes;
   const relative = table.era !== "go1.16-1.17";
   const slot = functab.file_offset + index * functab.entry_width;
@@ -683,7 +728,7 @@ const procedureRow = (
 /** Read the name offset at the producer's _func record and resolve its text. */
 const resolvedName = (
   bytes: Buffer,
-  reader: GoBinaryReader,
+  reader: BinaryReader,
   nameoffSlot: bigint,
   spanEnd: number,
   funcnametab: { readonly file_offset: number; readonly bytes: number },
@@ -699,7 +744,7 @@ const resolvedName = (
   return nameAt(bytes, funcnametab, nameoff);
 };
 
-const int32At = (reader: GoBinaryReader, offset: number): number => {
+const int32At = (reader: BinaryReader, offset: number): number => {
   const value = reader.range(offset, 4, "Go function name offset");
   return reader.little ? value.readInt32LE() : value.readInt32BE();
 };
@@ -713,9 +758,9 @@ const nameAt = (
   const end = bytes.indexOf(0, start);
   if (end < 0 || end - start > funcnametab.bytes - nameoff) return null;
   try {
-    return goUtf8(bytes.subarray(start, end), "Go function name");
+    return observedUtf8(bytes.subarray(start, end), "Go function name");
   } catch (cause: unknown) {
-    if (cause instanceof GoBinaryFormatFailure) return null;
+    if (cause instanceof BinaryFormatFailure) return null;
     throw cause;
   }
 };

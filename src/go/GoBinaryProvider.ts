@@ -1,6 +1,11 @@
-import { readStableArtifact } from "../artifacts/readStableArtifact.js";
+import { isSelectedRegularFileError } from "../filesystem/RegularFile.js";
 import {
-  ArtifactFileCleanupFailure,
+  readStableArtifact,
+  completedStableArtifact,
+} from "../artifacts/readStableArtifact.js";
+import {
+  artifactFilePrimaryFacts,
+  type ArtifactFilePrimaryFacts,
   assertArtifactReadActive,
   bindArtifactFileCleanup,
   artifactFileCancellationCause,
@@ -28,23 +33,24 @@ import {
   type GoProcedureTable,
   type InspectGoBinaryInput,
   type InspectGoProcedureTableInput,
-  type GoModuleMetadata,
 } from "../domain/go/goBinary.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
+import { fixedAllowanceOptions } from "../domain/fixedAllowanceRemediation.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { err, ok, type Result } from "../domain/result.js";
-import {
-  readGoBinaryImage,
-  GoBinaryFormatFailure,
-  GoBinaryResourceFailure,
-} from "./GoBinaryImage.js";
+import { readGoBinaryImage, type GoBinaryImage } from "./GoBinaryImage.js";
+import { requireSelectedNativeImage } from "../native/metadata/MachoSliceSelection.js";
 import {
   readGoPclntabImage,
   readGoPclntabProcedures,
   type GoProcedureRow,
   type GoPclntabTable,
 } from "./GoPclntab.js";
-import { parseGoModuleBytes, parseGoModuleText } from "./GoModuleText.js";
+import {
+  BinaryFormatFailure,
+  BinaryResourceFailure,
+} from "../native/metadata/BinaryContainer.js";
+import { fileSnapshotPartialObservationSchema } from "../domain/fileSnapshotObservation.js";
 
 /** Bundled format reader identity; embedded compiler versions are separate observed facts. */
 export const GO_BINARY_PROVIDER_IDENTITY = {
@@ -52,34 +58,54 @@ export const GO_BINARY_PROVIDER_IDENTITY = {
   name: "REA Go build-information reader",
   version: "1",
 } as const;
-const GO_OPERATION = "inspect_go_binary";
+const OPERATION = "inspect_go_binary";
 const GO_PROCEDURE_OPERATION = "inspect_go_procedure_table";
 const INPUT_BYTES = 256 * 1024 * 1024;
 const OUTPUT_BYTES = 8 * 1024 * 1024;
 
 const failureForPrimary = (
-  cause: unknown,
+  facts: ArtifactFilePrimaryFacts,
   path: string,
   operation: string,
 ): AnalysisError => {
-  if (cause instanceof AnalysisError) return cause;
-  if (cause instanceof ArtifactReaderFailure && cause.reason === "integrity")
+  const { cause, origin } = facts;
+  if (origin === "owned-or-classified" && cause instanceof AnalysisError)
+    return cause;
+  if (
+    origin === "owned-or-classified" &&
+    cause instanceof ArtifactReaderFailure &&
+    cause.reason === "integrity"
+  )
     return new AnalysisArtifactChangedError(operation, path, cause.message, {
       cause,
     });
-  if (cause instanceof ArtifactReaderFailure && cause.reason === "cancelled")
+  if (
+    origin === "owned-or-classified" &&
+    cause instanceof ArtifactReaderFailure &&
+    cause.reason === "cancelled"
+  )
     return new AnalysisCancelledError(operation, {
       cause: artifactFileCancellationCause(cause),
     });
-  if (cause instanceof GoBinaryResourceFailure)
+  if (cause instanceof BinaryResourceFailure)
     return new AnalysisResourceConstraintError(
       operation,
       cause.boundary === "search" ? "cpu" : "memory",
       `Selected artifact ${path}: ${cause.message}`,
       { boundary: cause.boundary, maximum_bytes: cause.maximum_bytes },
-      { cause },
+      {
+        cause,
+        ...fixedAllowanceOptions(
+          cause.boundary === "search"
+            ? "The Go build-info header-search allowance"
+            : cause.boundary === "build-info"
+              ? "The Go build-info string allowance"
+              : "The Go structural decoding allowance",
+          cause.boundary === "search" ? "work" : "parser",
+        ),
+      },
     );
-  if (cause instanceof GoBinaryFormatFailure)
+  if (cause instanceof BinaryFormatFailure)
     return cause.kind === "unsupported"
       ? new AnalysisUnsupportedTargetError(operation, path, cause.message, {
           cause,
@@ -91,7 +117,10 @@ const failureForPrimary = (
             message: `Selected artifact ${path}: ${cause.message}`,
           },
         ]);
-  if (cause instanceof ArtifactReaderFailure) {
+  if (
+    origin === "owned-or-classified" &&
+    cause instanceof ArtifactReaderFailure
+  ) {
     if (cause.reason === "limit")
       return new AnalysisResourceConstraintError(
         operation,
@@ -100,8 +129,7 @@ const failureForPrimary = (
         { maximum_input_bytes: INPUT_BYTES },
         {
           cause,
-          remediationAction:
-            "Select a suitable stable artifact within the reported input byte allowance. Do not truncate required bytes; retrying the unchanged oversized input will fail again.",
+          remediationAction: `Select a suitable stable artifact within the reported ${String(INPUT_BYTES)}-byte input byte allowance. This release has no runtime override. Do not truncate required bytes; retrying the unchanged oversized input will fail again.`,
         },
       );
     if (cause.reason === "path")
@@ -114,6 +142,14 @@ const failureForPrimary = (
       return new AnalysisAccessDeniedError(operation, path, cause.code, {
         cause,
       });
+    if (isSelectedRegularFileError(cause))
+      return new AnalysisInputError(operation, { cause }, [
+        {
+          path: ["path"],
+          reason: "invalid_value",
+          message: `Selected artifact could not be read (${String(cause.code)}): ${path}.`,
+        },
+      ]);
     if (
       ["ENOENT", "ENOTDIR", "ELOOP", "ENAMETOOLONG"].includes(
         String(cause.code),
@@ -140,19 +176,25 @@ const failureFor = (
   cause: unknown,
   path: string,
   operation: string,
-  signal?: AbortSignal,
 ): AnalysisError => {
-  const primary =
-    cause instanceof ArtifactFileCleanupFailure &&
-    cause.fileCleanupFailure.outcome.kind === "failed"
-      ? failureForPrimary(
-          cause.fileCleanupFailure.outcome.cause,
-          path,
-          operation,
-        )
-      : cause instanceof ArtifactFileCleanupFailure && signal?.aborted
-        ? new AnalysisCancelledError(operation, { cause: signal.reason })
-        : failureForPrimary(cause, path, operation);
+  const primary = failureForPrimary(
+    artifactFilePrimaryFacts(cause),
+    path,
+    operation,
+  );
+  const snapshot = completedStableArtifact(cause);
+  if (snapshot !== undefined) {
+    // This inspect boundary acquires exactly one StableArtifactSnapshot before
+    // metadata decoding. Completion describes that read, not a decoded report.
+    primary.retainPartialObservation(
+      fileSnapshotPartialObservationSchema.parse({
+        kind: "file-snapshot-hash",
+        path,
+        sha256: snapshot.sha256,
+        bytes: snapshot.bytes.length,
+      }),
+    );
+  }
   if (!(cause instanceof ArtifactReaderFailure) || cause.cleanup === undefined)
     return primary;
   const cleanup = new ProviderCleanupError(
@@ -172,12 +214,13 @@ const outputLimit = (path: string, operation: string) =>
     "transport",
     `Complete Go metadata for ${path} exceeds the inline output budget; no partial success is returned.`,
     { maximum_output_bytes: OUTPUT_BYTES },
+    fixedAllowanceOptions("The Go complete-report allowance", "report"),
   );
 
 /** Fixed reader boundaries plus unknowns left by the observed metadata. */
 const limitationsFor = (
-  info: { go_version: string | null; module_text: string | null } | null,
-  module: GoModuleMetadata | null,
+  info: GoBinaryImage["build_info"],
+  sectionNamesLimitation: string | undefined,
 ): string[] => [
   "Embedded build metadata is observed file content, not proof of compiler identity, dependency authenticity or runtime behavior.",
   "Only Go build information is inspected here; embedded procedure names are recovered by the separate inspect_go_procedure_table reader, while source mappings, type metadata and decompiled code are not recovered.",
@@ -192,17 +235,38 @@ const limitationsFor = (
         "No recognized Go build-info record was found in the inspected image; absent metadata does not establish that the binary is not Go.",
       ]
     : []),
-  ...(module !== null && module.main === null
+  ...(sectionNamesLimitation === undefined ? [] : [sectionNamesLimitation]),
+  ...(info !== null && info.module.main === null
     ? [
         "Dependency coverage is unknown because no main-module record was decoded from the embedded module information, as in GOPATH-mode builds. Decoded dependency records remain visible; an empty list does not establish the absence of dependencies.",
       ]
     : []),
-  ...(module?.complete === false
+  ...(info?.module.complete === false
     ? [
         "Some embedded module-text records could not be parsed completely; their original lines are preserved and additional metadata remains unknown.",
       ]
     : []),
 ];
+
+/** Locate image-relative build-info ranges in the selected file. */
+const inFile = (
+  info: GoBinaryImage["build_info"],
+  fileOffset: number,
+): GoBinaryImage["build_info"] =>
+  info === null || fileOffset === 0
+    ? info
+    : {
+        ...info,
+        header_offset: info.header_offset + fileOffset,
+        version_location: {
+          ...info.version_location,
+          offset: info.version_location.offset + fileOffset,
+        },
+        module_location: {
+          ...info.module_location,
+          offset: info.module_location.offset + fileOffset,
+        },
+      };
 
 /** Stable in-process metadata inspection without subprocesses, temporary files or Go installation. */
 export class GoBinaryProvider implements GoBinaryPort {
@@ -222,7 +286,7 @@ export class GoBinaryProvider implements GoBinaryPort {
         GO_BINARY_PROVIDER_IDENTITY.id,
         cause.cleanup.resources,
         { reason: cause.cleanup.reason },
-        { cause, operation: GO_OPERATION },
+        { cause, operation: OPERATION },
       );
       bindArtifactFileCleanup(cause, error);
       throw error;
@@ -231,7 +295,7 @@ export class GoBinaryProvider implements GoBinaryPort {
 
   /** Read complete compiler/module metadata while preserving original byte identity and source ranges. */
   async inspect(
-    input: InspectGoBinaryInput,
+    input: Omit<InspectGoBinaryInput, "detail">,
     options?: ExecutionOptions,
   ): Promise<Result<GoBinary, AnalysisError>> {
     try {
@@ -244,42 +308,37 @@ export class GoBinaryProvider implements GoBinaryPort {
           this.#resources,
         );
         assertArtifactReadActive(options?.signal);
-        const image = readGoBinaryImage(snapshot.bytes);
-        const info = image.build_info;
-        if (
-          info !== null &&
-          ((info.module_text !== null &&
-            Buffer.byteLength(info.module_text) > OUTPUT_BYTES) ||
-            Buffer.byteLength(info.module_bytes_base64) > OUTPUT_BYTES)
-        )
-          throw outputLimit(input.path, GO_OPERATION);
-        const module =
-          info === null
-            ? null
-            : info.module_text === null
-              ? parseGoModuleBytes(
-                  Buffer.from(info.module_bytes_base64, "base64").subarray(
-                    16,
-                    -16,
-                  ),
-                )
-              : parseGoModuleText(info.module_text);
+        const selected = requireSelectedNativeImage(
+          OPERATION,
+          input.path,
+          snapshot.bytes,
+          input.architecture,
+        );
+        const image = readGoBinaryImage(selected.bytes);
+        const {
+          section_names_limitation: sectionNamesLimitation,
+          ...publicImage
+        } = image;
+        const info = inFile(image.build_info, selected.fileOffset);
         const report = {
-          ...image,
+          ...publicImage,
           artifact: {
             path: input.path,
             sha256: snapshot.sha256,
             bytes: snapshot.bytes.length,
           },
-          build_info: info === null ? null : { ...info, module },
-          limitations: limitationsFor(info, module),
+          ...(selected.selection === null
+            ? {}
+            : { selected_slice: selected.selection }),
+          build_info: info,
+          limitations: limitationsFor(info, sectionNamesLimitation),
         };
         if (Buffer.byteLength(JSON.stringify(report), "utf8") > OUTPUT_BYTES)
-          throw outputLimit(input.path, GO_OPERATION);
+          throw outputLimit(input.path, OPERATION);
         const parsed = goBinarySchema.safeParse(report);
         if (!parsed.success)
           throw new AnalysisOutputError(
-            GO_OPERATION,
+            OPERATION,
             "Go reader produced invalid source ranges or report values.",
             { cause: parsed.error },
           );
@@ -287,7 +346,7 @@ export class GoBinaryProvider implements GoBinaryPort {
         return ok(parsed.data);
       });
     } catch (cause: unknown) {
-      return err(failureFor(cause, input.path, GO_OPERATION, options?.signal));
+      return err(failureFor(cause, input.path, OPERATION));
     }
   }
 
@@ -306,12 +365,19 @@ export class GoBinaryProvider implements GoBinaryPort {
           this.#resources,
         );
         assertArtifactReadActive(options?.signal);
-        const { container, pclntab } = readGoPclntabImage(snapshot.bytes);
+        const selected = requireSelectedNativeImage(
+          GO_PROCEDURE_OPERATION,
+          input.path,
+          snapshot.bytes,
+          input.architecture,
+        );
+        const { container, pclntab } = readGoPclntabImage(selected.bytes);
+        const artifactBytes = snapshot.bytes.length;
         const rows =
           pclntab === null
             ? []
             : readGoPclntabProcedures(
-                snapshot.bytes,
+                selected.bytes,
                 pclntab,
                 input.offset,
                 input.limit,
@@ -322,7 +388,7 @@ export class GoBinaryProvider implements GoBinaryPort {
           artifact: {
             path: input.path,
             sha256: snapshot.sha256,
-            bytes: snapshot.bytes.length,
+            bytes: artifactBytes,
           },
           format: container.format,
           architecture: container.architecture,
@@ -352,9 +418,7 @@ export class GoBinaryProvider implements GoBinaryPort {
         return ok(parsed.data);
       });
     } catch (cause: unknown) {
-      return err(
-        failureFor(cause, input.path, GO_PROCEDURE_OPERATION, options?.signal),
-      );
+      return err(failureFor(cause, input.path, GO_PROCEDURE_OPERATION));
     }
   }
 }

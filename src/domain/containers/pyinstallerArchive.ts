@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CANONICAL_BASE64_PATTERN } from "../stringPatterns.js";
+import { canonicalBase64Schema } from "../stringPatterns.js";
 import {
   ContainerFormatError,
   containerLimitError,
@@ -33,7 +33,7 @@ export const MAX_CARCHIVE_NAME_BYTES = 4096;
 export const MAX_PYZ_HEADER_BYTES = 12;
 
 const nonnegative = z.number().int().nonnegative();
-const base64 = z.string().regex(CANONICAL_BASE64_PATTERN);
+const base64 = canonicalBase64Schema;
 
 export const carchiveCookieSchema = z.strictObject({
   cookie_offset: nonnegative,

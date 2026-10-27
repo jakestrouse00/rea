@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CANONICAL_BASE64_PATTERN } from "../stringPatterns.js";
+import { canonicalBase64Schema } from "../stringPatterns.js";
 import { ContainerFormatError } from "./containerFormatError.js";
 
 /**
@@ -13,7 +13,7 @@ export const MAX_JAR_MANIFEST_BYTES = 16 * 1024 * 1024;
 const MAX_MANIFEST_LINE_BYTES = 8192;
 const MAX_MANIFEST_SECTIONS = 65536;
 
-const sha1DigestBase64Schema = z.string().regex(CANONICAL_BASE64_PATTERN);
+const sha1DigestBase64Schema = canonicalBase64Schema;
 
 export const jarManifestSectionSchema = z.strictObject({
   /** The section "Name" attribute value, or null for the main section. */

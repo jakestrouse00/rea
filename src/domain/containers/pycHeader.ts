@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CANONICAL_BASE64_PATTERN } from "../stringPatterns.js";
+import { canonicalBase64Schema } from "../stringPatterns.js";
 import { ContainerFormatError } from "./containerFormatError.js";
 
 /**
@@ -29,12 +29,12 @@ export const pycHeaderSchema = z.strictObject({
   python_version: z
     .enum(["3.7", "3.8", "3.9", "3.10", "3.11", "3.12", "3.13"])
     .nullable(),
-  magic_bytes_base64: z.string().regex(CANONICAL_BASE64_PATTERN),
+  magic_bytes_base64: canonicalBase64Schema,
   hash_based: z.boolean(),
   check_source: z.boolean().nullable(),
   timestamp: z.number().int().nonnegative().nullable(),
   source_size: z.number().int().nonnegative().nullable(),
-  source_hash_base64: z.string().regex(CANONICAL_BASE64_PATTERN).nullable(),
+  source_hash_base64: canonicalBase64Schema.nullable(),
   limitations: z.array(z.string()),
 });
 export type PycHeader = z.infer<typeof pycHeaderSchema>;

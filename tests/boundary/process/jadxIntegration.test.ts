@@ -10,6 +10,7 @@ import { androidResultSchemas } from "../../../src/domain/android/androidAnalysi
 import { projectAnalysisError } from "../../../src/domain/analysisErrorProjection.js";
 import { snapshotAndroidEngine } from "../../../src/android/AndroidTargetSnapshot.js";
 import { hashStableFile } from "../../../src/filesystem/StableFileHash.js";
+import * as stableHash from "../../../src/filesystem/StableFileHash.js";
 import { OwnedFileHandle } from "../../../src/filesystem/OwnedFileHandle.js";
 import { RegularFileCleanupFailure } from "../../../src/filesystem/OwnedRegularFile.js";
 import { PrivateRuntimeRoot } from "../../../src/process/PrivateRuntimeRoot.js";
@@ -23,24 +24,56 @@ import { createTestTempDirectory } from "../../fixtures/temporaryDirectory.js";
 
 const it = test.skipIf(process.platform === "win32");
 
-it("retains a failed input hash descriptor until provider shutdown retries it", async () => {
-  const { service, apk, provider, launches } = await setup();
-  const closeCause = new Error("fixture source hash close unavailable");
-  const owners: OwnedFileHandle[] = [];
+// Select the provider's source hash after resolver and engine admission complete.
+const failInputHashCloses = (path: string, failures: number) => {
+  const originalHash = stableHash.hashStableFile;
   const originalClose = OwnedFileHandle.prototype.close;
-  const close = vi
-    .spyOn(OwnedFileHandle.prototype, "close")
-    .mockImplementationOnce(async function (this: OwnedFileHandle) {
-      owners.push(this);
-      throw closeCause;
-    })
-    .mockImplementationOnce(async function (this: OwnedFileHandle) {
-      owners.push(this);
-      throw closeCause;
+  let hashingInput = false;
+  const retained = new Set<OwnedFileHandle>();
+  const owners: OwnedFileHandle[] = [];
+  const close = vi.fn(async (owner: OwnedFileHandle) => {
+    owners.push(owner);
+    if (owners.length <= failures)
+      throw new Error("fixture input hash close unavailable");
+    return originalClose.call(owner);
+  });
+  const hash = vi
+    .spyOn(stableHash, "hashStableFile")
+    .mockImplementation(async (selected, options) => {
+      hashingInput = selected === path;
+      try {
+        return await originalHash(selected, options);
+      } finally {
+        hashingInput = false;
+      }
     });
+  const closing = vi
+    .spyOn(OwnedFileHandle.prototype, "close")
+    .mockImplementation(async function (this: OwnedFileHandle) {
+      if (!hashingInput && !retained.has(this)) return originalClose.call(this);
+      retained.add(this);
+      return close(this);
+    });
+  return {
+    close,
+    owners,
+    restore: () => {
+      closing.mockRestore();
+      hash.mockRestore();
+    },
+  };
+};
+
+it("retains a failed input hash descriptor until provider shutdown retries it", async () => {
+  const { apk, provider, launches } = await setup();
+  const target = await parseBinaryTarget(apk);
+  if (!target.ok) throw target.error;
+  const fault = failInputHashCloses(target.value.path, 2);
+  const { close, owners } = fault;
   try {
-    const result = await service.execute("inspect_android_package", {
-      path: apk,
+    const result = await provider.execute(target.value, {
+      operation: "inspect_android_package",
+      input: { path: apk },
     });
     expect(result).toMatchObject({
       ok: false,
@@ -57,25 +90,22 @@ it("retains a failed input hash descriptor until provider shutdown retries it", 
     expect(owners[0]!.handle.fd).toBe(-1);
     expect(launches).toHaveLength(0);
   } finally {
-    close.mockRestore();
+    fault.restore();
     await provider.close();
     await verifyCleanup(launches);
   }
 });
 
 it("clears hash cleanup uncertainty when the provider immediately retries the same handle", async () => {
-  const { service, apk, provider, launches } = await setup();
-  const closeCause = new Error("fixture source hash close unavailable");
-  const originalClose = OwnedFileHandle.prototype.close;
-  const close = vi
-    .spyOn(OwnedFileHandle.prototype, "close")
-    .mockRejectedValueOnce(closeCause)
-    .mockImplementation(async function (this: OwnedFileHandle) {
-      return originalClose.call(this);
-    });
+  const { apk, provider, launches } = await setup();
+  const target = await parseBinaryTarget(apk);
+  if (!target.ok) throw target.error;
+  const fault = failInputHashCloses(target.value.path, 1);
+  const { close } = fault;
   try {
-    const result = await service.execute("inspect_android_package", {
-      path: apk,
+    const result = await provider.execute(target.value, {
+      operation: "inspect_android_package",
+      input: { path: apk },
     });
     expect(result).toMatchObject({ ok: false });
     if (result.ok) throw new Error("Expected the hash close failure");
@@ -84,7 +114,7 @@ it("clears hash cleanup uncertainty when the provider immediately retries the sa
     expect(result.error.cause).toBeInstanceOf(AggregateError);
     expect(launches).toHaveLength(0);
   } finally {
-    close.mockRestore();
+    fault.restore();
     await provider.close();
     await verifyCleanup(launches);
   }
@@ -100,22 +130,16 @@ it("drains hash descriptors even when session shutdown fails and retains its wor
   const workspace = launches[0]?.cwd;
   if (workspace === undefined)
     throw new Error("Expected an acquired workspace");
-  const originalClose = OwnedFileHandle.prototype.close;
-  let fileCloseCalls = 0;
-  const fileClose = vi
-    .spyOn(OwnedFileHandle.prototype, "close")
-    .mockImplementation(async function (this: OwnedFileHandle) {
-      fileCloseCalls += 1;
-      if (fileCloseCalls === 1)
-        throw new Error("fixture input hash close failure");
-      return originalClose.call(this);
-    });
+  const target = await parseBinaryTarget(apk);
+  if (!target.ok) throw target.error;
+  const fault = failInputHashCloses(target.value.path, 1);
   const sessionClose = vi
     .spyOn(JadxSession.prototype, "close")
     .mockRejectedValueOnce(new Error("fixture session cleanup failure"));
   try {
-    const outcome = await service.execute("inspect_android_package", {
-      path: apk,
+    const outcome = await provider.execute(target.value, {
+      operation: "inspect_android_package",
+      input: { path: apk },
     });
     expect(outcome).toMatchObject({
       ok: false,
@@ -125,17 +149,17 @@ it("drains hash descriptors even when session shutdown fails and retains its wor
       },
     });
     if (outcome.ok) throw new Error("Expected retained session cleanup");
-    expect(fileCloseCalls).toBe(2);
+    expect(fault.close).toHaveBeenCalledTimes(2);
     await expect(access(workspace)).resolves.toBeUndefined();
 
     sessionClose.mockRestore();
-    fileClose.mockRestore();
+    fault.restore();
     await provider.close();
     expect(outcome.error.cleanupIncomplete).toBe(false);
     await verifyCleanup(launches);
   } finally {
     sessionClose.mockRestore();
-    fileClose.mockRestore();
+    fault.restore();
     await provider.close();
     await verifyCleanup(launches);
   }
@@ -917,9 +941,21 @@ it("retains typed memory failure through failed cleanup and restores it after re
     "heap-failure",
     () => fails,
   );
+  const originalRootClose = PrivateRuntimeRoot.prototype.close;
+  const workspaceCloseCause = new Error("fixture workspace close failure");
+  let workspaceCloseFails = true;
+  let workspaceCloseAttempts = 0;
   const rootClose = vi
     .spyOn(PrivateRuntimeRoot.prototype, "close")
-    .mockRejectedValueOnce(new Error("fixture workspace close failure"));
+    .mockImplementation(function (this: PrivateRuntimeRoot) {
+      // Independent native helpers own their own roots. Keep the acquired
+      // Android workspace's failure active until the test explicitly clears it.
+      if (this.path === launches[0]?.cwd) {
+        workspaceCloseAttempts += 1;
+        if (workspaceCloseFails) return Promise.reject(workspaceCloseCause);
+      }
+      return originalRootClose.call(this);
+    });
   try {
     const result = await service.execute("inspect_android_package", {
       path: apk,
@@ -935,11 +971,14 @@ it("retains typed memory failure through failed cleanup and restores it after re
     });
     const workspace = launches[0]?.cwd;
     expect(failure.cleanupResources).toContain(workspace);
+    expect(workspaceCloseAttempts).toBe(0);
     fails = false;
     await expect(provider.close()).rejects.toMatchObject({
       cleanupIncomplete: true,
     });
     expect(failure.cleanupResources).toEqual([workspace]);
+    expect(workspaceCloseAttempts).toBeGreaterThan(0);
+    workspaceCloseFails = false;
     await provider.close();
     expect(failure.cleanupIncomplete).toBe(false);
     expect(failure.cleanupResources).toEqual([]);
@@ -955,6 +994,7 @@ it("retains typed memory failure through failed cleanup and restores it after re
     await verifyCleanup(launches);
   } finally {
     rootClose.mockRestore();
+    workspaceCloseFails = false;
     fails = false;
     await provider.close();
   }

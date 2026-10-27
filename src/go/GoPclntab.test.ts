@@ -1,16 +1,20 @@
 import { expect, it } from "vitest";
 import {
-  GoBinaryFormatFailure,
-  GoBinaryResourceFailure,
-} from "./GoBinaryContainer.js";
+  BinaryFormatFailure,
+  BinaryResourceFailure,
+} from "../native/metadata/BinaryContainer.js";
+import { readBinaryContainer } from "../native/metadata/readBinaryContainer.js";
 import {
   readGoPclntabProcedures,
   readGoPclntab,
   type GoPclntabTable,
 } from "./GoPclntab.js";
-import { createPclntabFixture } from "./GoPclntab.fixture.js";
-
-import { TEXT_BASE, NFUNC, TABLE_OFFSET } from "./GoPclntab.fixture.js";
+import {
+  createPclntabFixture,
+  TEXT_BASE,
+  NFUNC,
+  TABLE_OFFSET,
+} from "./GoPclntab.fixture.js";
 
 it.each(["go120", "go118", "go116"] as const)(
   "decodes %s-era rows with ordered entries from a declared gopclntab",
@@ -174,13 +178,13 @@ it("throws a resource failure for an oversized function table", () => {
     withModuledata: false,
   });
   bytes.writeBigUInt64LE(3000000n, TABLE_OFFSET + 8);
-  expect(() => readGoPclntab(bytes)).toThrow(GoBinaryResourceFailure);
+  expect(() => readGoPclntab(bytes)).toThrow(BinaryResourceFailure);
   expect(() => readGoPclntab(bytes)).toThrow(/16 MiB/);
 });
 
 it("treats a malformed declared gopclntab as a format failure", () => {
   const bytes = createPclntabFixture({ unsorted: true });
-  expect(() => readGoPclntab(bytes)).toThrow(GoBinaryFormatFailure);
+  expect(() => readGoPclntab(bytes)).toThrow(BinaryFormatFailure);
   expect(() => readGoPclntab(bytes)).toThrow(/sorted/);
 });
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { digestSchema } from "../digests.js";
 import { localPathStringSchema } from "../localPath.js";
-import { CANONICAL_BASE64_PATTERN } from "../stringPatterns.js";
+import { canonicalBase64Schema } from "../stringPatterns.js";
 import { u32Schema, u64Schema } from "./u64.js";
 
 /** Absolute filesystem path and stable identity of one selected minidump. */
@@ -31,7 +31,7 @@ export const minidumpStreamSchema = z.strictObject({
 export const minidumpModuleNameSchema = z.strictObject({
   /** Losslessly decoded UTF-16LE text; null when the bytes are not valid UTF-16LE. */
   name: z.string().nullable(),
-  raw_bytes_base64: z.string().regex(CANONICAL_BASE64_PATTERN),
+  raw_bytes_base64: canonicalBase64Schema,
   name_rva: u32Schema,
 });
 
