@@ -153,6 +153,10 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   list_ios_apps: "states it performs no install, removal, or data access",
   inspect_ios_provisioning: "states it has no install or removal path at all",
   inspect_apk_signature: "states that no Android code executes",
+  analyze_apk_structure:
+    "runs a caller-supplied androguard bridge over the file, never the application",
+  run_mobile_forensics_report:
+    "runs a caller-supplied forensics launcher over a caller-held extraction; no target code executes",
   start_lab_vm:
     "launches a caller-selected limactl that boots an isolated guest; no target code runs on this host",
   register_fuzzing_campaign:
@@ -247,12 +251,14 @@ describe("tool effects", () => {
       "install_adb_package",
       "instrument_with_frida",
       "load_frida_script",
+      "load_frida_script_preset",
       "observe_native_calls",
       "observe_serial_port",
       "push_adb_file",
       "resume_frida_session",
       "rizin_debug_command",
       "run_lab_vm_command",
+      "run_objection_recipe",
       "start_adb_activity",
       "start_adb_app",
       "start_fuzzing_campaign",

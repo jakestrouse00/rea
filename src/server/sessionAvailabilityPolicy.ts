@@ -33,6 +33,7 @@ export interface SessionAvailabilityDefaults {
     | "emuEmulationEnabled"
     | "angrSymbolicEnabled"
     | "fuzzingCampaignEnabled"
+    | "bleGattEnabled"
   >;
 }
 
@@ -82,6 +83,7 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.angrSymbolicEnabled ?? false,
       fuzzingCampaignEnabled:
         defaults.optionalFeatures?.fuzzingCampaignEnabled ?? false,
+      bleGattEnabled: defaults.optionalFeatures?.bleGattEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

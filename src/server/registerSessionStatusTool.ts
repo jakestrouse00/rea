@@ -83,6 +83,15 @@ export interface SessionAvailabilityProbes {
   readonly labVmAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly objectionAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly androguardAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly ileAppAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
 }
 
 /** Inputs required to register the binary session status tool. */
@@ -118,6 +127,9 @@ const probeSessionAvailability = (
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
   readonly labVm: ProviderAvailability | undefined;
+  readonly objection: ProviderAvailability | undefined;
+  readonly androguard: ProviderAvailability | undefined;
+  readonly ileApp: ProviderAvailability | undefined;
 }> =>
   Promise.all([
     probes.androidAnalysisAvailability(signal),
@@ -140,6 +152,9 @@ const probeSessionAvailability = (
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
     probes.labVmAvailability?.(signal) ?? undefined,
+    probes.objectionAvailability?.(signal) ?? undefined,
+    probes.androguardAvailability?.(signal) ?? undefined,
+    probes.ileAppAvailability?.(signal) ?? undefined,
   ] as const).then(
     ([
       android,
@@ -162,6 +177,9 @@ const probeSessionAvailability = (
       jeb,
       evmLimiter,
       labVm,
+      objection,
+      androguard,
+      ileApp,
     ]) => ({
       android,
       adb,
@@ -183,6 +201,9 @@ const probeSessionAvailability = (
       jeb,
       evmLimiter,
       labVm,
+      objection,
+      androguard,
+      ileApp,
     }),
   );
 
@@ -281,6 +302,15 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.labVm === undefined
             ? {}
             : { labVmAvailability: availabilityResults.labVm }),
+          ...(availabilityResults.objection === undefined
+            ? {}
+            : { objectionAvailability: availabilityResults.objection }),
+          ...(availabilityResults.androguard === undefined
+            ? {}
+            : { androguardAvailability: availabilityResults.androguard }),
+          ...(availabilityResults.ileApp === undefined
+            ? {}
+            : { ileAppAvailability: availabilityResults.ileApp }),
         },
         clientFeatures,
       );

@@ -306,6 +306,10 @@ import {
   createAngrAnalysisProvider,
 } from "../composition/angr.js";
 import { registerAngrTools } from "./registerAngrTools.js";
+import type { MobileToolchainPort } from "../application/mobile/MobileToolchainPort.js";
+import { MobileToolchainService } from "../application/mobile/MobileToolchainService.js";
+import { createMobileToolchainProvider } from "../composition/mobile.js";
+import { registerMobileToolchainTools } from "./registerMobileToolchainTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -379,6 +383,8 @@ export interface CreateServerOptions {
   readonly emu?: EmuAnalysisPort;
   /** Bounded angr symbolic lane; omitted means the lane is selected from the environment. */
   readonly angr?: AngrAnalysisPort;
+  /** Caller-supplied mobile toolchain; omitted means the lanes are selected from the environment. */
+  readonly mobileToolchain?: MobileToolchainPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   /** LIEF deep-parse lane; omitted means the lane is selected from the environment. */
@@ -476,6 +482,9 @@ const installSessionToolAvailability = (
         options.javascriptRecovery,
         verifiedHost.javascriptRecovery,
       ),
+      // CoreBluetooth peripheral identifiers, delegate behavior, and the
+      // permission prompt this lane drives are macOS-only.
+      bleGatt: platform !== "darwin",
     },
     optionalFeatures: {
       packetCaptureEnabled:
@@ -531,6 +540,10 @@ const installSessionToolAvailability = (
         environment,
         options.fuzzing !== undefined,
       ),
+      bleGattEnabled:
+        platform === "darwin" &&
+        (isAbsolute(environment.REA_BLE_GATT_PATH ?? "") ||
+          isAbsolute(environment.REA_BLEAK_PYTHON ?? "")),
     },
   });
   const policy = (): AvailabilityPolicy => {
@@ -763,6 +776,8 @@ export const createServer = (
   const angr =
     options.angr ??
     createAngrAnalysisProvider(environment, analysisSettings.read);
+  const mobileToolchain =
+    options.mobileToolchain ?? createMobileToolchainProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -815,6 +830,7 @@ export const createServer = (
       }),
       emu.close(),
       angr.close(),
+      mobileToolchain.close(),
       discovery.close(),
       windowsArtifacts.close(),
       lief.close(),
@@ -1232,6 +1248,13 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerMobileToolchainTools(
+    server,
+    new MobileToolchainService(mobileToolchain),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {
@@ -1291,6 +1314,12 @@ export const createServer = (
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),
       labVmAvailability: (signal) => labVm.inspectAvailability(signal),
+      objectionAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("objection", signal),
+      androguardAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("androguard", signal),
+      ileAppAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("ileapp", signal),
       startedAt,
     });
   }

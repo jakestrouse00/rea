@@ -15,6 +15,7 @@ import {
 import type { AnalysisError } from "../../domain/analysisErrorBase.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import {
+  gattLineWithoutPayload,
   gattPayloadAccounting,
   parseGattLine,
   parseGattServiceTree,
@@ -72,6 +73,12 @@ export interface GattNotificationRow {
 export interface GattCommandOutcome {
   readonly payload: GattPayloadAccounting | null;
   readonly notifications: readonly GattNotificationRow[];
+  /** Service tree a `services` terminal event published, else null. */
+  readonly services: readonly ParsedGattService[] | null;
+  /** Why a window ended, as the helper reported it; null when it did not say. */
+  readonly stop_reason: string | null;
+  /** Notification rows produced after the retained buffer was full. */
+  readonly notifications_omitted: number;
   readonly unparsed_lines: readonly string[];
 }
 
@@ -140,6 +147,7 @@ export class GattSessionManager {
     },
     signal: AbortSignal | undefined,
     operation = "connect_ble_gatt",
+    leadingArguments: readonly string[] = [],
   ): Promise<Result<GattSessionOpened, GattOutcome>> {
     if (signal?.aborted === true)
       return err(
@@ -148,6 +156,7 @@ export class GattSessionManager {
     const child = this.#spawnChild({
       executable: helperPath,
       arguments: [
+        ...leadingArguments,
         "--peripheral-id",
         input.peripheral_id,
         "--timeout-ms",
@@ -287,6 +296,7 @@ export class GattSessionManager {
       readonly signal: AbortSignal | undefined;
       readonly includePayloadHex: boolean;
       readonly collectNotifications: boolean;
+      readonly maxNotifications?: number;
     },
   ): Promise<Result<GattCommandOutcome, GattOutcome>> {
     const session = this.#requireSession(sessionId, operation);
@@ -310,6 +320,7 @@ export class GattSessionManager {
       readonly signal: AbortSignal | undefined;
       readonly includePayloadHex: boolean;
       readonly collectNotifications: boolean;
+      readonly maxNotifications?: number;
     },
   ): Promise<Result<GattCommandOutcome, GattOutcome>> => {
     if (session.exited !== null)
@@ -323,6 +334,9 @@ export class GattSessionManager {
       );
     const id = randomUUID();
     const notifications: GattNotificationRow[] = [];
+    const maxNotifications =
+      limits.maxNotifications ?? Number.POSITIVE_INFINITY;
+    let notificationsOmitted = 0;
     const unparsedLines: string[] = [];
     return await new Promise((resolve) => {
       let terminalDeadline: NodeJS.Timeout | null = setTimeout(() => {
@@ -395,6 +409,10 @@ export class GattSessionManager {
         }
         if (line.kind === "notification") {
           if (!limits.collectNotifications) return;
+          if (notifications.length >= maxNotifications) {
+            notificationsOmitted += 1;
+            return;
+          }
           const accounting = gattPayloadAccounting(
             line.payload_hex,
             limits.includePayloadHex,
@@ -406,7 +424,7 @@ export class GattSessionManager {
           notifications.push({
             ts: line.ts,
             ...accounting,
-            raw: text,
+            raw: gattLineWithoutPayload(text),
           });
           return;
         }
@@ -424,7 +442,29 @@ export class GattSessionManager {
             line.payload_hex,
             limits.includePayloadHex,
           );
-          finish(ok({ payload, notifications, unparsed_lines: unparsedLines }));
+          const services =
+            line.kind === "services"
+              ? parseGattServiceTree(line)
+              : ok<readonly ParsedGattService[]>([]);
+          if (!services.ok) {
+            finish(
+              err({
+                code: "protocol_violation" as const,
+                reason: services.error,
+              }),
+            );
+            return;
+          }
+          finish(
+            ok({
+              payload,
+              notifications,
+              services: line.kind === "services" ? services.value : null,
+              stop_reason: line.stopReason,
+              notifications_omitted: notificationsOmitted,
+              unparsed_lines: unparsedLines,
+            }),
+          );
         }
       });
       session.child.stdin?.write(JSON.stringify({ id, ...request }) + "\n");
@@ -587,12 +627,14 @@ const isTerminalEvent = (
     | "written"
     | "notification"
     | "window_end"
-    | "disconnected",
+    | "disconnected"
+    | "services",
 ): boolean =>
   kind === "value" ||
   kind === "written" ||
   kind === "window_end" ||
-  kind === "disconnected";
+  kind === "disconnected" ||
+  kind === "services";
 
 const sleep = (ms: number): Promise<null> =>
   new Promise((resolve) => setTimeout(() => resolve(null), ms));

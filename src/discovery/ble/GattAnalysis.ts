@@ -22,7 +22,8 @@ export type GattEventKind =
   | "written"
   | "notification"
   | "window_end"
-  | "disconnected";
+  | "disconnected"
+  | "services";
 
 /** One parsed helper line; unrecognized lines stay verbatim for the row. */
 export interface ParsedGattLine {
@@ -33,6 +34,8 @@ export interface ParsedGattLine {
   readonly ts: string | null;
   readonly message: string | null;
   readonly code: string | null;
+  /** Present on window_end rows that stopped for a reason other than the deadline. */
+  readonly stopReason: string | null;
 }
 
 const HEX_LINE = /^[0-9a-fA-F]*$/u;
@@ -57,6 +60,7 @@ export const parseGattLine = (line: string): ParsedGattLine => {
       ts: null,
       message: null,
       code: null,
+      stopReason: null,
     };
   }
   if (record === null || typeof record !== "object") {
@@ -68,6 +72,7 @@ export const parseGattLine = (line: string): ParsedGattLine => {
       ts: null,
       message: null,
       code: null,
+      stopReason: null,
     };
   }
   const fields = record as Record<string, unknown>;
@@ -84,6 +89,7 @@ export const parseGattLine = (line: string): ParsedGattLine => {
       ts: null,
       message: null,
       code: null,
+      stopReason: null,
     };
   }
   const rawPayload = fields.payload_hex;
@@ -99,6 +105,7 @@ export const parseGattLine = (line: string): ParsedGattLine => {
     ts: asStringOrNull(fields.ts),
     message: asStringOrNull(fields.message),
     code: asStringOrNull(fields.code),
+    stopReason: asStringOrNull(fields.stop_reason),
   };
 };
 
@@ -111,6 +118,7 @@ const GATT_EVENT_KINDS: ReadonlySet<string> = new Set<string>([
   "notification",
   "window_end",
   "disconnected",
+  "services",
 ]);
 
 /** Parse a bounded stdout line stream into events and unparsed rows. */
@@ -146,13 +154,37 @@ export const gattPayloadAccounting = (
   };
 };
 
-/** Parse one characteristic-services tree row from a connected event. */
-export const parseGattServiceTree = (
-  connectedLine: ParsedGattLine,
-): Result<ParsedGattService[], string> => {
+/**
+ * The helper's own line minus its payload bytes. Notification rows keep the
+ * helper's framing so a reader can see how the peer published an event, but a
+ * digest-only caller must not receive the bytes back through `raw`; payload
+ * hex is retained only in the accounting field the caller opted into.
+ */
+export const gattLineWithoutPayload = (raw: string): string => {
   let record: unknown = null;
   try {
-    record = JSON.parse(connectedLine.raw) as unknown;
+    record = JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
+  }
+  if (record === null || typeof record !== "object" || Array.isArray(record))
+    return raw;
+  const fields = { ...(record as Record<string, unknown>) };
+  if (!("payload_hex" in fields)) return raw;
+  delete fields.payload_hex;
+  return JSON.stringify(fields);
+};
+
+/**
+ * Parse the services tree a helper published on its connected or services
+ * event. Both events carry the same `services` array.
+ */
+export const parseGattServiceTree = (line: {
+  readonly raw: string;
+}): Result<ParsedGattService[], string> => {
+  let record: unknown = null;
+  try {
+    record = JSON.parse(line.raw) as unknown;
   } catch {
     return err("The connected event is not readable JSON");
   }

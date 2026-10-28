@@ -146,6 +146,9 @@ const SOURCE_PATHS = {
   crashTriageProvider: "dist/domain/crashTriage/crashReport.js",
   fuzzingContracts: "dist/contracts/fuzzing/fuzzingToolContracts.js",
   fuzzingProvider: "dist/domain/fuzzing/fuzzingEngine.js",
+  mobileToolchainContracts:
+    "dist/contracts/mobile/mobileToolchainToolContracts.js",
+  mobileToolchainProvider: "dist/mobile/MobileToolchainProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

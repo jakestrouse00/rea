@@ -8,6 +8,11 @@ MCP exposes `list_frida_devices`, `list_frida_processes`, `start_frida_session`,
 
 `instrument-with-frida --json` returns the Evidence record directly, matching MCP. Consumers of the earlier `{evidence, cleanup_error}` CLI wrapper should read the record at the JSON root and the session cleanup observation at `normalized_result.cleanup_error`. If final provider cleanup fails or cancellation arrives during it, the typed error retains completed Evidence in `details.partial_observation`. Discovery commands retain their device or process report in the same field.
 
+For routine first steps — certificate pinning, jailbreak/root detection, Keystore
+structure — use a named preset with `load_frida_script_preset` instead of
+authoring the agent again. Presets are REA-authored minimal reference agents;
+see [Frida script presets](./frida-script-presets.md).
+
 ## Remote exports and mutation authority
 
 A Frida session's start mode is the only grant REA holds over its target.

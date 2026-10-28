@@ -250,6 +250,12 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.fuzzingContracts.FUZZING_TOOL_CONTRACTS,
     },
     {
+      id: "mobile-toolchain",
+      surface: "mobile-toolchain-provider",
+      contracts:
+        sources.mobileToolchainContracts.MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
+    },
+    {
       id: "session",
       surface: "session",
       contracts: sources.sessionContracts.SESSION_TOOL_CONTRACTS,
@@ -643,6 +649,12 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.bindiffProvider.BINDIFF_PROVIDER_IDENTITY,
       contracts: sources.bindiffContracts.BINDIFF_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.mobileToolchainProvider.MOBILE_TOOLCHAIN_PROVIDER_IDENTITY,
+      contracts:
+        sources.mobileToolchainContracts.MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

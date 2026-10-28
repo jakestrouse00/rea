@@ -323,6 +323,16 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     executesForeignCode: true,
     idempotent: false,
   }),
+  // Loading a shipped preset is the same target-mutating load, but the
+  // source is REA's own reference agent rather than caller-authored code.
+  load_frida_script_preset: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   resume_frida_session: effects({
     mutatesTarget: true,
     mutatesSession: true,
@@ -695,6 +705,31 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  // Mobile toolchain: each tool runs a caller-selected launcher as a
+  // subprocess. objection attaches to the application's runtime, androguard
+  // parses an APK statically, and the forensics launcher reads an extraction.
+  run_objection_recipe: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  analyze_apk_structure: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_apk_vulnerabilities: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  run_mobile_forensics_report: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   // Discovery lane: reads host-provided tables and devices; the mDNS browse,
   // Bluetooth inquiry and the gated subnet sweep emit packets this host
   // originates.
@@ -747,6 +782,18 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   // Subscribing writes the peer's CCCD descriptor on this session's own
   // connection; the window itself is receive-only.
   observe_gatt_notifications: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  // Enumerating re-reads the live tree over the session's own connection.
+  enumerate_gatt_services: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+  }),
+  // Subscribing writes the peer's CCCD descriptor; the window is receive-only
+  // and the retained rows are bounded by the caller's max_notifications.
+  subscribe_characteristic: effects({
     mutatesSession: true,
     accessesNetwork: true,
     idempotent: false,

@@ -65,6 +65,7 @@ import { REPLAY_TOOL_CONTRACTS } from "./replay/ReplayToolContracts.js";
 import { MITM_TOOL_CONTRACTS } from "./mitm/MitmToolContracts.js";
 import { EMU_TOOL_CONTRACTS } from "./emu/emuToolContracts.js";
 import { ANGR_TOOL_CONTRACTS } from "./angr/angrToolContracts.js";
+import { MOBILE_TOOLCHAIN_TOOL_CONTRACTS } from "./mobile/mobileToolchainToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -108,6 +109,7 @@ export const TOOL_CONTRACTS = [
   ...MITM_TOOL_CONTRACTS,
   ...EMU_TOOL_CONTRACTS,
   ...ANGR_TOOL_CONTRACTS,
+  ...MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

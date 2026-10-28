@@ -68,6 +68,8 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Inspect and rewrite one application's traffic | [mitmproxy interception](mitm-interception.md) |
 | Emulate one function body and assemble patch bytes | [Isolated emulation](emulation.md) |
 | Ask whether code can reach an address under assumptions | [Symbolic execution](angr-symbolic-execution.md) |
+| Load a curated Frida preset | [Frida script presets](frida-script-presets.md) |
+| Inventory an attached app or a forensic report | [Mobile runtime and forensics toolchain](mobile-runtime-toolchain.md) |
 | Use CLI/MCP and retain evidence | [CLI](cli.md), [MCP contracts](mcp-contracts.md), [agent prompts](mcp-prompts.md), [obligation ledgers](reconstruction-obligation-ledgers.md) |
 For development, use [testing](testing.md), [client verification](client-verification.md),
 [tool design](tool-design.md), [admission limits and recovery](design/limits-and-recovery.md),

@@ -25,6 +25,8 @@ import {
   type AnalysisViewRetention,
 } from "../analysisView/AnalysisViewService.js";
 import { fridaCaptureLimitations } from "../../frida/fridaCaptureLimits.js";
+import { readFridaScriptPreset } from "../../frida/FridaScriptPresets.js";
+import type { FridaScriptPresetName } from "../../domain/fridaScriptPreset.js";
 import { unknownFridaSession } from "./fridaInputErrors.js";
 import { FridaScriptLoadCancelledError } from "./FridaInstrumentationPort.js";
 import type {
@@ -233,6 +235,47 @@ export class FridaInstrumentationService {
           ),
         )
       : loaded;
+  }
+
+  /**
+   * Load one named REA preset into a live session. The preset's authored
+   * bytes are read at this call and identified by digest; Evidence carries
+   * that digest and the preset's declared detection surfaces, never the
+   * script text or target payloads.
+   */
+  async loadScriptPreset(
+    sessionId: string,
+    preset: FridaScriptPresetName,
+    signal?: AbortSignal,
+  ): Promise<Result<Evidence, AnalysisError>> {
+    const operation = "load_frida_script_preset";
+    if (signal?.aborted)
+      return err(
+        new AnalysisCancelledError(operation, { cause: signal.reason }),
+      );
+    const selected = await readFridaScriptPreset(preset, operation);
+    if (!selected.ok) return selected;
+    const loaded = await this.#provider.loadScript(
+      sessionId,
+      { sourceKind: "inline", source: selected.value.source },
+      signal,
+    );
+    if (!loaded.ok && loaded.error instanceof FridaScriptLoadCancelledError)
+      return err(cancelledScriptEvidence(sessionId, loaded.error));
+    if (!loaded.ok) return loaded;
+    return ok(
+      fridaPresetEvidence(operation, {
+        session_id: sessionId,
+        script_id: loaded.value.scriptId,
+        preset: selected.value.name,
+        preset_title: selected.value.title,
+        script_sha256: selected.value.sha256,
+        script_bytes: selected.value.bytes,
+        detected_methods: [...selected.value.detectedMethods],
+        message_count: loaded.value.messages.length,
+        messages_truncated: loaded.value.messagesTruncated,
+      }),
+    );
   }
 
   resumeSession(sessionId: string, signal?: AbortSignal) {
@@ -527,6 +570,44 @@ export class FridaInstrumentationService {
     return this.#provider.closeAll();
   }
 }
+
+const fridaPresetEvidence = (
+  operation: string,
+  result: {
+    readonly session_id: string;
+    readonly script_id: string;
+    readonly preset: string;
+    readonly preset_title: string;
+    readonly script_sha256: string;
+    readonly script_bytes: number;
+    readonly detected_methods: readonly string[];
+    readonly message_count: number;
+    readonly messages_truncated: boolean;
+  },
+): Evidence =>
+  createEvidence(
+    undefined,
+    { id: "frida", name: "Frida", version: null },
+    {
+      predicateType: "rea.frida.script-preset-load",
+      operation,
+      parameters: {
+        session_id: result.session_id,
+        preset: result.preset,
+      },
+      result,
+      confidence: "observed",
+      authority: "external-service",
+      environment: null,
+      limitations: [
+        "The preset is REA's own minimal reference agent, not a vendored upstream script: it hooks only the checks this release documents, and an unlisted check in the target keeps working",
+        `The loaded source is identified by its SHA-256 (${result.script_sha256}) only; the script text is never returned or recorded`,
+        "detected_methods is the preset's declared list of pinning or detection surfaces it addresses, not an observation of which ones this target implements; the target's own hook-status messages stay in the session message stream",
+        `The target operating system and architecture were not reported by this observation.`,
+        `The frida transport is REA's local Node binding; REA verified frida ${FRIDA_VERIFIED_VERSION} and does not attest other releases. Run rea doctor to read the observed binding release.`,
+      ],
+    },
+  );
 
 const fridaEvidence = (
   operation: string,

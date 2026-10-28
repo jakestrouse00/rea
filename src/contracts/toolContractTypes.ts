@@ -51,6 +51,7 @@ export const TOOL_KINDS = [
   "mitm-provider",
   "emulator",
   "symbolic-engine",
+  "mobile-toolchain-provider",
   "session",
 ] as const;
 

@@ -78,6 +78,11 @@ export default defineConfig({
             text: "LIEF deep parse",
             link: "/lief-deep-parse",
           },
+          { text: "Frida script presets", link: "/frida-script-presets" },
+          {
+            text: "Mobile runtime and forensics toolchain",
+            link: "/mobile-runtime-toolchain",
+          },
           {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",

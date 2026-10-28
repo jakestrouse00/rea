@@ -90,6 +90,7 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "close_rizin_debug_session",
   "start_frida_session",
   "load_frida_script",
+  "load_frida_script_preset",
   "resume_frida_session",
   "unload_frida_script",
   "frida_session_status",
@@ -114,6 +115,13 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   // V8 bytecode disassembly and ASAR packed-integrity inspection are MCP-only.
   "decompile_v8_bytecode",
   "inspect_asar_integrity",
+  // The mobile toolchain and BLE GATT session lanes are MCP-only in this batch.
+  "run_objection_recipe",
+  "analyze_apk_structure",
+  "scan_apk_vulnerabilities",
+  "run_mobile_forensics_report",
+  "enumerate_gatt_services",
+  "subscribe_characteristic",
 ]);
 
 describe("CLI canonical tool coverage", () => {
