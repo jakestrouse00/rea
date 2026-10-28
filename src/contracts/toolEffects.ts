@@ -395,6 +395,14 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
   }),
+  emulate_function_isolated: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  assemble_bytes: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
   recover_go_symbols: effects({
     mutatesSession: true,
     launchesProcess: true,

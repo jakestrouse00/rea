@@ -98,6 +98,19 @@ arming, value-free decisions are counted, and replay goes through the same
 one-shot send core as `http_replay_send`. No trust store, device-wide proxy, or
 pinning bypass is changed. See [mitmproxy interception](./mitm-interception.md).
 
+## Isolated emulation
+
+MCP registers `emulate_function_isolated` and `assemble_bytes` for one bounded
+job against REA's own Unicorn/Keystone sidecar. Select the interpreter that
+carries Unicorn 2.1.x and Keystone with an absolute `REA_UNICORN_PYTHON` and the
+bridge directory with `REA_UNICORN_BRIDGE_DIR`. Each request owns one sidecar
+process: the selected code runs only inside Unicorn's CPU and memory model, no
+instruction executes natively, and no OS, loader, import, or syscall is modelled.
+Evidence carries typed register values, memory-window digests, executed address
+pairs, call counts, and the exit reason; code bytes and memory content never
+appear. There is no disassembler here, because rizin and objdump already cover
+it. See [isolated emulation](./emulation.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

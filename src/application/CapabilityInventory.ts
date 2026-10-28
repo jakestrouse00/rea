@@ -1,4 +1,8 @@
 import { PCAP_CAPTURE_UNSUPPORTED_HOST_REASON } from "../domain/pcap/pcapAnalysis.js";
+import {
+  EMU_BRIDGE_DIR_REMEDIATION,
+  EMU_PYTHON_ENV_REMEDIATION,
+} from "../domain/emu/emuLimits.js";
 import { DEFAULT_CALL_RELATIONSHIP_DIRECTION } from "../contracts/enhancedInputs.js";
 import { FIRMWARE_TOOL_REQUIREMENTS } from "../contracts/firmware/firmwareToolRequirements.js";
 import { CALL_RELATIONSHIP_TRAVERSALS } from "./CallRelationshipTraversal.js";
@@ -134,6 +138,8 @@ export type AvailabilityPolicy = {
   readonly replayEnabled?: boolean;
   /** A mitmdump binary and a generated addon are selected. */
   readonly mitmInterceptionEnabled?: boolean;
+  /** A Python interpreter and the Unicorn/Keystone bridge script are selected. */
+  readonly emuEmulationEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -772,6 +778,13 @@ const workflowAvailabilityFor = ({
       : {
           reason: "provider_missing",
           remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+        };
+  if (kind === "emulator")
+    return policy.emuEmulationEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: `${EMU_BRIDGE_DIR_REMEDIATION} ${EMU_PYTHON_ENV_REMEDIATION}`,
         };
   if (kind === "session") return { reason: "available", remediation: null };
   return null;

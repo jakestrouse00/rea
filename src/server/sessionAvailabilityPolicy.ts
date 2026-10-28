@@ -30,6 +30,7 @@ export interface SessionAvailabilityDefaults {
     | "firmwareExtractionEnabled"
     | "replayEnabled"
     | "mitmInterceptionEnabled"
+    | "emuEmulationEnabled"
   >;
 }
 
@@ -73,6 +74,8 @@ export const sessionAvailabilityPolicy = (
       replayEnabled: defaults.optionalFeatures?.replayEnabled ?? false,
       mitmInterceptionEnabled:
         defaults.optionalFeatures?.mitmInterceptionEnabled ?? false,
+      emuEmulationEnabled:
+        defaults.optionalFeatures?.emuEmulationEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

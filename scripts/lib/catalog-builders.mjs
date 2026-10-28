@@ -225,6 +225,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.mitmContracts.MITM_TOOL_CONTRACTS,
     },
     {
+      id: "emulator",
+      surface: "emulator",
+      contracts: sources.emuContracts.EMU_TOOL_CONTRACTS,
+    },
+    {
       id: "crash-triage",
       surface: "crash-triage",
       contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
@@ -575,6 +580,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.yaraProvider.YARA_PROVIDER_IDENTITY,
       contracts: sources.yaraContracts.YARA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.emuProvider.EMU_PROVIDER_IDENTITY,
+      contracts: sources.emuContracts.EMU_TOOL_CONTRACTS,
     },
     {
       identity: sources.symbolProvider.SYMBOL_PROVIDER_IDENTITY,

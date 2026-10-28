@@ -137,6 +137,8 @@ const SOURCE_PATHS = {
   bindiffProvider: "dist/bindiff/BindiffProvider.js",
   replayContracts: "dist/contracts/replay/ReplayToolContracts.js",
   mitmContracts: "dist/contracts/mitm/MitmToolContracts.js",
+  emuContracts: "dist/contracts/emu/emuToolContracts.js",
+  emuProvider: "dist/emu/EmuProvider.js",
   crashTriageContracts:
     "dist/contracts/crashTriage/crashTriageToolContracts.js",
   crashTriageProvider: "dist/domain/crashTriage/crashReport.js",

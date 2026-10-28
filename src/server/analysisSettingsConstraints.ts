@@ -21,6 +21,13 @@ import {
   REPLAY_ALLOWED_ORIGINS_ENV,
   REPLAY_ALLOWED_ORIGINS_REMEDIATION,
 } from "../domain/replay/replayOrigins.js";
+import {
+  EMU_BRIDGE_DIR_ENV,
+  EMU_BRIDGE_DIR_REMEDIATION,
+  EMU_LIMITS,
+  EMU_PYTHON_ENV,
+  EMU_PYTHON_ENV_REMEDIATION,
+} from "../domain/emu/emuLimits.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -194,6 +201,70 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "path",
     observation: "unknown" as const,
     recovery: MITM_ARJUN_COMMAND_REMEDIATION,
+  },
+  {
+    control: EMU_PYTHON_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: EMU_PYTHON_ENV_REMEDIATION,
+  },
+  {
+    control: EMU_BRIDGE_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: EMU_BRIDGE_DIR_REMEDIATION,
+  },
+  {
+    control: "emu.max_steps",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxSteps,
+    unit: "steps",
+    observation: "known" as const,
+    recovery: `One emulation job runs at most its max_steps instructions, default ${String(EMU_LIMITS.defaultSteps)} and at most ${String(EMU_LIMITS.maxSteps)}. This release has no runtime override; a larger bound does not make a function that never returns return, and the job reports coverage partial when it stops at the bound.`,
+  },
+  {
+    control: "emu.timeout",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxTimeoutMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `One emulation job waits for its timeout_ms, default ${String(EMU_LIMITS.defaultTimeoutMs)} ms and at most ${String(EMU_LIMITS.maxTimeoutMs)} ms, then ${String(EMU_LIMITS.stopGraceMs)} ms of stop grace before REA stops the owned sidecar. This release has no runtime override, and raising the host tool-call deadline past that total does not make the job finish.`,
+  },
+  {
+    control: "emu.code_bytes",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxCodeBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One job admits at most ${String(EMU_LIMITS.maxCodeBytes)} code bytes from a file slice or hex literal, with a stack region up to ${String(EMU_LIMITS.maxStackSize)} bytes. This release has no runtime override; select a narrower function window instead.`,
+  },
+  {
+    control: "emu.executed_edges",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxEdges,
+    unit: "edges",
+    observation: "known" as const,
+    recovery: `One job retains at most ${String(EMU_LIMITS.maxEdges)} distinct executed address pairs and ${String(EMU_LIMITS.maxCallTargets)} distinct call targets, plus ${String(EMU_LIMITS.maxMemoryObservations)} memory windows of at most ${String(EMU_LIMITS.maxMemoryObservationBytes)} bytes each. Later observations are counted as omissions rather than replacing retained ones, so totals stay complete while the detail is partial. This release has no runtime override.`,
+  },
+  {
+    control: "emu.assembled_bytes",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxAssembledBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One assemble_bytes request encodes at most ${String(EMU_LIMITS.maxAssembledBytes)} bytes from at most ${String(EMU_LIMITS.maxAssemblyTextBytes)} bytes of assembly source. This release has no runtime override; assemble a smaller patch slice.`,
+  },
+  {
+    control: "emu.bridge_frame_bytes",
+    authority: "fixed" as const,
+    value: EMU_LIMITS.maxBridgeLineBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One sidecar frame is retained up to ${String(EMU_LIMITS.maxBridgeLineBytes)} bytes in either direction. A larger frame is refused as a protocol violation rather than parsed, and ${String(EMU_LIMITS.maxMemoryObservations)} memory windows keep a result inside that budget by hashing content instead of inlining it. This release has no runtime override.`,
   },
   {
     control: "mitm.inventory_endpoints",

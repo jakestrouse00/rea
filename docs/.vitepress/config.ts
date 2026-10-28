@@ -65,6 +65,7 @@ export default defineConfig({
             text: "mitmproxy interception",
             link: "/mitm-interception",
           },
+          { text: "Isolated emulation", link: "/emulation" },
           {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",

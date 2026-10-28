@@ -285,6 +285,12 @@ import {
   mitmInterceptionLaneEnabled,
 } from "../composition/mitm.js";
 import { registerMitmTools } from "./registerMitmTools.js";
+import type { EmuAnalysisPort } from "../application/emu/EmuAnalysisPort.js";
+import {
+  createEmuAnalysisProvider,
+  emuLaneEnabled,
+} from "../composition/emu.js";
+import { registerEmuTools } from "./registerEmuTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -352,6 +358,8 @@ export interface CreateServerOptions {
   readonly replay?: ReplayPort;
   /** mitmproxy interception lane; omitted means the lane is selected from the environment. */
   readonly mitm?: MitmInterceptionPort;
+  /** Bounded Unicorn/Keystone lane; omitted means the lane is selected from the environment. */
+  readonly emu?: EmuAnalysisPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -489,6 +497,10 @@ const installSessionToolAvailability = (
       mitmInterceptionEnabled: mitmInterceptionLaneEnabled(
         environment,
         options.mitm !== undefined,
+      ),
+      emuEmulationEnabled: emuLaneEnabled(
+        environment,
+        options.emu !== undefined,
       ),
     },
   });
@@ -710,6 +722,7 @@ export const createServer = (
     options.crashTriage ?? createCrashTriageService(environment);
   const replay = options.replay ?? createReplayService(environment);
   const mitm = options.mitm ?? createMitmInterceptionService(environment);
+  const emu = options.emu ?? createEmuAnalysisProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -756,6 +769,7 @@ export const createServer = (
       mitm.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
+      emu.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -1151,6 +1165,7 @@ export const createServer = (
     logger: toolLogger,
     recordEvidence,
   });
+  registerEmuTools(server, emu, toolLogger, recordEvidence, analysisAdmission);
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {
