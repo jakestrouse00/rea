@@ -28,7 +28,8 @@ export const ANGR_PROTOCOL_VERSION = 1;
 /** Bounds for one symbolic-execution or CFG-recovery job. */
 export const ANGR_LIMITS = {
   defaultTimeoutMs: DEFAULT_ANGR_OPERATION_TIMEOUT_MS,
-  maxTimeoutMs: 600_000,
+  /** Largest delay Node schedules exactly; the setting and the bridge share it. */
+  maxTimeoutMs: 2_147_483_647,
   defaultSteps: 200_000,
   maxSteps: 2_000_000,
   defaultMaxStates: 64,

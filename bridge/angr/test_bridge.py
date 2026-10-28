@@ -23,6 +23,8 @@ from pathlib import Path
 
 BRIDGE_PATH = Path(__file__).with_name("angr_bridge.py")
 SECRET = 0x5A
+FINDS = True
+STDIN_AT_CONSTRUCTION = True
 
 
 def load_bridge():
@@ -92,9 +94,33 @@ class FakeRegs:
         self.__dict__.update(initial)
 
 
+class FakeSimFile:
+    """The file handle angr accepts as ``stdin`` when the state is created."""
+
+    def __init__(self, name, content=None, size=None):
+        self.name = name
+        self.content = content
+        self.size = size
+
+
 class FakePosix:
-    def __init__(self):
-        self.stdin = None
+    """Models the one POSIX-plugin rule this lane depends on: fd 0 is bound at
+    creation, so a stream installed on a live state never becomes what reads
+    consume."""
+
+    def __init__(self, stdin=None):
+        self.__stream = stdin
+        self.reads = 0
+
+    @property
+    def stdin(self):
+        return self.__stream
+
+    @stdin.setter
+    def stdin(self, value):
+        raise AssertionError(
+            "angr binds fd 0 when the state is constructed; stdin cannot be replaced afterwards"
+        )
 
 
 class FakeHistory:
@@ -103,11 +129,11 @@ class FakeHistory:
 
 
 class FakeState:
-    def __init__(self, addr, solver=None):
+    def __init__(self, addr, solver=None, stdin=None):
         self.addr = addr
         self.solver = solver or FakeSolver()
         self.regs = FakeRegs({"rdi": 0, "rsi": 0, "rax": 0})
-        self.posix = FakePosix()
+        self.posix = FakePosix(stdin)
         self.history = FakeHistory()
 
     def with_constraint(self, constraint):
@@ -131,14 +157,19 @@ class FakeSimgr:
     def explore(self, find, avoid, num_find, find_stash, step_func):
         if not step_func(self):
             return
+        stream = self.source.posix.stdin
         self.active = []
-        if find:
+        if stream is not None:
+            # A read consumes the stream the state was constructed with, so the
+            # constraint names that stream's content and nothing else.
+            self.source.posix.reads += 1
             constraint = FakeAst(
-                "__eq__",
-                (FakeAst("BVS", ("rea_stdin",), 8, symbolic=True), SECRET),
-                1,
+                "__eq__", (FakeAst("extract", (stream.content, 7, 0), 8), SECRET), 1
             )
-            found = self.source.with_constraint(constraint)
+        else:
+            constraint = None
+        if find and FINDS:
+            found = self.source.with_constraint(constraint) if constraint is not None else self.source
             found.addr = find[0]
             self.found = [found][:num_find]
         elif avoid:
@@ -151,8 +182,13 @@ class FakeFactory:
     def __init__(self, project):
         self.project = project
 
-    def entry_state(self, addr):
-        return FakeState(addr)
+    def entry_state(self, addr, stdin=None):
+        if stdin is not None and not STDIN_AT_CONSTRUCTION:
+            raise TypeError("entry_state() got an unexpected keyword argument 'stdin'")
+        return FakeState(addr, stdin=stdin)
+
+    def full_init_state(self, addr, stdin=None):
+        raise TypeError("full_init_state() got an unexpected keyword argument 'stdin'")
 
     def simgr(self, state):
         return FakeSimgr(state)
@@ -210,19 +246,24 @@ class FakeProject:
         return FakeCFG(nodes, functions)
 
 
-def install_stand_in(version="9.2.1", mapped=(0x401000, 0x4010A0, 0x401140)):
+def install_stand_in(
+    version="9.2.1",
+    mapped=(0x401000, 0x4010A0, 0x401140),
+    sim_file=True,
+    stdin_at_construction=True,
+    finds=True,
+):
+    global FINDS, STDIN_AT_CONSTRUCTION
+    FINDS = finds
+    STDIN_AT_CONSTRUCTION = stdin_at_construction
     claripy = types.ModuleType("claripy")
     claripy.BVS = lambda name, bits: FakeAst("BVS", (name,), bits, symbolic=True)
     claripy.BVV = lambda value, bits: FakeAst("BVV", (value,), bits, symbolic=False)
     angr = types.ModuleType("angr")
     angr.__version__ = version
     angr.claripy = claripy
-    angr.SimFile = lambda name, content=None, size=None: types.SimpleNamespace(
-        name=name, content=content, size=size
-    )
-    angr.SimFileStream = lambda simfile, state=None: types.SimpleNamespace(
-        simfile=simfile, state=state
-    )
+    if sim_file:
+        angr.SimFile = FakeSimFile
     angr.Project = lambda path, auto_load_libs=True: FakeProject(
         path, auto_load_libs, mapped
     )
@@ -384,6 +425,39 @@ class FindPathsTests(BridgeTestCase):
         for node in path["conditions"] + path["model"]:
             self.assertNotIn("value", node)
 
+    def test_binds_the_stdin_window_at_state_construction(self):
+        install_stand_in()
+        frame = self.job(
+            assertions=[
+                {
+                    "operand": {"kind": "stdin", "offset": 0, "width_bytes": 1},
+                    "relation": "eq",
+                    "value": "0x5a",
+                }
+            ]
+        )
+        path = frame["result"]["paths"][0]
+        symbols = [
+            node["operand"]
+            for node in path["conditions"]
+            if node["kind"] == "symbol"
+        ]
+        # The condition constrains the stream the state was built with, so the
+        # symbolic window is what fd 0 reads rather than a detached bit vector.
+        self.assertIn("rea_stdin", symbols)
+
+    def test_refuses_a_stdin_window_when_the_release_has_no_file_api(self):
+        install_stand_in(sim_file=False)
+        with self.assertRaises(self.bridge.BridgeRefusal) as caught:
+            self.bridge.handle(self.request())
+        self.assertEqual(caught.exception.code, "unsupported_mode")
+
+    def test_refuses_a_stdin_window_when_state_creation_cannot_bind_it(self):
+        install_stand_in(stdin_at_construction=False)
+        with self.assertRaises(self.bridge.BridgeRefusal) as caught:
+            self.bridge.handle(self.request())
+        self.assertEqual(caught.exception.code, "unsupported_mode")
+
     def test_refuses_an_assertion_over_a_register_that_is_not_symbolic(self):
         install_stand_in()
         with self.assertRaises(self.bridge.BridgeRefusal) as caught:
@@ -449,6 +523,21 @@ class ExplorationTests(BridgeTestCase):
             self.assertNotIn("value", node)
         self.assertIn(digest_of(SECRET, 64), json.dumps(result))
 
+    def test_reports_visited_blocks_when_nothing_was_found(self):
+        install_stand_in(finds=False)
+        frame = self.job(
+            kind="explore_function", find_addresses=["0x4010a0"]
+        )
+        result = frame["result"]
+        self.assertEqual(result["termination"], "deadended")
+        self.assertEqual(result["found_states"], 0)
+        self.assertEqual(result["found"], [])
+        self.assertTrue(result["deadended_states"] >= 1)
+        # Blocks ran even though no satisfying path exists.
+        self.assertEqual(result["visited_blocks"], ["0x401000", "0x401010"])
+        self.assertFalse(result["visited_blocks_truncated"])
+        self.assertEqual(result["coverage"], "complete")
+
     def test_marks_visited_blocks_truncated(self):
         install_stand_in()
         frame = self.job(
@@ -465,6 +554,24 @@ class ExplorationTests(BridgeTestCase):
         result = frame["result"]
         self.assertEqual(len(result["visited_blocks"]), 1)
         self.assertTrue(result["visited_blocks_truncated"])
+
+
+class StandInContractTests(BridgeTestCase):
+    def test_rejects_a_stdin_stream_assigned_after_construction(self):
+        install_stand_in()
+        project = sys.modules["angr"].Project(self.path, auto_load_libs=False)
+        state = project.factory.entry_state(addr=0x401000)
+        with self.assertRaises(AssertionError):
+            state.posix.stdin = FakeSimFile("/dev/stdin", content=None, size=0)
+
+    def test_rejects_replacing_a_bound_stream(self):
+        install_stand_in()
+        project = sys.modules["angr"].Project(self.path, auto_load_libs=False)
+        stream = FakeSimFile("/dev/stdin", content=FakeAst("BVS", ("rea_stdin",), 64, True), size=8)
+        state = project.factory.entry_state(addr=0x401000, stdin=stream)
+        self.assertIs(state.posix.stdin, stream)
+        with self.assertRaises(AssertionError):
+            state.posix.stdin = stream
 
 
 class ControlFlowTests(BridgeTestCase):

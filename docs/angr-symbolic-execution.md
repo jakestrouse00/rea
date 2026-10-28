@@ -118,6 +118,9 @@ protocol refusal, so a result always names the bytes that were analysed.
 - `paths[].model`: for each symbolic input, its name, bit width, and
   `value_sha256` — the digest of the solution, never the solution.
 - Counts, visited addresses, and truncation flags for the exploration.
+  `visited_blocks` covers every state the exploration kept — found, avoided,
+  deadended, active, and errored — not only the satisfying ones, so a job that
+  found nothing still shows what it executed.
 
 `recover_control_flow_angr` returns functions and blocks as addresses only,
 their sizes, successors, and an edge count. No function, block, or symbol
@@ -136,29 +139,37 @@ delivers it.
 
 ## Bounds
 
-| Bound                     | Value                                                | Control               |
-| ------------------------- | ---------------------------------------------------- | --------------------- |
-| Job wall time             | `timeout_ms`, default 120 000 ms, at most 600 000 ms | `angr.timeout`        |
-| Concurrent jobs           | 1 by default, at most 8                              | `angr.jobs`           |
-| Exploration steps         | `max_steps`, default 200 000, at most 2 000 000      | `angr.max_steps`      |
-| Live states               | `max_states`, default 64, at most 256                | `angr.max_states`     |
-| Satisfying paths retained | `max_paths`, default 1, at most 8                    | `angr.max_paths`      |
-| Caller assertions         | 16 per request                                       | `angr.assertions`     |
-| Symbolic stdin window     | 4 096 bytes                                          | `angr.stdin_bytes`    |
-| Condition nodes retained  | 64 conditions of 512 nodes per path                  | `angr.conditions`     |
-| Model values retained     | 32 per path                                          | `angr.model_values`   |
-| Visited blocks retained   | 2 048 addresses                                      | `angr.visited_blocks` |
-| CFG functions retained    | 4 096                                                | `angr.functions`      |
-| CFG blocks retained       | 16 384                                               | `angr.blocks`         |
-| CFG successors per block  | 16                                                   | `angr.successors`     |
-| Bridge frame              | 1 MiB per line                                       | `angr.frame_bytes`    |
+| Bound                     | Value                                                      | Control               |
+| ------------------------- | ---------------------------------------------------------- | --------------------- |
+| Job wall time             | `timeout_ms`, default 120 000 ms, at most 2 147 483 647 ms | `angr.timeout`        |
+| Concurrent jobs           | 1 by default, at most 8                                    | `angr.jobs`           |
+| Exploration steps         | `max_steps`, default 200 000, at most 2 000 000            | `angr.max_steps`      |
+| Live states               | `max_states`, default 64, at most 256                      | `angr.max_states`     |
+| Satisfying paths retained | `max_paths`, default 1, at most 8                          | `angr.max_paths`      |
+| Caller assertions         | 16 per request                                             | `angr.assertions`     |
+| Symbolic stdin window     | 4 096 bytes                                                | `angr.stdin_bytes`    |
+| Condition nodes retained  | 64 conditions of 512 nodes per path                        | `angr.conditions`     |
+| Model values retained     | 32 per path                                                | `angr.model_values`   |
+| Visited blocks retained   | 2 048 addresses                                            | `angr.visited_blocks` |
+| CFG functions retained    | 4 096                                                      | `angr.functions`      |
+| CFG blocks retained       | 16 384                                                     | `angr.blocks`         |
+| CFG successors per block  | 16                                                         | `angr.successors`     |
+| Bridge frame              | 1 MiB per line                                             | `angr.frame_bytes`    |
+
+The deadline has one ceiling at every layer: the setting, the launch
+environment, the request schema, and the bridge all admit 1 to
+2 147 483 647 ms, so a value the settings tool accepts is a value the bridge
+accepts. A very long deadline is not a licence to run forever — `max_steps` and
+`max_states` still bound the exploration, and the caller's MCP client deadline
+may end the wait first.
 
 Exceeding a step, state, or time bound is a completed job whose `coverage` is
 `partial` and whose `termination` names the bound. Exceeding a storage bound
 keeps the job and sets the matching `*_truncated` flag, so an omitted path,
-condition, or edge is never reported as absence. The job deadline is the only
-one of these controls with a runtime override: `inspect_analysis_settings`
-reports `angr.operation_timeout_ms`. The rest are fixed published limits, and
+condition, or edge is never reported as absence; a truncated visited-block list
+also marks coverage `partial`. The job deadline is the only one of these
+controls with a runtime override: `inspect_analysis_settings` reports
+`angr.operation_timeout_ms`. The rest are fixed published limits, and
 `REA_ANGR_JOBS` is read from the launch environment.
 
 ## Symbols and assertions
@@ -167,7 +178,12 @@ Caller-supplied assumptions enter the job in two ways:
 
 - `symbolic_registers`: entry registers whose value is a fresh symbolic bit
   vector of the artifact's word width.
-- `stdin_bytes`: a symbolic standard-input window of that many bytes.
+- `stdin_bytes`: a symbolic standard-input window of that many bytes. The
+  window is a file stream handed to angr at state construction, because fd 0
+  keeps the stream its POSIX plugin was created with; assigning one to a live
+  state would leave fd 0 reading empty input while still reporting a solution
+  for bytes nothing consumed. A release that cannot expose `SimFile` refuses
+  with `unsupported_mode` rather than exploring empty stdin.
 
 `assertions` then constrain those inputs before exploration. An assertion names
 a register or a byte range of the stdin window, a relation (`eq`, `ne`, `lt`,
@@ -219,7 +235,20 @@ that reads one request line and writes one answer line. They cover path
 structure, digest-only values, target-identity mismatch, frame and JSON refusal,
 the deadline, cooperative cancellation, a pre-cancelled caller, queued
 cancellation, close during a job, bridge refusals, and every configuration
-refusal. The Python bridge tests install a stand-in `angr`/`claripy` that models
-only the API surface the bridge calls. No real angr, native target, or host
-execution is exercised by those tests, so they establish REA's own framing,
-bounds, and redaction, not engine behaviour.
+refusal.
+
+The Python bridge tests install a stand-in `angr`/`claripy` that models only the
+API surface the bridge calls, including the one part of that surface this lane
+depends on structurally: fd 0 is bound when the state is constructed, so a bridge
+that assigns `posix.stdin` afterwards fails the stand-in instead of passing a
+test. No real angr, native target, or host execution is exercised by those tests,
+so they establish REA's own framing, bounds, redaction, and stdin-binding
+discipline — not engine behaviour.
+
+That distinction matters most for `stdin_bytes`. The pinned minor spans the
+release line where angr replaced its file streams with packet streams, so the
+bridge requires only `SimFile` (present throughout) and hands it to state
+construction, which is the documented route in both eras; a release that cannot
+provide it refuses with `unsupported_mode`. A real-angr run against a symbolic
+stdin job is still the missing check: until one is recorded, treat stdin results
+as "REA asked angr for this" rather than "angr read this".

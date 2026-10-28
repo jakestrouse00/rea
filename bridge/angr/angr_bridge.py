@@ -286,8 +286,37 @@ def register_ast(angr, state, name: str):
     return register
 
 
-def attach_symbolic_inputs(angr, project, state, request: dict) -> list:
-    """Install the caller's symbolic registers and symbolic stdin window."""
+def symbolic_stdin(angr, request: dict) -> tuple:
+    """Build the symbolic stdin window before the state exists.
+
+    angr binds fd 0 to whatever stream the POSIX plugin is created with, so a
+    window installed on a live state's ``posix.stdin`` never becomes the stream
+    fd 0 reads. The window therefore travels into state construction, and a
+    release that cannot expose ``SimFile`` refuses instead of exploring an
+    empty stdin while reporting a solution for a BVS nothing consumed.
+    """
+    stdin_bytes = require_int(request, "stdin_bytes", 0, 4096)
+    if stdin_bytes == 0:
+        return None, None
+    content = angr.claripy.BVS("rea_stdin", stdin_bytes * 8)
+    sim_file = getattr(angr, "SimFile", None)
+    if sim_file is None:
+        raise BridgeRefusal(
+            "unsupported_mode",
+            "this angr release exposes no SimFile, so REA cannot bind a symbolic stdin window",
+        )
+    try:
+        stream = sim_file("/dev/stdin", content=content, size=stdin_bytes)
+    except TypeError as cause:
+        raise BridgeRefusal(
+            "unsupported_mode",
+            "this angr release cannot build a symbolic stdin file",
+        ) from cause
+    return SymbolicInput("rea_stdin", stdin_bytes * 8, content), stream
+
+
+def install_symbolic_registers(angr, project, state, request: dict) -> list:
+    """Make the caller's named entry registers symbolic on the created state."""
     inputs = []
     bits = int(project.arch.bits)
     for name in request.get("symbolic_registers") or []:
@@ -297,18 +326,6 @@ def attach_symbolic_inputs(angr, project, state, request: dict) -> list:
         symbol = angr.claripy.BVS(f"rea_reg_{name}", bits)
         setattr(state.regs, name, symbol)
         inputs.append(SymbolicInput(f"rea_reg_{operand_name(name)}", bits, symbol))
-    stdin_bytes = require_int(request, "stdin_bytes", 0, 4096)
-    if stdin_bytes > 0:
-        content = angr.claripy.BVS("rea_stdin", stdin_bytes * 8)
-        inputs.append(SymbolicInput("rea_stdin", stdin_bytes * 8, content))
-        try:
-            simfile = angr.SimFile("/dev/stdin", content=content, size=stdin_bytes)
-            state.posix.stdin = angr.SimFileStream(simfile, state=state)
-        except (AttributeError, TypeError) as cause:
-            raise BridgeRefusal(
-                "unsupported_mode",
-                "this angr release cannot model a symbolic stdin stream",
-            ) from cause
     return inputs
 
 
@@ -406,11 +423,22 @@ def target_record(request: dict, observed: str, entry) -> dict:
     return {"path": request.get("path"), "entry": entry, "sha256": observed}
 
 
-def entry_state(angr, project, entry: int):
-    try:
-        return project.factory.entry_state(addr=entry)
-    except TypeError:
-        return project.factory.full_init_state(addr=entry)
+def entry_state(angr, project, entry: int, stdin=None):
+    """Create the job's state, binding a caller-supplied stdin at construction."""
+    if stdin is None:
+        try:
+            return project.factory.entry_state(addr=entry)
+        except TypeError:
+            return project.factory.full_init_state(addr=entry)
+    for factory in (project.factory.entry_state, project.factory.full_init_state):
+        try:
+            return factory(addr=entry, stdin=stdin)
+        except TypeError:
+            continue
+    raise BridgeRefusal(
+        "unsupported_mode",
+        "this angr release cannot bind a caller-supplied stdin stream at state creation",
+    )
 
 
 def bound_checked(project, entry: int) -> None:
@@ -430,7 +458,7 @@ def explore(angr, project, state, inputs: list, request: dict, limits: dict, num
     avoid = address_list(request, "avoid_addresses", 8)
     max_states = require_int(request, "max_states", 1, 256)
     max_steps = require_int(request, "max_steps", 1, 2_000_000)
-    timeout_ms = require_int(request, "timeout_ms", 1, 600_000)
+    timeout_ms = require_int(request, "timeout_ms", 1, 2_147_483_647)
     for assertion in request.get("assertions") or []:
         state.solver.add(assertion_clause(angr, state, inputs, assertion))
     if state.solver.satisfiable() is False:
@@ -496,8 +524,18 @@ def explore(angr, project, state, inputs: list, request: dict, limits: dict, num
     visited = []
     seen = set()
     truncated = False
-    for state_item in found_states:
-        for block in getattr(state_item.history, "bbl_addrs", ()) or ():
+    # Every stash the exploration kept is walked: a job that found nothing still
+    # executed blocks, and reporting an empty coverage over unexamined states
+    # would read as "nothing ran".
+    stashes = [
+        *found_states,
+        *simgr.deadended,
+        *simgr.avoid,
+        *simgr.active,
+        *simgr.errored,
+    ]
+    for state_item in stashes:
+        for block in getattr(getattr(state_item, "history", None), "bbl_addrs", ()) or ():
             if block in seen:
                 continue
             if len(visited) >= limits["max_visited_blocks"]:
@@ -527,8 +565,11 @@ def find_paths(angr, request: dict) -> dict:
     bound_checked(project, entry)
     limits = limits_of(request)
     max_paths = require_int(request, "max_paths", 1, 8)
-    state = entry_state(angr, project, entry)
-    inputs = attach_symbolic_inputs(angr, project, state, request)
+    stdin_input, stdin = symbolic_stdin(angr, request)
+    state = entry_state(angr, project, entry, stdin)
+    inputs = install_symbolic_registers(angr, project, state, request)
+    if stdin_input is not None:
+        inputs.append(stdin_input)
     explored = explore(angr, project, state, inputs, request, limits, max_paths)
     found = explored["found"]
     termination = explored["termination"]
@@ -559,8 +600,11 @@ def explore_function(angr, request: dict) -> dict:
     entry = parse_address(request.get("entry"), "entry")
     bound_checked(project, entry)
     limits = limits_of(request)
-    state = entry_state(angr, project, entry)
-    inputs = attach_symbolic_inputs(angr, project, state, request)
+    stdin_input, stdin = symbolic_stdin(angr, request)
+    state = entry_state(angr, project, entry, stdin)
+    inputs = install_symbolic_registers(angr, project, state, request)
+    if stdin_input is not None:
+        inputs.append(stdin_input)
     explored = explore(angr, project, state, inputs, request, limits, limits["max_paths"])
     termination = explored["termination"]
     truncated = explored["found_total"] > limits["max_paths"]
@@ -583,7 +627,9 @@ def explore_function(angr, request: dict) -> dict:
         "visited_blocks_truncated": explored["visited_blocks_truncated"],
         "found": explored["found"],
         "coverage": "partial"
-        if termination in ("step_bound", "state_bound", "deadline") or truncated
+        if termination in ("step_bound", "state_bound", "deadline")
+        or truncated
+        or explored["visited_blocks_truncated"]
         else "complete",
         "values_redacted": True,
     }

@@ -166,6 +166,18 @@ test("lets an explicit request deadline win over the setting", async () => {
   await provider.close();
 });
 
+test("carries a deadline past the old bridge ceiling to the sidecar", async () => {
+  const { provider, callsPath, target } = await providerFor();
+  const request = findPaths(target);
+  const result = await provider.execute({
+    ...request,
+    input: { ...request.input, timeout_ms: 900_000 },
+  });
+  expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
+  expect(await readFile(callsPath, "utf8")).toContain('"timeout_ms":900000');
+  await provider.close();
+});
+
 test("reports an exploration's counts and address coverage", async () => {
   const { provider, target } = await providerFor();
   const result = await provider.execute({
@@ -192,6 +204,40 @@ test("reports an exploration's counts and address coverage", async () => {
   expect(result.value.limitations.join(" ")).toContain(
     "not a count of the function's real control-flow paths",
   );
+  await provider.close();
+});
+
+test("keeps visited blocks when an exploration finds nothing", async () => {
+  const { provider, target } = await providerFor({
+    explore_function: {
+      result: {
+        termination: "deadended",
+        found: [],
+        found_states: 0,
+        deadended_states: 1,
+        visited_blocks: ["0x401000", "0x401010"],
+        coverage: "complete",
+      },
+    },
+  });
+  const result = await provider.execute({
+    operation: "run_symbolic_function_exploration",
+    input: {
+      path: target,
+      entry: "0x401000",
+      find_addresses: ["0x4010a0"],
+    },
+  });
+  expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
+  if (!result.ok) return;
+  const value = result.value.result as Record<string, unknown>;
+  expect(value).toMatchObject({
+    termination: "deadended",
+    found_states: 0,
+    visited_blocks: ["0x401000", "0x401010"],
+    visited_blocks_truncated: false,
+    coverage: "complete",
+  });
   await provider.close();
 });
 
