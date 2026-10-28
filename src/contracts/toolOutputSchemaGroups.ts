@@ -76,6 +76,7 @@ import { managedReconstructionImportResultSchema } from "../domain/managed/manag
 import { managedApplicationGraphResultSchema } from "../domain/managed/managedApplicationGraph.js";
 import { artifactComparisonResultSchema } from "../domain/artifactComparison.js";
 import { functionComparisonResultSchema } from "../domain/functionComparisonSchemas.js";
+import { binaryDiffResultSchema } from "../domain/bindiff/binaryDiff.js";
 import { bundleComparisonResultSchema } from "../domain/bundleComparison.js";
 import { changedBehaviorResultSchema } from "../domain/changedBehavior.js";
 import { callPathResultSchema } from "../domain/callPathSchemas.js";
@@ -617,6 +618,7 @@ export const sessionOutputSchemas = {
   compare_process_captures: evidenceResultOf(processCaptureComparisonSchema),
   compare_artifacts: evidenceResultOf(artifactComparisonResultSchema),
   compare_functions: evidenceResultOf(functionComparisonResultSchema),
+  diff_binaries: evidenceResultOf(binaryDiffResultSchema),
   match_native_functions: evidenceResultOf(
     z.union([
       nativeFunctionMatchingSchema,

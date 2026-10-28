@@ -160,6 +160,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
     },
     {
+      id: "bindiff",
+      surface: "bindiff-provider",
+      contracts: sources.bindiffContracts.BINDIFF_TOOL_CONTRACTS,
+    },
+    {
       id: "discovery",
       surface: "discovery-provider",
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
@@ -571,6 +576,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.protobufProvider.PROTOBUF_RECOVERY_PROVIDER_IDENTITY,
       contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.bindiffProvider.BINDIFF_PROVIDER_IDENTITY,
+      contracts: sources.bindiffContracts.BINDIFF_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

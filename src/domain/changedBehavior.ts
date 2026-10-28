@@ -216,6 +216,8 @@ const findingsFor = (comparison: ParsedComparisonEvidence): Finding[] => {
     return processFindings(comparison);
   if (comparison.operation === "compare_functions")
     return functionFindings(comparison);
+  if (comparison.operation === "diff_binaries")
+    return binaryDiffFindings(comparison);
   return artifactFindings(comparison);
 };
 
@@ -276,6 +278,45 @@ const functionFindings = (
           }),
         ],
   );
+};
+
+const binaryDiffFindings = (
+  comparison: Extract<
+    ParsedComparisonEvidence,
+    { readonly operation: "diff_binaries" }
+  >,
+): Finding[] => {
+  const { evidence, result } = comparison;
+  const findings = result.changes.map((change) =>
+    makeFinding({
+      evidence,
+      dimension: `binary-diff:${change.primary_name ?? change.primary_address}->${change.secondary_name ?? change.secondary_address}`,
+      scope: "static_candidate",
+      status: change.confidence < 0.5 ? "unknown" : "changed",
+      classification:
+        change.confidence < 0.5 ? "unresolved_branch" : "derived_relationship",
+      limitations: result.limitations,
+    }),
+  );
+  const unmatched =
+    result.function_match.unmatched_primary +
+    result.function_match.unmatched_secondary;
+  return unmatched > 0 &&
+    !findings.some(
+      ({ classification }) => classification === "unresolved_branch",
+    )
+    ? [
+        ...findings,
+        makeFinding({
+          evidence,
+          dimension: "binary-diff:coverage",
+          scope: "static_candidate",
+          status: "unknown",
+          classification: "unresolved_branch",
+          limitations: result.limitations,
+        }),
+      ]
+    : findings;
 };
 
 const artifactFindings = (

@@ -106,6 +106,8 @@ export type AvailabilityPolicy = {
   readonly jvmDecompilerAvailability?: ProviderAvailability;
   readonly protobufRecoveryAvailability?: ProviderAvailability;
   readonly grpcReflectionAvailability?: ProviderAvailability;
+  readonly bindiffDiffAvailability?: ProviderAvailability;
+  readonly bindiffExportAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -663,6 +665,17 @@ const workflowAvailabilityFor = ({
     return ownerProbeAvailability(
       policy.protobufRecoveryAvailability,
       "Set REA_PBTK_COMMAND or REA_PROTODUMP_COMMAND to a caller-supplied recovery tool (absolute path). This checks the selection only; an artifact path and output directory are still required per request.",
+    );
+  }
+  if (kind === "bindiff-provider") {
+    if (name === "diff_binaries")
+      return ownerProbeAvailability(
+        policy.bindiffDiffAvailability,
+        "Set REA_BINDIFF_COMMAND to a caller-supplied BinDiff adapter (absolute path). This checks the selection only; two retained artifact observations are still required per request.",
+      );
+    return ownerProbeAvailability(
+      policy.bindiffExportAvailability,
+      "Set REA_BINEXPORT_COMMAND to a caller-supplied BinExport exporter (absolute path). This checks the selection only; a binary path and output directory are still required per request.",
     );
   }
   if (kind === "apktool-provider")

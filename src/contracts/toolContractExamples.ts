@@ -85,6 +85,10 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
     left: FUNCTION_COMPARISON_EXAMPLE.left,
     right: FUNCTION_COMPARISON_EXAMPLE.right,
   },
+  diff_binaries: {
+    left: { kind: "retained-evidence", evidence_id: `ev_${"1".repeat(64)}` },
+    right: { kind: "retained-evidence", evidence_id: `ev_${"2".repeat(64)}` },
+  },
   compare_bundles: {
     left_bundle_path: "/tmp/left-evidence.json",
     right_bundle_path: "/tmp/right-evidence.json",

@@ -56,6 +56,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Match signatures or recover symbols | [capa capabilities](capa-analysis.md), [YARA-X rules](yara-scanning.md), [Go/Rust/Breakpad symbols](symbol-recovery.md) |
 | Recover source shape from bytecode | [.NET](dotnet-decompilation.md), [Python](python-decompilation.md), [JVM](jvm-decompilation.md) |
 | Recover protobuf definitions or gRPC schemas | [Protobuf recovery and reflection](protobuf-recovery.md) |
+| Compare binaries with a provider-backed matcher | [BinDiff and BinExport](binary-diffing.md) |
 | Discover local devices and LAN services | [Device and network discovery](discovery-analysis.md) |
 | Observe or compare a browser scenario | [CDP observation](browser-observation.md), [scenarios](browser-scenario-contract.md), [runtime evidence](web-runtime.md), [historical captures](web-network-captures.md) |
 | Serve recorded behavior as an agent environment | [Agent environments](agent-environments.md) |

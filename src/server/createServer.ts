@@ -224,6 +224,10 @@ import type { ProtobufRecoveryPort } from "../application/protobufrecovery/Proto
 import { ProtobufRecoveryService } from "../application/protobufrecovery/ProtobufRecoveryService.js";
 import { createProtobufRecoveryProvider } from "../composition/protobufrecovery.js";
 import { registerProtobufRecoveryTools } from "./registerProtobufRecoveryTools.js";
+import type { BindiffPort } from "../application/bindiff/BindiffPort.js";
+import { BindiffExportService } from "../application/bindiff/BindiffExportService.js";
+import { createBindiffProvider } from "../composition/bindiff.js";
+import { registerBinexportTool } from "./registerBinexportTool.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -314,6 +318,7 @@ export interface CreateServerOptions {
   readonly pythonDecompiler?: PythonDecompilerPort;
   readonly jvmDecompiler?: JvmDecompilerPort;
   readonly protobufRecovery?: ProtobufRecoveryPort;
+  readonly bindiff?: BindiffPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -656,6 +661,7 @@ export const createServer = (
     options.jvmDecompiler ?? createJvmDecompilerProvider(environment);
   const protobufRecovery =
     options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
+  const bindiff = options.bindiff ?? createBindiffProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -689,6 +695,7 @@ export const createServer = (
       pythonDecompiler.close(),
       jvmDecompiler.close(),
       protobufRecovery.close(),
+      bindiff.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -996,6 +1003,13 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerBinexportTool(
+    server,
+    new BindiffExportService(bindiff),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -1060,6 +1074,7 @@ export const createServer = (
     registerSessionTools(server, session, toolLogger, {
       ...selectedOptions,
       artifactResources,
+      bindiff,
       ...(availability === undefined
         ? {}
         : { availabilityPolicy: availability.policy }),
@@ -1100,6 +1115,12 @@ export const createServer = (
       grpcReflectionAvailability: (signal) =>
         protobufRecovery.inspectReflectionAvailability?.(signal) ??
         protobufRecovery.inspectAvailability(signal),
+      bindiffDiffAvailability: (signal) =>
+        bindiff.inspectDiffAvailability?.(signal) ??
+        bindiff.inspectAvailability(signal),
+      bindiffExportAvailability: (signal) =>
+        bindiff.inspectExportAvailability?.(signal) ??
+        bindiff.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),

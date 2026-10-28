@@ -27,6 +27,8 @@ import { registerBundleComparisonTool } from "./registerBundleComparisonTool.js"
 import { registerCloseLifecycleTool } from "./registerCloseLifecycleTool.js";
 import { registerFunctionComparisonTool } from "./registerFunctionComparisonTool.js";
 import { registerInvestigationTools } from "./registerInvestigationTools.js";
+import { registerBinaryDiffTool } from "./registerBinaryDiffTool.js";
+import type { BindiffPort } from "../application/bindiff/BindiffPort.js";
 import { registerProcessComparisonTool } from "./registerProcessComparisonTool.js";
 import {
   registerEvidenceTools,
@@ -224,6 +226,8 @@ const registerOpenLifecycleTool = ({
 /** Register MCP-only target lifecycle operations on a long-lived session. */
 export interface SessionToolOptions extends Partial<SessionAvailabilityProbes> {
   readonly artifactResources: ArtifactResourceScope;
+  /** Optional provider-backed binary comparison used by diff_binaries. */
+  readonly bindiff?: BindiffPort;
   /** Server environment snapshot that process capture resolves and inherits. */
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly startedAt?: string;
@@ -290,6 +294,7 @@ export const registerSessionTools = (
   const compareContract = toolContract("compare_process_captures");
   const compareArtifactsContract = toolContract("compare_artifacts");
   const compareFunctionsContract = toolContract("compare_functions");
+  const diffBinariesContract = toolContract("diff_binaries");
   const compareBundlesContract = toolContract("compare_bundles");
   const snapshotContract = toolContract("get_evidence_bundle");
   const processResources = new ProcessCaptureResourceScope();
@@ -411,6 +416,13 @@ export const registerSessionTools = (
   registerProcessComparisonTool(server, session, compareContract);
   registerArtifactComparisonTool(server, session, compareArtifactsContract);
   registerFunctionComparisonTool(server, session, compareFunctionsContract);
+  if (options.bindiff !== undefined)
+    registerBinaryDiffTool(
+      server,
+      session,
+      diffBinariesContract,
+      options.bindiff,
+    );
   registerNativeFunctionMatchingTool(server, session, logger);
   registerBundleComparisonTool(
     server,

@@ -1000,6 +1000,13 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   compare_artifacts: sessionEvidence,
   compare_wasm_interfaces: sessionEvidence,
   compare_functions: sessionEvidence,
+  diff_binaries: sessionEvidence,
+  export_binexport_protobuf: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   match_native_functions: sessionEvidence,
   compare_bundles: effects({ mutatesSession: true }),
   find_changed_behavior: sessionEvidence,

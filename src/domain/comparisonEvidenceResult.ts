@@ -14,12 +14,17 @@ import {
   processCaptureComparisonSchema,
   type ProcessCaptureComparison,
 } from "./process/processComparison.js";
+import {
+  binaryDiffResultSchema,
+  type BinaryDiffResult,
+} from "./bindiff/binaryDiff.js";
 import { err, ok, type Result } from "./result.js";
 
 type ComparisonResults = {
   readonly compare_artifacts: ArtifactComparisonResult;
   readonly compare_functions: FunctionComparisonResult;
   readonly compare_process_captures: ProcessCaptureComparison;
+  readonly diff_binaries: BinaryDiffResult;
 };
 
 /** One admitted comparison's envelope and its operation-specific parsed facts. */
@@ -47,6 +52,14 @@ export function readComparisonResult(
   if (operation === "compare_process_captures") {
     const parsed = readEvidencePayload(
       processCaptureComparisonSchema,
+      evidence.normalized_result,
+    );
+    if (!parsed.ok) return parsed;
+    return ok({ operation, evidence, result: parsed.value });
+  }
+  if (operation === "diff_binaries") {
+    const parsed = readEvidencePayload(
+      binaryDiffResultSchema,
       evidence.normalized_result,
     );
     if (!parsed.ok) return parsed;

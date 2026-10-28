@@ -6,6 +6,7 @@ import { artifactComparisonInputSchema } from "../domain/artifactComparison.js";
 import { callPathInputSchema } from "../domain/callPathSchemas.js";
 import { changedBehaviorInputSchema } from "../domain/changedBehavior.js";
 import { functionComparisonInputSchema } from "../domain/functionComparisonSchemas.js";
+import { binaryDiffInputSchema } from "../domain/bindiff/binaryDiff.js";
 import { processScenarioSchema } from "../domain/process/processScenario.js";
 import {
   recordUnknownInputSchema,
@@ -117,6 +118,11 @@ export const SESSION_TOOL_CONTRACTS = [
     "compare_functions",
     "Compare two explicit analyze_function Evidence records or exact retained session references across identity, exact provider text, calls, references, strings, and address-normalized CFG topology. Missing or provider-incompatible facets remain truncated or unknown; every conclusion cites both Evidence sets.",
     functionComparisonInputSchema,
+  ),
+  session(
+    "diff_binaries",
+    "Compare two retained inspect_artifact observations through a caller-supplied BinDiff adapter command. Both sides must still match the files on disk. Returns matched function pairs with similarity, confidence, addresses, and names-changed flags, plus unmatched counts. This is a provider-backed alternative to the bespoke compare_functions matcher, not a replacement; its Evidence is accepted by find_changed_behavior as static candidates. Missing files, mismatched digests, and unrecognized adapter rows remain unknown or errors, never equivalence.",
+    binaryDiffInputSchema,
   ),
   session(
     "compare_bundles",

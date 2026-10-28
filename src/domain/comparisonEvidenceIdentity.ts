@@ -18,6 +18,13 @@ export const FUNCTION_COMPARISON_PROVIDER = {
   version: "1",
 } as const;
 
+/** Canonical provider identity for provider-backed binary comparisons. */
+export const BINARY_DIFF_PROVIDER = {
+  id: "rea-binary-diff",
+  name: "REA BinDiff provider comparison",
+  version: "1",
+} as const;
+
 const COMPARISON_EVIDENCE_IDENTITIES = {
   compare_artifacts: {
     predicate: "rea.artifact-comparison",
@@ -30,6 +37,10 @@ const COMPARISON_EVIDENCE_IDENTITIES = {
   compare_process_captures: {
     predicate: "rea.process-comparison",
     provider: PROCESS_PROVIDER,
+  },
+  diff_binaries: {
+    predicate: "rea.binary-diff",
+    provider: BINARY_DIFF_PROVIDER,
   },
 } as const;
 

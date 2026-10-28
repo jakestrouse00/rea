@@ -107,6 +107,8 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "decompile_jar_archive",
   "recover_proto_definitions",
   "enumerate_grpc_reflection",
+  "diff_binaries",
+  "export_binexport_protobuf",
 ]);
 
 describe("CLI canonical tool coverage", () => {

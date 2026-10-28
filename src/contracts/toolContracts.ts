@@ -55,6 +55,7 @@ import { DOTNET_DECOMPILER_TOOL_CONTRACTS } from "./manageddecomp/dotnetDecompil
 import { PYTHON_DECOMPILER_TOOL_CONTRACTS } from "./pysrc/pythonDecompilerToolContracts.js";
 import { JVM_DECOMPILER_TOOL_CONTRACTS } from "./jvmdecomp/jvmDecompilerToolContracts.js";
 import { PROTOBUF_RECOVERY_TOOL_CONTRACTS } from "./protobufrecovery/protobufRecoveryToolContracts.js";
+import { BINDIFF_TOOL_CONTRACTS } from "./bindiff/bindiffToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -88,6 +89,7 @@ export const TOOL_CONTRACTS = [
   ...PYTHON_DECOMPILER_TOOL_CONTRACTS,
   ...JVM_DECOMPILER_TOOL_CONTRACTS,
   ...PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+  ...BINDIFF_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

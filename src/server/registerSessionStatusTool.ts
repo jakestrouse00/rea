@@ -62,6 +62,12 @@ export interface SessionAvailabilityProbes {
   readonly grpcReflectionAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly bindiffDiffAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly bindiffExportAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -99,6 +105,8 @@ const probeSessionAvailability = (
   readonly jvmDecompiler: ProviderAvailability | undefined;
   readonly protobufRecovery: ProviderAvailability | undefined;
   readonly grpcReflection: ProviderAvailability | undefined;
+  readonly bindiffDiff: ProviderAvailability | undefined;
+  readonly bindiffExport: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
@@ -117,6 +125,8 @@ const probeSessionAvailability = (
     probes.jvmDecompilerAvailability?.(signal) ?? undefined,
     probes.protobufRecoveryAvailability?.(signal) ?? undefined,
     probes.grpcReflectionAvailability?.(signal) ?? undefined,
+    probes.bindiffDiffAvailability?.(signal) ?? undefined,
+    probes.bindiffExportAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
@@ -135,6 +145,8 @@ const probeSessionAvailability = (
       jvmDecompiler,
       protobufRecovery,
       grpcReflection,
+      bindiffDiff,
+      bindiffExport,
       apktool,
       jeb,
       evmLimiter,
@@ -152,6 +164,8 @@ const probeSessionAvailability = (
       jvmDecompiler,
       protobufRecovery,
       grpcReflection,
+      bindiffDiff,
+      bindiffExport,
       apktool,
       jeb,
       evmLimiter,

@@ -128,6 +128,8 @@ const SOURCE_PATHS = {
   protobufContracts:
     "dist/contracts/protobufrecovery/protobufRecoveryToolContracts.js",
   protobufProvider: "dist/protobufrecovery/ProtobufRecoveryProvider.js",
+  bindiffContracts: "dist/contracts/bindiff/bindiffToolContracts.js",
+  bindiffProvider: "dist/bindiff/BindiffProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

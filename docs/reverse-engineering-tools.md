@@ -178,4 +178,6 @@ The decompiler lane is likewise caller-supplied. `REA_ILSPY_CMD_PATH` selects il
 
 Protobuf recovery selects pbtk or protodump through `REA_PBTK_COMMAND` / `REA_PROTODUMP_COMMAND`, and gRPC reflection selects grpcurl through `REA_GRPCURL_COMMAND`; all three require absolute paths. Recovered `.proto` files are published with digests and only their structure reaches Evidence. See [protobuf recovery](./protobuf-recovery.md).
 
+The binary-comparison lane selects a BinDiff adapter with `REA_BINDIFF_COMMAND` and a BinExport exporter with `REA_BINEXPORT_COMMAND`, both absolute and fail-closed. `diff_binaries` composes with `find_changed_behavior` as static candidates and remains a provider-backed alternative to `compare_functions`, not a replacement; `export_binexport_protobuf` publishes one `.BinExport` file with a digest. See [binary diffing](./binary-diffing.md).
+
 Provider capture limits are separate from the MCP response budget. A result that fits the provider limit may still exceed the default 10 MiB MCP response budget and return a transport `resource_constraint`. Configure `REA_MCP_MAX_RESPONSE_BYTES` to match a larger client receive buffer when that client supports one; otherwise use retained Evidence/export or complete CLI JSON output. See [MCP response limits](./mcp-contracts.md#tool-results).
