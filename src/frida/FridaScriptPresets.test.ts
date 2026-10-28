@@ -35,6 +35,18 @@ const OBJC_HOOK_SHAPES: Readonly<Record<string, RegExp>> = {
   "ssl-unpinning": /Interceptor\.attach\(\s*evaluate\s*,\s*\{/u,
 };
 
+/**
+ * How a preset that replaces an Objective-C method reads its `id` argument.
+ * `ObjC.implement` passes every `'@'` parameter as the raw pointer (it builds a
+ * bare NativeCallback; object wrapping belongs to `ObjC.registerClass`'s method
+ * wrappers), so a callback that compares `String(path)` never matches and the
+ * hook can only pass through. A method replacement must therefore name its
+ * conversion here.
+ */
+const OBJC_ID_CONVERSION: Readonly<Record<string, RegExp>> = {
+  "jail-root-detect-bypass": /new ObjC\.Object\(\s*path\s*\)/u,
+};
+
 describe("Frida script presets", () => {
   it("declares unique names that match the caller-visible enum", () => {
     for (const preset of FRIDA_SCRIPT_PRESETS) {
@@ -109,6 +121,26 @@ describe("Frida script presets", () => {
           `${preset.name}: declare the documented hook shape this preset uses`,
         );
       expect(objc, `${preset.name}: documented hook shape`).toMatch(shape);
+      if (!/ObjC\.implement\(/u.test(objc)) continue;
+      // A replaced method's id parameter is a raw pointer: it has to be read
+      // back through ObjC.Object before any comparison, never stringified.
+      const conversion = OBJC_ID_CONVERSION[preset.name];
+      if (conversion === undefined)
+        throw new Error(
+          `${preset.name}: declare how its replaced method reads its id argument`,
+        );
+      expect(
+        objc,
+        `${preset.name}: id argument read through ObjC.Object`,
+      ).toMatch(conversion);
+      expect(
+        objc,
+        `${preset.name}: a raw id is not a path until it is wrapped`,
+      ).not.toMatch(/String\(\s*path\s*\)/u);
+      // The saved original keeps the untouched pointer.
+      expect(objc, `${preset.name}: original receives the raw pointer`).toMatch(
+        /oldImpl\(\s*self\s*,\s*sel\s*,\s*path\s*\)/u,
+      );
     }
   });
 

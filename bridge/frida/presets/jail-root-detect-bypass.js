@@ -6,8 +6,10 @@
 // session running. Structure only: a hook name, its resolution status, and a
 // call counter. No file content, property value, or package list is emitted.
 //
-// Emitted rows: {"event":"rea-preset","preset":"jail-root-detect-bypass",...}
-// and {"event":"rea-preset-bypass","hook":NAME,"count":N}.
+// Emitted rows: {"event":"rea-preset","preset":"jail-root-detect-bypass",...},
+// {"event":"rea-preset-bypass","hook":NAME,"count":N} per refused probe, and
+// {"event":"rea-preset-omission","hook":NAME,"count":N,"reason":...} when a
+// probe could not be read as a path at all.
 
 const PRESET = "jail-root-detect-bypass";
 
@@ -20,6 +22,16 @@ function counter(hook) {
   return function () {
     count += 1;
     send({ event: "rea-preset-bypass", preset: PRESET, hook: hook, count: count });
+  };
+}
+
+// A check the hook could not evaluate is reported, never silently passed
+// through: an installed hook that observes nothing must say so.
+function omission(hook, reason) {
+  let count = 0;
+  return function () {
+    count += 1;
+    send({ event: "rea-preset-omission", preset: PRESET, hook: hook, count: count, reason: reason });
   };
 }
 
@@ -135,23 +147,28 @@ function hookObjC() {
       return;
     }
     const bump = counter("NSFileManager.fileExistsAtPath");
+    const omit = omission("NSFileManager.fileExistsAtPath", "the path argument was not a readable object");
     const oldImpl = method.implementation;
     method.implementation = ObjC.implement(method, function (self, sel, path) {
-      let text = "";
+      // ObjC.implement passes every '@' argument as the raw id pointer: it does
+      // not wrap objects the way ObjC.registerClass method wrappers do. So the
+      // path is read back through ObjC.Object here, and the saved original gets
+      // the untouched pointer.
+      let text = null;
       try {
-        text = path instanceof ObjC.Object ? path.toString() : String(path);
+        if (path !== null && !path.isNull()) text = new ObjC.Object(path).toString();
       } catch (error) {
-        text = "";
+        text = null;
       }
-      if (matches(text)) {
+      if (text === null) {
+        omit();
+      } else if (matches(text)) {
         bump();
         return 0;
       }
-      // The saved original takes (self, _cmd, ...); hand it the raw handle so
-      // it is a pointer argument, not a bridged object wrapper.
-      return oldImpl(self, sel, path instanceof ObjC.Object ? path.handle : path);
+      return oldImpl(self, sel, path);
     });
-    report("NSFileManager.fileExistsAtPath", "installed", "jailbreak path markers report absent");
+    report("NSFileManager.fileExistsAtPath", "installed", "jailbreak path markers report absent; a probe this agent cannot read is counted as an omission");
   } catch (error) {
     report("NSFileManager.fileExistsAtPath", "unavailable", String(error));
   }

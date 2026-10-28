@@ -30,6 +30,13 @@ function and is attached with `Interceptor.attach`, replacing its result. A hook
 either installs or reports why it could not; `keystore-dump-structure` hooks
 nothing and declares the Keystore APIs it calls.
 
+Objective-C arguments arrive at an `ObjC.implement` callback as raw `id`
+pointers, not as wrapped objects, so the `NSFileManager` hook reads its `path`
+argument back through `ObjC.Object` before matching, and hands the untouched
+pointer to the saved original. If a probe cannot be read as an object at all, it
+is passed through and counted in a `rea-preset-omission` row: an installed hook
+never claims to have evaluated a check it skipped.
+
 An unlisted check in the target keeps working. A preset is a starting point for
 observation, not a claim that every pinning or detection mechanism in the app
 has been addressed.
