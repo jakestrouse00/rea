@@ -15,10 +15,17 @@ caller authoring the same agent again.
 | `keystore-dump-structure` | `AndroidKeyStore` alias enumeration and each key's `getAlgorithm`/`getFormat`                                                                          | the alias-structure surfaces          |
 
 Each preset is a **minimal reference agent authored for this repository**. It
-hooks only the checks listed above and reports structure only: a hook name,
+touches only the checks listed above and reports structure only: a hook name,
 whether it resolved, a counter, or a key alias with its algorithm and format.
 No certificate, key material, file content, property value, or payload byte is
 sent, and no script text is returned or recorded.
+
+Hooks are installed with the documented Frida idioms only: Android hooks replace
+the Java method's `implementation`, the `NSFileManager` hook assigns the
+Objective-C method's `implementation` slot and calls the saved original, and
+`SecTrustEvaluateWithError` is attached with `Interceptor.attach`. A hook either
+installs or reports why it could not; `keystore-dump-structure` hooks nothing and
+declares the Keystore APIs it calls.
 
 An unlisted check in the target keeps working. A preset is a starting point for
 observation, not a claim that every pinning or detection mechanism in the app
@@ -65,6 +72,12 @@ after the load.
 - It does not install Frida server, gadget, or any platform tooling.
 - It does not add pinning bypass to the mitmproxy lane; that lane's proxy trust
   stays caller-supplied.
+- It does not hook `-[NSURLSessionDelegate URLSession:didReceiveChallenge:
+  completionHandler:]`: that method is implemented by the app's own delegate
+  class, not by `NSURLSession`, so the preset claims no such hook. iOS coverage
+  is the Security.framework trust evaluation every system TLS stack calls; an
+  app that validates a chain without calling `SecTrustEvaluateWithError` is not
+  addressed.
 - It does not verify the preset's effectiveness against a specific app. Verify
   on your own target, and treat an absence of bypass messages as an absence of
   the hooked call, never as proof the app is unaffected.

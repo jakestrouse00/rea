@@ -52,6 +52,54 @@ describe("Frida script presets", () => {
     expect(read.error.message).toContain("load_frida_script_preset");
   });
 
+  it("installs hooks only with documented Frida APIs", async () => {
+    // No Frida runtime exists in this workspace, so the shipped agents are
+    // checked structurally: the removed/nonexistent ObjC helpers must not come
+    // back, and an implementation slot is assigned, never invoked.
+    const forbidden = [
+      {
+        pattern: /ObjC\.intercept/u,
+        reason: "ObjC.intercept is not part of Frida's ObjC bridge",
+      },
+      {
+        pattern: /ObjC\.implement\s*\(/u,
+        reason:
+          "ObjC.implement builds a replacement pointer from a method object; it does not install a hook",
+      },
+      {
+        pattern: /ObjC\.Block/u,
+        reason:
+          "completion blocks are reached by assigning their implementation, not by constructing one",
+      },
+      {
+        pattern: /implementation\s*\(/u,
+        reason:
+          "an implementation slot is assigned (method.implementation = fn) or attached, never called",
+      },
+    ];
+    for (const preset of FRIDA_SCRIPT_PRESETS) {
+      const read = await readFridaScriptPreset(preset.name, "test");
+      if (!read.ok) throw new Error("preset unreadable");
+      for (const { pattern, reason } of forbidden)
+        expect(
+          pattern.test(read.value.source),
+          `${preset.name}: ${reason}`,
+        ).toBe(false);
+    }
+  });
+
+  it("declares only surfaces its own source names", async () => {
+    for (const preset of FRIDA_SCRIPT_PRESETS) {
+      const read = await readFridaScriptPreset(preset.name, "test");
+      if (!read.ok) throw new Error("preset unreadable");
+      for (const method of preset.detectedMethods)
+        expect(
+          read.value.source.includes(method),
+          `${preset.name} declares ${method}, which its source never names`,
+        ).toBe(true);
+    }
+  });
+
   it("keeps every preset's source free of upstream project text", async () => {
     for (const preset of FRIDA_SCRIPT_PRESETS) {
       const read = await readFridaScriptPreset(preset.name, "test");

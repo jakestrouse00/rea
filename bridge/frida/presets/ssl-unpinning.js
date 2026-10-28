@@ -10,6 +10,10 @@
 // Emitted rows: {"event":"rea-preset","preset":"ssl-unpinning","hook":NAME,
 //               "status":"installed"|"unavailable"|"failed","detail":...}
 // and {"event":"rea-preset-bypass","hook":NAME,"count":N} per intercepted call.
+//
+// Android hooks replace the Java method implementation; the iOS hook attaches
+// to Security.framework's trust evaluation. Both are the documented Frida
+// idioms, so a hook either installs or reports why it could not.
 
 const PRESET = "ssl-unpinning";
 
@@ -72,43 +76,29 @@ function hookJava() {
 }
 
 function hookObjC() {
+  // Every iOS TLS trust decision funnels through Security.framework's
+  // evaluation entry point, so hooking it covers NSURLSession, WebKit, and
+  // third-party clients without naming an app-specific delegate class. The
+  // NSURLSession delegate method is implemented by the app, not by
+  // NSURLSession, so this agent does not claim to hook it.
   try {
-    const NSURLSession = ObjC.classes.NSURLSession;
-    if (NSURLSession === undefined) {
-      report("NSURLSession.delegate", "unavailable", "NSURLSession is not loaded");
+    const evaluate = Module.findExportByName(null, "SecTrustEvaluateWithError");
+    if (evaluate === null) {
+      report("SecTrustEvaluateWithError", "unavailable", "the symbol is not exported on this OS version");
       return;
     }
-    const bump = counter("NSURLSession.delegate");
-    const selector = "- URLSession:didReceiveChallenge:completionHandler:";
-    const method = NSURLSession[selector];
-    if (method === undefined) {
-      report("NSURLSession.delegate", "unavailable", "the delegate selector is not implemented by this class");
-      return;
-    }
-    const replacement = ObjC.implement(NSURLSession, selector, function (handle, selectorName, session, challenge, completionHandler) {
-      bump();
-      // NSURLSessionAuthChallengeUseCredential with a credential built from
-      // the presented server trust: the default handling (pinning included)
-      // is skipped, and no certificate bytes leave the target.
-      const space = new ObjC.Object(challenge).protectionSpace();
-      const credential = ObjC.classes.NSURLCredential.credentialForTrust_(space.serverTrust());
-      new ObjC.Block(completionHandler).implementation(1, credential);
+    const bump = counter("SecTrustEvaluateWithError");
+    Interceptor.attach(evaluate, {
+      onLeave(retval) {
+        bump();
+        // BOOL result: the presented chain is accepted. Pinning is skipped
+        // without reading any certificate byte in this agent.
+        retval.replace(ptr(1));
+      },
     });
-    ObjC.intercept(method, replacement);
-    report("NSURLSession.delegate", "installed", "session-level challenge handler accepts the presented credential");
+    report("SecTrustEvaluateWithError", "installed", "trust evaluation reports success for every chain");
   } catch (error) {
-    report("NSURLSession.delegate", "unavailable", String(error));
-  }
-
-  try {
-    const NSURLSessionConfiguration = ObjC.classes.NSURLSessionConfiguration;
-    if (NSURLSessionConfiguration === undefined) {
-      report("NSURLSession.defaultSessionConfiguration", "unavailable", "NSURLSessionConfiguration is not loaded");
-      return;
-    }
-    report("NSURLSession.defaultSessionConfiguration", "available", "session configuration class loaded");
-  } catch (error) {
-    report("NSURLSession.defaultSessionConfiguration", "unavailable", String(error));
+    report("SecTrustEvaluateWithError", "unavailable", String(error));
   }
 }
 

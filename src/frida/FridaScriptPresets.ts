@@ -26,12 +26,12 @@ export const FRIDA_SCRIPT_PRESETS: readonly FridaScriptPresetDeclaration[] = [
     name: "ssl-unpinning",
     title: "TLS certificate pinning bypass",
     description:
-      "Hooks OkHttp CertificatePinner, conscrypt TrustManagerImpl, X509TrustManagerExtensions, and the NSURLSession challenge delegate so an intercepted TLS session continues past certificate pinning. Reports each hook's installation status and a per-hook interception counter.",
+      "Replaces the Android pinning checks (OkHttp CertificatePinner, conscrypt TrustManagerImpl, X509TrustManagerExtensions) and attaches to Security.framework's SecTrustEvaluateWithError on iOS, so an intercepted TLS session continues past certificate pinning. The NSURLSession delegate method is implemented by the app, not by NSURLSession, so this preset does not claim it. Reports each hook's installation status and a per-hook interception counter.",
     detectedMethods: [
       "okhttp3.CertificatePinner.check",
       "conscrypt.TrustManagerImpl.checkTrustedRecursive",
       "X509TrustManagerExtensions.checkServerTrusted",
-      "NSURLSession.delegate-challenge",
+      "SecTrustEvaluateWithError",
     ],
     fileName: "ssl-unpinning.js",
   },
@@ -39,7 +39,7 @@ export const FRIDA_SCRIPT_PRESETS: readonly FridaScriptPresetDeclaration[] = [
     name: "jail-root-detect-bypass",
     title: "Jailbreak/root detection bypass",
     description:
-      "Hooks Java file/exec/build-tag/package-manager probes and the NSFileManager path probe, answering the documented jailbreak and root markers as absent. File content and property values are never read; each refusal is counted by hook.",
+      "Replaces Java file/exec/build-tag/package-manager probes and the Objective-C NSFileManager path probe, answering the documented jailbreak and root markers as absent. File content and property values are never read; each refusal is counted by hook.",
     detectedMethods: [
       "java.io.File.exists",
       "java.lang.Runtime.exec",
@@ -53,10 +53,12 @@ export const FRIDA_SCRIPT_PRESETS: readonly FridaScriptPresetDeclaration[] = [
     name: "keystore-dump-structure",
     title: "Android Keystore structure inventory",
     description:
-      "Enumerates AndroidKeyStore aliases and reports each entry's structural facts (alias, algorithm, format, entry type). Key material, encoded bytes, and certificates are never read or sent.",
+      "Reads AndroidKeyStore structure once and reports each entry's structural facts (alias, algorithm, format, entry type). It hooks nothing; the declared methods are the Keystore APIs it calls. Key material, encoded bytes, and certificates are never read or sent.",
     detectedMethods: [
-      "java.security.KeyStore.AndroidKeyStore.aliases",
+      "java.security.KeyStore.getInstance",
+      "java.security.KeyStore.aliases",
       "java.security.Key.getAlgorithm",
+      "java.security.Key.getFormat",
     ],
     fileName: "keystore-dump-structure.js",
   },

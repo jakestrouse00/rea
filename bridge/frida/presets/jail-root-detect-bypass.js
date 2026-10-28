@@ -119,39 +119,36 @@ function hookJava() {
 }
 
 function hookObjC() {
+  // -[NSFileManager fileExistsAtPath:] is the single path probe the documented
+  // jailbreak checks share. The replacement is installed the documented Frida
+  // way (assign the method's implementation slot), and the original
+  // implementation is kept as the pointer it is, then invoked with call().
   try {
     const NSFileManager = ObjC.classes.NSFileManager;
-    const bump = counter("NSFileManager.fileExistsAtPath");
     const selector = "- fileExistsAtPath:";
     const method = NSFileManager[selector];
     if (method === undefined) {
       report("NSFileManager.fileExistsAtPath", "unavailable", "the selector is not implemented");
       return;
     }
-    const replacement = ObjC.implement(NSFileManager, selector, function (handle, selectorName, path) {
-      const text = new ObjC.Object(path).toString();
+    const bump = counter("NSFileManager.fileExistsAtPath");
+    const original = method.implementation;
+    method.implementation = function (path) {
+      let text = "";
+      try {
+        text = new ObjC.Object(path).toString();
+      } catch (error) {
+        text = "";
+      }
       if (matches(text)) {
         bump();
         return false;
       }
-      return original(handle, selectorName, path);
-    });
-    const original = method.implementation;
-    ObjC.intercept(method, replacement);
+      return original.call(this, path);
+    };
     report("NSFileManager.fileExistsAtPath", "installed", "jailbreak path markers report absent");
   } catch (error) {
     report("NSFileManager.fileExistsAtPath", "unavailable", String(error));
-  }
-
-  try {
-    const UIApplication = ObjC.classes.UIApplication;
-    if (UIApplication === undefined) {
-      report("UIApplication.canOpenURL", "unavailable", "UIApplication is not loaded");
-      return;
-    }
-    report("UIApplication.canOpenURL", "available", "URL scheme probes are observed but not rewritten");
-  } catch (error) {
-    report("UIApplication.canOpenURL", "unavailable", String(error));
   }
 }
 
