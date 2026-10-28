@@ -120,9 +120,12 @@ function hookJava() {
 
 function hookObjC() {
   // -[NSFileManager fileExistsAtPath:] is the single path probe the documented
-  // jailbreak checks share. The replacement is installed the documented Frida
-  // way (assign the method's implementation slot), and the original
-  // implementation is kept as the pointer it is, then invoked with call().
+  // jailbreak checks share. An Objective-C implementation slot holds a
+  // NativePointer, not a JS function: the bridge's setter compares pointers
+  // (`imp.equals(oldImp)`) and rejects a plain function. So the replacement is
+  // built with ObjC.implement(method, callback), whose callback receives the
+  // full method signature (self, sel, ...args), and the saved original is a
+  // full-signature NativeFunction called with those same arguments.
   try {
     const NSFileManager = ObjC.classes.NSFileManager;
     const selector = "- fileExistsAtPath:";
@@ -132,20 +135,22 @@ function hookObjC() {
       return;
     }
     const bump = counter("NSFileManager.fileExistsAtPath");
-    const original = method.implementation;
-    method.implementation = function (path) {
+    const oldImpl = method.implementation;
+    method.implementation = ObjC.implement(method, function (self, sel, path) {
       let text = "";
       try {
-        text = new ObjC.Object(path).toString();
+        text = path instanceof ObjC.Object ? path.toString() : String(path);
       } catch (error) {
         text = "";
       }
       if (matches(text)) {
         bump();
-        return false;
+        return 0;
       }
-      return original.call(this, path);
-    };
+      // The saved original takes (self, _cmd, ...); hand it the raw handle so
+      // it is a pointer argument, not a bridged object wrapper.
+      return oldImpl(self, sel, path instanceof ObjC.Object ? path.handle : path);
+    });
     report("NSFileManager.fileExistsAtPath", "installed", "jailbreak path markers report absent");
   } catch (error) {
     report("NSFileManager.fileExistsAtPath", "unavailable", String(error));

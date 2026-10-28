@@ -10,7 +10,7 @@ caller authoring the same agent again.
 
 | Preset                    | What it hooks                                                                                                                                          | Evidence reports                      |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------- |
-| `ssl-unpinning`           | OkHttp `CertificatePinner`, conscrypt `TrustManagerImpl`, `X509TrustManagerExtensions`, the `NSURLSession` challenge delegate                          | the four addressed pinning methods    |
+| `ssl-unpinning`           | OkHttp `CertificatePinner`, conscrypt `TrustManagerImpl`, `X509TrustManagerExtensions`, and on iOS Security.framework's `SecTrustEvaluateWithError`    | the four addressed pinning surfaces   |
 | `jail-root-detect-bypass` | `java.io.File.exists`, `java.lang.Runtime.exec`, `android.os.Build.TAGS`, `ApplicationPackageManager.getPackageInfo`, `NSFileManager.fileExistsAtPath` | the five addressed detection surfaces |
 | `keystore-dump-structure` | `AndroidKeyStore` alias enumeration and each key's `getAlgorithm`/`getFormat`                                                                          | the alias-structure surfaces          |
 
@@ -20,12 +20,15 @@ whether it resolved, a counter, or a key alias with its algorithm and format.
 No certificate, key material, file content, property value, or payload byte is
 sent, and no script text is returned or recorded.
 
-Hooks are installed with the documented Frida idioms only: Android hooks replace
-the Java method's `implementation`, the `NSFileManager` hook assigns the
-Objective-C method's `implementation` slot and calls the saved original, and
-`SecTrustEvaluateWithError` is attached with `Interceptor.attach`. A hook either
-installs or reports why it could not; `keystore-dump-structure` hooks nothing and
-declares the Keystore APIs it calls.
+Hooks are installed with the documented Frida idioms only. Android hooks replace
+a Java method's `implementation` with a plain function. An Objective-C
+implementation slot holds a `NativePointer`, so `NSFileManager.fileExistsAtPath`
+is replaced with `ObjC.implement(method, function (self, sel, path) { … })`
+assigned to that slot, calling the saved original (a full-signature
+`NativeFunction`) with the same arguments. `SecTrustEvaluateWithError` is a C
+function and is attached with `Interceptor.attach`, replacing its result. A hook
+either installs or reports why it could not; `keystore-dump-structure` hooks
+nothing and declares the Keystore APIs it calls.
 
 An unlisted check in the target keeps working. A preset is a starting point for
 observation, not a claim that every pinning or detection mechanism in the app

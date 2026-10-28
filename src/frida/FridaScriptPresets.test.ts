@@ -14,6 +14,27 @@ import { FRIDA_SCRIPT_PRESET_NAMES } from "../domain/fridaScriptPreset.js";
 
 const presetNames = new Set<string>();
 
+/**
+ * The Objective-C section of one preset: its `hookObjC` function through the
+ * end of the file. Java halves stay above it, so a Java `implementation`
+ * assignment cannot be mistaken for an Objective-C one.
+ */
+const objcRegion = (source: string): string | null => {
+  const start = source.indexOf("function hookObjC() {");
+  return start === -1 ? null : source.slice(start);
+};
+
+/**
+ * The documented hook shape each preset with an Objective-C section must use.
+ * A new ObjC preset has to add its shape here, so an unreviewed hook idiom
+ * cannot ship silently.
+ */
+const OBJC_HOOK_SHAPES: Readonly<Record<string, RegExp>> = {
+  "jail-root-detect-bypass":
+    /method\.implementation = ObjC\.implement\(\s*method\s*,\s*function\s*\(\s*self\s*,\s*sel\b/u,
+  "ssl-unpinning": /Interceptor\.attach\(\s*evaluate\s*,\s*\{/u,
+};
+
 describe("Frida script presets", () => {
   it("declares unique names that match the caller-visible enum", () => {
     for (const preset of FRIDA_SCRIPT_PRESETS) {
@@ -52,40 +73,62 @@ describe("Frida script presets", () => {
     expect(read.error.message).toContain("load_frida_script_preset");
   });
 
-  it("installs hooks only with documented Frida APIs", async () => {
+  it("hooks Objective-C methods the way the vendored bridge accepts them", async () => {
     // No Frida runtime exists in this workspace, so the shipped agents are
-    // checked structurally: the removed/nonexistent ObjC helpers must not come
-    // back, and an implementation slot is assigned, never invoked.
-    const forbidden = [
-      {
-        pattern: /ObjC\.intercept/u,
-        reason: "ObjC.intercept is not part of Frida's ObjC bridge",
-      },
-      {
-        pattern: /ObjC\.implement\s*\(/u,
-        reason:
-          "ObjC.implement builds a replacement pointer from a method object; it does not install a hook",
-      },
-      {
-        pattern: /ObjC\.Block/u,
-        reason:
-          "completion blocks are reached by assigning their implementation, not by constructing one",
-      },
-      {
-        pattern: /implementation\s*\(/u,
-        reason:
-          "an implementation slot is assigned (method.implementation = fn) or attached, never called",
-      },
-    ];
-    for (const preset of FRIDA_SCRIPT_PRESETS) {
-      const read = await readFridaScriptPreset(preset.name, "test");
+    // checked structurally against the frida-objc-bridge contract: an
+    // implementation slot holds a NativePointer (the bridge's setter compares
+    // `imp.equals(oldImp)`), so a plain JS function is rejected at assignment.
+    // `ObjC.implement(method, fn)` is the documented way to build that
+    // pointer; `ObjC.implement(Class, selector, fn)` and the nonexistent
+    // `ObjC.intercept` are the broken forms.
+    const sourceOf = async (
+      name: (typeof FRIDA_SCRIPT_PRESETS)[number]["name"],
+    ) => {
+      const read = await readFridaScriptPreset(name, "test");
       if (!read.ok) throw new Error("preset unreadable");
-      for (const { pattern, reason } of forbidden)
-        expect(
-          pattern.test(read.value.source),
-          `${preset.name}: ${reason}`,
-        ).toBe(false);
+      return read.value.source;
+    };
+    for (const preset of FRIDA_SCRIPT_PRESETS) {
+      const source = await sourceOf(preset.name);
+      expect(source, `${preset.name}: ObjC.intercept`).not.toMatch(
+        /ObjC\.intercept/u,
+      );
+      expect(
+        source,
+        `${preset.name}: ObjC.implement must take a method object, not a class`,
+      ).not.toMatch(/ObjC\.implement\(\s*(?!method\b)/u);
+      const objc = objcRegion(source);
+      if (objc === null) continue;
+      expect(
+        objc,
+        `${preset.name}: an Objective-C implementation slot takes a pointer built by ObjC.implement`,
+      ).not.toMatch(/\.implementation\s*=\s*function\b/u);
+      const shape = OBJC_HOOK_SHAPES[preset.name];
+      if (shape === undefined)
+        throw new Error(
+          `${preset.name}: declare the documented hook shape this preset uses`,
+        );
+      expect(objc, `${preset.name}: documented hook shape`).toMatch(shape);
     }
+  });
+
+  it("keeps the Java and C hook idioms the bridge documents", async () => {
+    const ssl = await (async () => {
+      const read = await readFridaScriptPreset("ssl-unpinning", "test");
+      if (!read.ok) throw new Error("preset unreadable");
+      return read.value.source;
+    })();
+    // Java methods take a plain replacement function.
+    expect(ssl).toMatch(
+      /CertificatePinner\.check\.overload[\s\S]*?\.implementation = function/u,
+    );
+    // The iOS hook attaches to the exported trust function and replaces its result.
+    expect(ssl).toMatch(
+      /Module\.findExportByName\(null, "SecTrustEvaluateWithError"\)/u,
+    );
+    expect(ssl).toMatch(
+      /Interceptor\.attach\(evaluate, \{[\s\S]*?retval\.replace\(/u,
+    );
   });
 
   it("declares only surfaces its own source names", async () => {
