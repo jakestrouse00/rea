@@ -286,6 +286,22 @@ describe("tool effects", () => {
       });
   });
 
+  it("never advertises a retrying replay close as a safe no-op", () => {
+    for (const name of [
+      "http_replay_session_start",
+      "http_replay_send",
+      "http_replay_session_close",
+    ] as const) {
+      expect(TOOL_EFFECTS[name]?.idempotent, name).toBe(false);
+      expect(
+        TOOL_CONTRACTS.find((contract) => contract.name === name)?.annotations
+          .idempotentHint,
+        name,
+      ).toBe(false);
+    }
+    expect(TOOL_EFFECTS["http_replay_session_status"]?.idempotent).toBe(true);
+  });
+
   it("marks automatic GDB detach as destructive target execution", () => {
     const effects = TOOL_EFFECTS["close_gdb_session"];
     if (effects === undefined)

@@ -145,6 +145,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   http_replay_session_close: effects({
     mutatesSession: true,
     writesFilesystem: true,
+    idempotent: false,
   }),
   register_fuzzing_campaign: effects({
     mutatesSession: true,

@@ -44,6 +44,59 @@ describe("replay request composition", () => {
     ]);
   });
 
+  it("replaces every pair of a duplicated name instead of the first", () => {
+    const captured: ReplayRequest = {
+      ...base(),
+      headers: [
+        { name: "Cookie", value: "session=stale" },
+        { name: "x-trace", value: "a" },
+        { name: "cookie", value: "refresh=stale" },
+        { name: "x-trace", value: "b" },
+      ],
+    };
+    const composed = composeReplayRequest(captured, {
+      setHeaders: [{ name: "cookie", value: "session=new=1" }],
+    });
+    expect(composed.ok).toBe(true);
+    if (!composed.ok) return;
+    expect(composed.value.headers).toEqual([
+      { name: "x-trace", value: "a" },
+      { name: "x-trace", value: "b" },
+      { name: "cookie", value: "session=new=1" },
+    ]);
+    const wire = composeReplayWireRequest(composed.value);
+    expect(wire.ok).toBe(true);
+    const cookiePairs = wire.ok
+      ? wire.value.headers.filter(
+          (header) => header.name.toLowerCase() === "cookie",
+        )
+      : [];
+    expect(cookiePairs).toEqual([{ name: "cookie", value: "session=new=1" }]);
+    expect(JSON.stringify(wire.ok ? wire.value.headers : [])).not.toContain(
+      "stale",
+    );
+  });
+
+  it("keeps one pair when a mutation repeats the same set name", () => {
+    const composed = composeReplayRequest(base(), {
+      setHeaders: [
+        { name: "x-probe", value: "first" },
+        { name: "X-Probe", value: "second" },
+      ],
+    });
+    expect(composed.ok && composed.value.headers.at(-1)).toEqual({
+      name: "X-Probe",
+      value: "second",
+    });
+    expect(
+      composed.ok
+        ? composed.value.headers.filter(
+            (header) => header.name.toLowerCase() === "x-probe",
+          )
+        : [],
+    ).toHaveLength(1);
+  });
+
   it("upper-cases the method and clears the body only when the caller asks", () => {
     const composed = composeReplayRequest(base(), {
       method: " get ",

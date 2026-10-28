@@ -217,18 +217,20 @@ export const composeReplayRequest = (
   const removed = new Set(
     (mutation.removeHeaders ?? []).map((name) => name.toLowerCase()),
   );
-  const headers = base.headers.filter(
-    (header) => !removed.has(header.name.toLowerCase()),
-  );
+  // A set owns its name completely: every earlier pair of that name is
+  // dropped, including duplicates a capture carried, and one pair survives.
+  // A later set entry for the same name replaces the value at its first
+  // position, so a caller cannot leave two pairs behind either way.
+  const setByName = new Map<string, ReplayHeader>();
   for (const [index, header] of (mutation.setHeaders ?? []).entries()) {
     issues.push(...headerIssues(header, ["set_headers", index]));
-    const name = header.name.toLowerCase();
-    const existing = headers.findIndex(
-      (candidate) => candidate.name.toLowerCase() === name,
-    );
-    if (existing === -1) headers.push(header);
-    else headers[existing] = header;
+    setByName.set(header.name.toLowerCase(), header);
   }
+  const headers = base.headers.filter((header) => {
+    const name = header.name.toLowerCase();
+    return !removed.has(name) && !setByName.has(name);
+  });
+  headers.push(...setByName.values());
   const body = mutation.body ?? base.body;
   issues.push(...bodyIssues(body, ["body"]));
   if (method === "HEAD" && body.kind !== "none")

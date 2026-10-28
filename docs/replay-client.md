@@ -112,6 +112,11 @@ server is never adopted, rewritten, or deleted: `status`, `send`, and `close`
 return a typed input error naming the file. Counters describe this server's own
 dispatches, not the target's behavior.
 
+`http_replay_session_close` is not idempotent: a second close of the same
+session is a typed input error, not a no-op, so the tool advertises
+`idempotentHint: false`. Retrying a close is only safe after a close that
+reported an unremovable record.
+
 ## Composition contract for later lanes
 
 `http_replay_send` is a thin projection over a reusable send core. Later batches
