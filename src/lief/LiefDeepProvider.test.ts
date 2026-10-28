@@ -37,17 +37,12 @@ const ELF_REPORT = {
       offset: null,
     },
   ],
-  structure_summary: {
-    section_count: 4,
-    segment_count: 3,
-    linked_library_count: 1,
-  },
+  structure_summary: { section_count: 4, segment_count: 3 },
   dynamic: {
-    interpreter: "/lib64/ld-linux-x86-64.so.2",
     soname: "libexample.so.1",
-    needed: ["libc.so.6"],
     rpath: [],
     runpath: ["/opt/run"],
+    needed_count: 1,
     entries: [{ tag: "flags_1", value: 1 }],
   },
   macho: null,
@@ -60,10 +55,7 @@ const ELF_REPORT = {
     pdb_reference: null,
   },
   truncated: {
-    architectures: false,
     dynamic_entries: false,
-    libraries: false,
-    load_commands: false,
     data_directories: false,
     debug_entries: false,
     debug_sections: false,
@@ -111,7 +103,12 @@ const DEBUG_REPORT = {
       reason: null,
     },
   ],
-  truncated: { queries: false, matches: false, dwarf_functions: false },
+  truncated: {
+    queries: false,
+    matches: false,
+    dwarf_functions: false,
+    public_symbols: false,
+  },
   complete: true,
   limitations: [],
 } as const;
@@ -189,7 +186,7 @@ describe("LiefDeepProvider structure reports", () => {
       bytes: ARTIFACT_BYTES.length,
     });
     expect(report.value.format).toBe("elf");
-    expect(report.value.dynamic?.needed).toEqual(["libc.so.6"]);
+    expect(report.value.dynamic?.needed_count).toBe(1);
     expect(report.value.limitations).toContain(
       "LIEF-derived facts are the caller-selected release's interpretation; REA does not re-derive them.",
     );
@@ -416,6 +413,26 @@ describe("LiefDeepProvider debug-info lookups", () => {
     const report = await selected.provider.extractPdbDwarfInfo({
       path: selected.path,
       queries: [{ kind: "symbol", name: "main" }],
+    });
+    expect(report.ok).toBe(false);
+    if (report.ok) throw new Error("expected refusal");
+    expect(report.error._tag).toBe("AnalysisOutputError");
+  });
+
+  it("refuses a frame that claims completeness while a truncation row is set", async () => {
+    const selected = await harness(() =>
+      frame("extract_pdb_dwarf_info", {
+        ...DEBUG_REPORT,
+        truncated: {
+          queries: true,
+          matches: false,
+          dwarf_functions: false,
+          public_symbols: false,
+        },
+      }),
+    );
+    const report = await selected.provider.extractPdbDwarfInfo({
+      path: selected.path,
     });
     expect(report.ok).toBe(false);
     if (report.ok) throw new Error("expected refusal");

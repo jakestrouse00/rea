@@ -20,29 +20,36 @@ the doctor entry in `src/lief/LiefDoctor.ts`.
 ## What this lane owns, and what it leaves alone
 
 LIEF is a _second opinion on declarations_, not a replacement for the tools
-that already own a fact. `inspect_binary_deep` returns counts for sections,
-segments and linked libraries and lists each delegated fact in
-`delegated_facts`, naming the tool that owns it:
+that already own a fact. Where a detail belongs to another lane,
+`inspect_binary_deep` returns only its count and lists the fact in
+`delegated_facts` with the tool that owns it:
 
-| Fact                                     | Owning tool               |
-| ---------------------------------------- | ------------------------- |
-| Section/segment file layout, relocations | `inspect_binary_layout`   |
-| ELF notes, build-id                      | `inspect_elf_notes`       |
-| Exported symbols and addresses           | `inspect_native_exports`  |
-| PE imports                               | `inspect_pe_imports`      |
-| PE TLS callbacks, load configuration     | `inspect_pe_load_config`  |
-| Authenticode certificate table           | `inspect_pe_certificates` |
-| Mach-O header, sections, symbol table    | `inspect_macho`           |
-| Code signatures, entitlements            | `inspect_signature`       |
+| Fact                                           | Owning tool               |
+| ---------------------------------------------- | ------------------------- |
+| Section/segment file layout, relocations       | `inspect_binary_layout`   |
+| Program interpreter, `DT_NEEDED` library names | `inspect_binary_layout`   |
+| ELF notes, build-id                            | `inspect_elf_notes`       |
+| Exported symbols and addresses                 | `inspect_native_exports`  |
+| PE imports                                     | `inspect_pe_imports`      |
+| PE TLS callbacks, load configuration           | `inspect_pe_load_config`  |
+| Authenticode certificate table                 | `inspect_pe_certificates` |
+| Mach-O header, sections, symbol table          | `inspect_macho`           |
+| Mach-O UUID                                    | `inspect_macho`           |
+| Linked dylib names and version pairs           | `inspect_macho`           |
+| Mach-O load-command inventory                  | `inspect_macho`           |
+| Code signatures, entitlements                  | `inspect_signature`       |
 
-`inspect_binary_deep` adds:
+`inspect_binary_deep` adds, and carries counts rather than a second copy of
+anything the table above already owns:
 
-- container classification, including universal Mach-O, and one row per
-  architecture with entry point, image base and fat-slice file span;
-- ELF interpreter, soname, `DT_NEEDED`, `DT_RPATH`/`DT_RUNPATH` and typed
-  dynamic-tag/value rows;
-- Mach-O UUID, linked dylibs with their current and compatibility versions, and
-  the load-command inventory (kind, size, segment name);
+- container classification, including universal Mach-O, plus section and
+  segment counts, and one row per architecture with CPU, bit width,
+  endianness, entry point, image base and fat-slice file span;
+- ELF soname, `DT_RPATH`/`DT_RUNPATH`, typed dynamic-tag/value rows, and a
+  `DT_NEEDED` **count** (the names stay with `inspect_binary_layout`);
+- a Mach-O universal flag with **dylib and load-command counts** (the UUID,
+  dylib identities and version pairs, and the command inventory stay with
+  `inspect_macho`);
 - PE machine, subsystem, characteristics, the data-directory declaration table
   and debug-directory entries with any CodeView PDB identity;
 - the DWARF debug-section inventory for the artifact.
@@ -55,7 +62,10 @@ CodeView path/GUID/age/signature a PE debug directory recorded, whether the
 selected LIEF release can read a PDB symbol table at all, and up to 64 exact
 symbol or virtual-address lookups. Each lookup answers `found`, `not_found` or
 `unsupported`: an unanswerable lookup is `unsupported` with its reason, never
-`not_found`, and every fact the reader could not establish stays `null`.
+`not_found`, and every fact the reader could not establish stays `null`. A
+lookup that ran past a scan budget is reported through its own truncation row
+(`queries`, `matches`, `dwarf_functions` or `public_symbols`) with
+`complete: false`, so an unscanned symbol is never presented as absent.
 
 ## Bring your own LIEF
 
@@ -137,19 +147,19 @@ Fixed bounds (settings constraints, no runtime override):
 | One bridge run             | 120 000 ms                               |
 | Architectures / fat slices | 32                                       |
 | Dynamic entries            | 256                                      |
-| Linked libraries           | 256                                      |
-| Mach-O load commands       | 512                                      |
 | PE data directories        | 32                                       |
 | PE debug entries           | 16                                       |
 | DWARF sections listed      | 64                                       |
 | Lookups per request        | 64                                       |
 | Matches per lookup         | 16                                       |
-| DWARF functions scanned    | 200 000                                  |
+| Symbols scanned            | 200 000 (DWARF functions or PDB publics) |
 
-Exceeding a structure bound sets that row's `truncated` flag; exceeding a
-lookup bound sets `truncated.matches` or `truncated.dwarf_functions`.
-`complete` is the exact negation of any truncation, so a truncated report is
-never presented as complete.
+Exceeding a structure bound sets that row's `truncated` flag. Exceeding a
+lookup bound sets `truncated.queries`, `truncated.matches`,
+`truncated.dwarf_functions` or `truncated.public_symbols`. `complete` is the
+exact negation of any truncation, so a truncated report is never presented as
+complete, and the Mach-O dylib and load-command counts are exact (no
+truncation row exists for them because nothing is enumerated).
 
 ## Authority and safety
 
@@ -169,8 +179,9 @@ returning target content.
   feature-detects every entry point it uses. LIEF is not installed on the
   development host used for this change, so **no real LIEF release parsed a real
   ELF, PE, Mach-O or PDB during this work**. `bridge/lief/test_lief_bridge.py`
-  (17 tests) exercises the frame contract, refusals, structure extraction and
-  lookup semantics against an in-process fake LIEF and a one-line fake module;
+  (19 tests) exercises the frame contract, refusals, structure extraction, both
+  scan-budget truncation rows and lookup semantics against an in-process fake
+  LIEF and a one-line fake module;
   `tests/boundary/providers/lief/liefDeepParse.test.ts` (9 tests) drives the
   composed service, including one end-to-end run of the shipped script against
   a fake `lief.py`. Verify against a real release before claiming real-provider

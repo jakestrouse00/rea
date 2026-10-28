@@ -18,15 +18,13 @@ PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1024 * 1024
 MAX_ARCHITECTURES = 32
 MAX_DYNAMIC_ENTRIES = 256
-MAX_LIBRARIES = 256
-MAX_LOAD_COMMANDS = 512
 MAX_DATA_DIRECTORIES = 32
 MAX_DEBUG_ENTRIES = 16
 MAX_DEBUG_SECTIONS = 64
 MAX_QUERIES = 64
 MAX_MATCHES_PER_QUERY = 16
 MAX_LIMITATIONS = 32
-MAX_DWARF_FUNCTIONS_SCANNED = 200000
+MAX_SCANNED_SYMBOLS = 200000
 HASH_CHUNK_BYTES = 1024 * 1024
 
 FORMATS = ("elf", "pe", "macho", "macho-fat", "pdb", "unknown")
@@ -344,9 +342,21 @@ def pdb_reference_of_entry(entry):
 
 
 def elf_dynamic(binary):
-    """ELF interpreter, soname, dependency and dynamic-tag facts."""
+    """ELF soname, run-path and dynamic-tag facts plus a DT_NEEDED count.
 
-    needed = [name for name in (text(value) for value in sequence(attribute(binary, "libraries"))) if name]
+    The interpreter path and DT_NEEDED names belong to the owning layout tool;
+    only their count is echoed here so this report never carries a second copy.
+    """
+
+    needed_count = len(
+        [
+            name
+            for name in (
+                text(value) for value in sequence(attribute(binary, "libraries"))
+            )
+            if name
+        ]
+    )
     rpath = []
     runpath = []
     entries = []
@@ -371,13 +381,10 @@ def elf_dynamic(binary):
             entries.append({"tag": tag, "value": recorded})
     return (
         {
-            "interpreter": text(attribute(binary, "interpreter"))
-            if attribute(binary, "has_interpreter") is True
-            else None,
             "soname": text(attribute(binary, "soname")),
-            "needed": needed,
             "rpath": rpath,
             "runpath": runpath,
+            "needed_count": needed_count,
             "entries": entries,
         },
         truncated,
@@ -385,49 +392,20 @@ def elf_dynamic(binary):
 
 
 def macho_structure(lief, binary):
-    """Mach-O UUID, linked dylibs and load-command inventory."""
+    """Mach-O universal flag plus dylib and load-command counts.
 
-    libraries = []
-    library_truncated = False
-    for command in sequence(attribute(binary, "commands")):
-        if "dylib" not in (enum_name(attribute(command, "command"), "") or ""):
-            continue
-        name = text(attribute(command, "name"))
-        if name is None:
-            continue
-        libraries.append(
-            {
-                "name": name,
-                "current_version": text(attribute(command, "current_version")),
-                "compatibility_version": text(
-                    attribute(command, "compatibility_version")
-                ),
-            }
-        )
-    libraries, library_truncated = bounded(libraries, MAX_LIBRARIES)
-    rows = []
-    commands, commands_truncated = bounded(
-        sequence(attribute(binary, "commands")), MAX_LOAD_COMMANDS
+    The UUID, each dylib's identity and version pair, and the load-command
+    inventory belong to the owning Mach-O tool; this report counts them only.
+    """
+
+    commands = sequence(attribute(binary, "commands"))
+    dylib_count = sum(
+        1
+        for command in commands
+        if "dylib" in (enum_name(attribute(command, "command"), "") or "")
+        and text(attribute(command, "name")) is not None
     )
-    for command in commands:
-        rows.append(
-            {
-                "kind": enum_name(attribute(command, "command"), "unknown") or "unknown",
-                "size": integer(attribute(command, "size")) or 0,
-                "segment_name": text(attribute(command, "name")),
-            }
-        )
-    uuid = text(attribute(binary, "uuid")) if attribute(binary, "has_uuid") is True else None
-    return (
-        {
-            "uuid": uuid,
-            "fat": is_fat(lief, binary),
-            "libraries": libraries,
-            "load_commands": rows,
-        },
-        library_truncated,
-        commands_truncated,
-    )
+    return {"fat": is_fat(lief, binary), "dylib_count": dylib_count, "load_command_count": len(commands)}
 
 
 def inspect_binary_deep(lief, path):
@@ -478,16 +456,12 @@ def inspect_binary_deep(lief, path):
     macho = None
     pe = None
     dynamic_truncated = False
-    libraries_truncated = False
-    load_commands_truncated = False
     data_directories_truncated = False
     debug_entries_truncated = False
     if kind == "elf":
         dynamic, dynamic_truncated = elf_dynamic(primary)
     elif kind == "macho":
-        macho, libraries_truncated, load_commands_truncated = macho_structure(
-            lief, primary
-        )
+        macho = macho_structure(lief, primary)
         macho["fat"] = fat
     else:
         pe, data_directories_truncated, debug_entries_truncated = pe_structure(primary)
@@ -507,7 +481,6 @@ def inspect_binary_deep(lief, path):
         "structure_summary": {
             "section_count": len(sequence(attribute(primary, "sections"))),
             "segment_count": len(sequence(attribute(primary, "segments"))),
-            "linked_library_count": len(sequence(attribute(primary, "libraries"))),
         },
         "dynamic": dynamic,
         "macho": macho,
@@ -517,10 +490,7 @@ def inspect_binary_deep(lief, path):
             "pdb_reference": pdb_reference_of(primary) if kind == "pe" else None,
         },
         "truncated": {
-            "architectures": False,
             "dynamic_entries": dynamic_truncated,
-            "libraries": libraries_truncated,
-            "load_commands": load_commands_truncated,
             "data_directories": data_directories_truncated,
             "debug_entries": debug_entries_truncated,
             "debug_sections": sections_truncated,
@@ -550,19 +520,23 @@ def load_pdb(lief, path):
 
 
 def pdb_public_symbols(pdb):
-    """Bounded public-symbol facts from a parsed PDB."""
+    """Bounded public-symbol facts from a parsed PDB plus its scan truncation.
+
+    The second value is true when the table is larger than the scan budget, so
+    a lookup that ran past the cut-off can never be reported as `not_found`.
+    """
 
     rows = []
     for symbol in sequence(attribute(pdb, "public_symbols")):
+        if len(rows) >= MAX_SCANNED_SYMBOLS:
+            return rows, True
         rows.append(
             {
                 "name": text(attribute(symbol, "name")),
                 "rva": integer(attribute(symbol, "RVA") or attribute(symbol, "rva")),
             }
         )
-        if len(rows) > MAX_DWARF_FUNCTIONS_SCANNED:
-            break
-    return rows
+    return rows, False
 
 
 def load_dwarf(lief, binary, path):
@@ -597,7 +571,7 @@ def dwarf_functions(dwarf):
         )
         for function in sequence(attribute(unit, "functions")):
             rows.append((unit_name, function))
-            if len(rows) >= MAX_DWARF_FUNCTIONS_SCANNED:
+            if len(rows) >= MAX_SCANNED_SYMBOLS:
                 return rows, True
     return rows, False
 
@@ -705,9 +679,10 @@ def pdb_source(lief, path, queries):
             ],
             "truncated_matches": False,
             "truncated_functions": False,
+            "truncated_symbols": False,
             "limitations": [reason],
         }
-    symbols = pdb_public_symbols(pdb)
+    symbols, scan_truncated = pdb_public_symbols(pdb)
     rows = [
         (
             None,
@@ -738,9 +713,17 @@ def pdb_source(lief, path, queries):
         "queries": results,
         "truncated_matches": truncated,
         "truncated_functions": False,
+        "truncated_symbols": scan_truncated,
         "limitations": [
             f"PDB lookups answered by {entry} match public symbol names exactly; private and local symbols stay unlisted"
-        ],
+        ]
+        + (
+            [
+                f"at most {MAX_SCANNED_SYMBOLS} public symbols are scanned: public_symbol_count is the scanned count, and a lookup beyond the scan is not evidence of absence"
+            ]
+            if scan_truncated
+            else []
+        ),
     }
 
 
@@ -831,6 +814,7 @@ def binary_source(lief, path, kind, binary, queries):
             ],
             "truncated_matches": False,
             "truncated_functions": False,
+            "truncated_symbols": False,
             "limitations": limitations + [reason],
         }
     dwarf, entry = load_dwarf(lief, binary, path)
@@ -860,6 +844,7 @@ def binary_source(lief, path, kind, binary, queries):
             ],
             "truncated_matches": False,
             "truncated_functions": False,
+            "truncated_symbols": False,
             "limitations": limitations + [reason],
         }
     rows, scanned_truncated = dwarf_functions(dwarf)
@@ -885,7 +870,7 @@ def binary_source(lief, path, kind, binary, queries):
     limitations.append(f"DWARF lookups answered by {entry}")
     if scanned_truncated:
         limitations.append(
-            f"at most {MAX_DWARF_FUNCTIONS_SCANNED} DWARF functions are scanned"
+            f"at most {MAX_SCANNED_SYMBOLS} DWARF functions are scanned"
         )
     return {
         "dwarf": {
@@ -903,15 +888,21 @@ def binary_source(lief, path, kind, binary, queries):
         "queries": results,
         "truncated_matches": matches_truncated,
         "truncated_functions": scanned_truncated,
+        "truncated_symbols": False,
         "limitations": limitations,
     }
 
 
-def extract_pdb_dwarf_info(lief, path, queries):
-    """Debug-source inventory plus bounded lookups for one artifact."""
+def extract_pdb_dwarf_info(lief, path, queries, queries_truncated=False):
+    """Debug-source inventory plus bounded lookups for one artifact.
+
+    `queries_truncated` is computed from the caller's list before any slicing,
+    so a dropped lookup is reported as an omission instead of vanishing while
+    the frame still claims completeness.
+    """
 
     kind = classify(path)
-    queries_truncated = len(queries) > MAX_QUERIES
+    queries_truncated = queries_truncated or len(queries) > MAX_QUERIES
     queries = queries[:MAX_QUERIES]
     if kind == "pdb":
         source = pdb_source(lief, path, queries)
@@ -952,6 +943,7 @@ def extract_pdb_dwarf_info(lief, path, queries):
             "queries": queries_truncated,
             "matches": source["truncated_matches"],
             "dwarf_functions": source["truncated_functions"],
+            "public_symbols": source["truncated_symbols"],
         },
         "limitations": source["limitations"][:MAX_LIMITATIONS],
     }
@@ -1005,7 +997,11 @@ def verify_artifact(request):
 
 
 def queries_of(request):
-    """Validated lookup list, preserving the caller's order and values."""
+    """Validated lookup list plus whether the caller's list exceeded the bound.
+
+    The truncation flag is computed from the request's own length before any
+    slicing, so a dropped lookup is never silently discarded.
+    """
 
     queries = request.get("queries", [])
     if not isinstance(queries, list):
@@ -1033,7 +1029,7 @@ def queries_of(request):
             raise BridgeRefusal(
                 "malformed_request", f"unknown query kind {kind!r}"
             )
-    return admitted
+    return admitted, len(queries) > MAX_QUERIES
 
 
 def complete_of(truncated):
@@ -1059,7 +1055,10 @@ def main():
         if operation == "inspect_binary_deep":
             report = inspect_binary_deep(lief, path)
         else:
-            report = extract_pdb_dwarf_info(lief, path, queries_of(request))
+            queries, queries_truncated = queries_of(request)
+            report = extract_pdb_dwarf_info(
+                lief, path, queries, queries_truncated
+            )
         report["complete"] = complete_of(report.get("truncated", {}))
         report.setdefault("limitations", [])
         frame = {

@@ -80,10 +80,16 @@ const queryResultSchema = z.strictObject({
   reason: z.string().min(1).nullable(),
 });
 
+/**
+ * Which bounded surface stopped at its fixed limit. `dwarf_functions` and
+ * `public_symbols` name the two scans, because a lookup that ran past either
+ * cut-off cannot be reported as `not_found`.
+ */
 const lookupTruncationSchema = z.strictObject({
   queries: z.boolean(),
   matches: z.boolean(),
   dwarf_functions: z.boolean(),
+  public_symbols: z.boolean(),
 });
 
 /** Complete bounded observation of one artifact's PDB and DWARF surfaces. */

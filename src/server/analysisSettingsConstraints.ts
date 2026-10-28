@@ -250,7 +250,7 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     value: LIEF_LIMITS.maxQueries,
     unit: "queries",
     observation: "known" as const,
-    recovery: `extract_pdb_dwarf_info admits at most ${String(LIEF_LIMITS.maxQueries)} lookups per call, retains ${String(LIEF_LIMITS.maxMatchesPerQuery)} matches per lookup and scans at most 200000 DWARF functions through the caller's LIEF release. Beyond a bound the report sets its truncation flag and complete stays false. This release has no runtime override.`,
+    recovery: `extract_pdb_dwarf_info admits at most ${String(LIEF_LIMITS.maxQueries)} lookups per call, retains ${String(LIEF_LIMITS.maxMatchesPerQuery)} matches per lookup, and scans at most 200000 DWARF functions or 200000 PDB public symbols through the caller's LIEF release. Each overrun sets its own truncation row (queries, matches, dwarf_functions or public_symbols) and complete stays false, so a lookup past a scan budget is never reported as not_found. This release has no runtime override.`,
   },
   {
     control: "mitm.stream_line_bytes",

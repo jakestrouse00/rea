@@ -57,10 +57,6 @@ export const LIEF_LIMITS = {
   maxArchitectures: 32,
   /** ELF dynamic entries retained. */
   maxDynamicEntries: 256,
-  /** Linked library names retained for one binary. */
-  maxLibraries: 256,
-  /** Mach-O load commands retained. */
-  maxLoadCommands: 512,
   /** PE data directory rows retained. */
   maxDataDirectories: 32,
   /** PE debug directory entries retained. */

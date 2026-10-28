@@ -241,8 +241,9 @@ class DeepStructureTests(unittest.TestCase):
         self.assertEqual(report["format"], "elf")
         self.assertEqual(report["architectures"][0]["bits"], 64)
         self.assertIs(report["architectures"][0]["little_endian"], True)
-        self.assertEqual(report["dynamic"]["interpreter"], "/lib64/ld-linux-x86-64.so.2")
-        self.assertEqual(report["dynamic"]["needed"], ["libc.so.6"])
+        self.assertNotIn("interpreter", report["dynamic"])
+        self.assertNotIn("needed", report["dynamic"])
+        self.assertEqual(report["dynamic"]["needed_count"], 1)
         self.assertEqual(report["dynamic"]["rpath"], ["/opt/lib"])
         self.assertEqual(report["dynamic"]["runpath"], ["/opt/run"])
         self.assertEqual(
@@ -256,7 +257,7 @@ class DeepStructureTests(unittest.TestCase):
         )
         self.assertEqual(
             report["structure_summary"],
-            {"section_count": 2, "segment_count": 1, "linked_library_count": 1},
+            {"section_count": 2, "segment_count": 1},
         )
 
     def test_pe_reports_data_directories_and_the_codeview_reference(self):
@@ -282,7 +283,7 @@ class DeepStructureTests(unittest.TestCase):
         )
         self.assertEqual(report["pe"]["debug_entries"][0]["kind"], "codeview")
 
-    def test_macho_reports_uuid_dylibs_and_load_commands(self):
+    def test_macho_reports_counts_and_leaves_detail_to_the_owned_tool(self):
         report = self.report(
             fake_lief(macho_binary()),
             magic=b"\xcf\xfa\xed\xfe",
@@ -290,22 +291,11 @@ class DeepStructureTests(unittest.TestCase):
         )
         self.assertEqual(report["format"], "macho")
         self.assertEqual(
-            report["macho"]["uuid"], "8E1B2C3D-0000-1111-2222-333344445555"
+            report["macho"],
+            {"fat": False, "dylib_count": 1, "load_command_count": 2},
         )
-        self.assertEqual(
-            report["macho"]["libraries"],
-            [
-                {
-                    "name": "/usr/lib/libSystem.B.dylib",
-                    "current_version": "1.0.0",
-                    "compatibility_version": "1.0.0",
-                }
-            ],
-        )
-        self.assertEqual(
-            [row["kind"] for row in report["macho"]["load_commands"]],
-            ["load_dylib", "segment_64"],
-        )
+        for owned in ("uuid", "libraries", "load_commands"):
+            self.assertNotIn(owned, report["macho"])
 
     def test_pdb_is_refused_by_the_binary_structure_operation(self):
         pdb_path = os.path.join(self.root, "example.pdb")
@@ -416,6 +406,65 @@ class DebugInfoTests(unittest.TestCase):
         self.assertFalse(report["debug_sources"]["pdb"]["available"])
         self.assertEqual(report["queries"][0]["outcome"], "unsupported")
         self.assertEqual(report["queries"][0]["matches"], [])
+
+
+    def test_more_queries_than_the_bound_report_truncation(self):
+        pdb_path = os.path.join(self.root, "example.pdb")
+        with open(pdb_path, "wb") as handle:
+            handle.write(b"Microsoft C/C++ MSF 7.00\r\n\x1aDS\x00\x00\x00")
+        pdb = SimpleNamespace(
+            public_symbols=[SimpleNamespace(name="main", RVA=0x1000)],
+            compilation_units=[],
+        )
+        requested = [
+            {"kind": "symbol", "name": "symbol_{}".format(index)}
+            for index in range(self.bridge.MAX_QUERIES + 6)
+        ]
+        queries, truncated = self.bridge.queries_of({"queries": requested})
+        self.assertEqual(len(queries), self.bridge.MAX_QUERIES)
+        self.assertTrue(truncated)
+        report = self.bridge.extract_pdb_dwarf_info(
+            fake_lief(None, pdb=pdb),
+            pdb_path,
+            queries,
+            truncated,
+        )
+        self.assertTrue(report["truncated"]["queries"])
+        self.assertFalse(self.bridge.complete_of(report["truncated"]))
+        self.assertEqual(len(report["queries"]), self.bridge.MAX_QUERIES)
+
+    def test_public_symbol_scan_cutoff_is_reported_rather_than_silent(self):
+        pdb_path = os.path.join(self.root, "example.pdb")
+        with open(pdb_path, "wb") as handle:
+            handle.write(b"Microsoft C/C++ MSF 7.00\r\n\x1aDS\x00\x00\x00")
+        pdb = SimpleNamespace(
+            public_symbols=[
+                SimpleNamespace(name="first", RVA=0x1000),
+                SimpleNamespace(name="second", RVA=0x2000),
+                SimpleNamespace(name="third", RVA=0x3000),
+            ],
+            compilation_units=[],
+        )
+        original = self.bridge.MAX_SCANNED_SYMBOLS
+        self.bridge.MAX_SCANNED_SYMBOLS = 2
+        try:
+            report = self.bridge.extract_pdb_dwarf_info(
+                fake_lief(None, pdb=pdb),
+                pdb_path,
+                [{"kind": "symbol", "name": "third"}],
+            )
+        finally:
+            self.bridge.MAX_SCANNED_SYMBOLS = original
+        self.assertEqual(report["debug_sources"]["pdb"]["public_symbol_count"], 2)
+        self.assertTrue(report["truncated"]["public_symbols"])
+        self.assertFalse(self.bridge.complete_of(report["truncated"]))
+        self.assertEqual(report["queries"][0]["outcome"], "not_found")
+        self.assertTrue(
+            any(
+                "public symbols are scanned" in limitation
+                for limitation in report["limitations"]
+            )
+        )
 
 
 class StdioFrameTests(unittest.TestCase):

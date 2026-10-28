@@ -33,35 +33,26 @@ const dynamicEntrySchema = z.strictObject({
   value: z.number().int().nonnegative(),
 });
 
-/** ELF facts the section/segment and export lanes do not own. */
+/**
+ * ELF dynamic facts this lane owns. The interpreter and DT_NEEDED names stay
+ * with `inspect_binary_layout`; only their count is echoed here.
+ */
 const elfDynamicSchema = z.strictObject({
-  interpreter: z.string().min(1).nullable(),
   soname: z.string().min(1).nullable(),
-  needed: z.array(z.string().min(1)),
   rpath: z.array(z.string()),
   runpath: z.array(z.string()),
+  needed_count: z.number().int().nonnegative(),
   entries: z.array(dynamicEntrySchema),
 });
 
-/** One linked Mach-O dylib with its recorded version pair. */
-const machoLibrarySchema = z.strictObject({
-  name: z.string().min(1),
-  current_version: z.string().min(1).nullable(),
-  compatibility_version: z.string().min(1).nullable(),
-});
-
-/** One load command: kind and size, with a segment name where the kind has one. */
-const machoLoadCommandSchema = z.strictObject({
-  kind: z.string().min(1),
-  size: z.number().int().nonnegative(),
-  segment_name: z.string().min(1).nullable(),
-});
-
+/**
+ * Mach-O facts this lane owns. UUID, dylib identity/version pairs and the
+ * load-command inventory stay with `inspect_macho`; counts stand in for them.
+ */
 const machoStructureSchema = z.strictObject({
-  uuid: z.string().min(1).nullable(),
   fat: z.boolean(),
-  libraries: z.array(machoLibrarySchema),
-  load_commands: z.array(machoLoadCommandSchema),
+  dylib_count: z.number().int().nonnegative(),
+  load_command_count: z.number().int().nonnegative(),
 });
 
 /** One PE data directory row; REA records the declaration, not its contents. */
@@ -88,7 +79,6 @@ const peStructureSchema = z.strictObject({
 const structureSummarySchema = z.strictObject({
   section_count: z.number().int().nonnegative(),
   segment_count: z.number().int().nonnegative(),
-  linked_library_count: z.number().int().nonnegative(),
 });
 
 const debugSectionSchema = z.strictObject({
@@ -110,11 +100,12 @@ const delegatedFactSchema = z.strictObject({
   tool: z.string().min(1),
 });
 
+/**
+ * Which retained list stopped at its fixed bound. Counts are exact, so the
+ * Mach-O dylib and load-command scans have no truncation row.
+ */
 const truncationSchema = z.strictObject({
-  architectures: z.boolean(),
   dynamic_entries: z.boolean(),
-  libraries: z.boolean(),
-  load_commands: z.boolean(),
   data_directories: z.boolean(),
   debug_entries: z.boolean(),
   debug_sections: z.boolean(),

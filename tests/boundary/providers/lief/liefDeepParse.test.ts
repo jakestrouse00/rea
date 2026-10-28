@@ -39,17 +39,12 @@ const ELF_REPORT = {
       offset: null,
     },
   ],
-  structure_summary: {
-    section_count: 2,
-    segment_count: 1,
-    linked_library_count: 1,
-  },
+  structure_summary: { section_count: 2, segment_count: 1 },
   dynamic: {
-    interpreter: "/lib64/ld-linux-x86-64.so.2",
     soname: null,
-    needed: ["libc.so.6"],
     rpath: [],
     runpath: [],
+    needed_count: 1,
     entries: [],
   },
   macho: null,
@@ -59,10 +54,7 @@ const ELF_REPORT = {
     pdb_reference: null,
   },
   truncated: {
-    architectures: false,
     dynamic_entries: false,
-    libraries: false,
-    load_commands: false,
     data_directories: false,
     debug_entries: false,
     debug_sections: false,
@@ -142,7 +134,7 @@ it("reports a deep structure through the composed service and Evidence", async (
       sha256,
       bytes: ELF_BYTES.length,
     });
-    expect(report.dynamic?.needed).toEqual(["libc.so.6"]);
+    expect(report.dynamic?.needed_count).toBe(1);
     expect(result.value.evidence_id.startsWith("ev_")).toBe(true);
     expect(result.value.subject?.digest).toEqual({ sha256 });
     expect(report.delegated_facts.map(({ tool }) => tool)).toContain(
@@ -333,7 +325,12 @@ it("reports debug-info lookups with found and not_found outcomes", async () => {
         reason: null,
       },
     ],
-    truncated: { queries: false, matches: false, dwarf_functions: false },
+    truncated: {
+      queries: false,
+      matches: false,
+      dwarf_functions: false,
+      public_symbols: false,
+    },
     complete: true,
     limitations: [],
   };
@@ -490,7 +487,7 @@ it("exercises the shipped bridge script end to end with a fake LIEF module", asy
     const report = deep.value.normalized_result as BinaryDeepReport;
     expect(report.format).toBe("elf");
     expect(report.bridge.lief_version).toBe("0.16.0");
-    expect(report.dynamic?.interpreter).toBe("/lib64/ld-linux-x86-64.so.2");
+    expect(report.dynamic?.needed_count).toBe(1);
     const debug = await service.extractPdbDwarfInfo({
       path: artifact,
       queries: [{ kind: "symbol", name: "main" }],
