@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { LAB_VM_MAX_COMMAND_BYTES } from "../domain/vmlab/labVm.js";
 import {
   openBinaryInputSchema,
   runLabVmCommandInputSchema,
@@ -83,6 +84,28 @@ describe("lab VM session input contracts", () => {
       runLabVmCommandInputSchema.safeParse({
         session_id: "00000000-0000-4000-8000-000000000001",
         command: "echo\u0000",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("bounds the guest command line by its argv representation", () => {
+    const sessionId = "00000000-0000-4000-8000-000000000001";
+    expect(
+      runLabVmCommandInputSchema.safeParse({
+        session_id: sessionId,
+        command: "a".repeat(LAB_VM_MAX_COMMAND_BYTES),
+      }).success,
+    ).toBe(true);
+    const oversized = runLabVmCommandInputSchema.safeParse({
+      session_id: sessionId,
+      command: "a".repeat(LAB_VM_MAX_COMMAND_BYTES + 1),
+    });
+    expect(oversized.success).toBe(false);
+    // A multi-byte character can exceed the byte bound below the character count.
+    expect(
+      runLabVmCommandInputSchema.safeParse({
+        session_id: sessionId,
+        command: "é".repeat(LAB_VM_MAX_COMMAND_BYTES / 2 + 1),
       }).success,
     ).toBe(false);
   });

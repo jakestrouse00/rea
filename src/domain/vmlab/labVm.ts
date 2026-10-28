@@ -45,6 +45,15 @@ export const LAB_VM_MAX_WORKSPACE_CHANGES = 512;
 /** Retained byte tail for one failure diagnostic from limactl. */
 export const LAB_VM_DIAGNOSTIC_EXCERPT_BYTES = 512;
 
+/**
+ * UTF-8 bytes of one guest command line.
+ *
+ * The line travels as a single argv element to a caller-supplied `limactl`,
+ * so it is bounded by the host kernel's per-argument limit on Linux and its
+ * macOS equivalent rather than by an agent-facing allowance.
+ */
+export const LAB_VM_MAX_COMMAND_BYTES = 131_072;
+
 export const LAB_VM_UNVERIFIED_NOTE =
   "This lane is exercised with a scripted limactl stand-in only; the offline suite does not run a real Lima VM, the vz driver, or Rosetta translation.";
 
@@ -68,6 +77,8 @@ export const labVmExitTypeSchema = z.enum([
   "signalled",
   "timeout",
   "cancelled",
+  "output_truncated",
+  "not_started",
 ]);
 
 export type LabVmExitType = z.infer<typeof labVmExitTypeSchema>;
@@ -82,5 +93,5 @@ export const labVmCommandTimeoutSchema = z
 export const labVmCommandTimeoutField = labVmCommandTimeoutSchema
   .optional()
   .describe(
-    `Wall-clock budget in milliseconds for this guest command. Omitted means ${String(LAB_VM_DEFAULT_COMMAND_TIMEOUT_MS)}. Integer from 1 to ${String(LAB_VM_MAX_TIMER_MS)}. Applies on the next call and does not raise the ${String(LAB_VM_MAX_OUTPUT_BYTES)}-byte limactl output budget or the ${String(LAB_VM_START_TIMEOUT_MS)} ms first-boot deadline.`,
+    `Wall-clock budget in milliseconds for this guest command. Omitted means ${String(LAB_VM_DEFAULT_COMMAND_TIMEOUT_MS)}. Integer from 1 to ${String(LAB_VM_MAX_TIMER_MS)}. Applies on the next call and does not raise the ${String(LAB_VM_MAX_OUTPUT_BYTES)}-byte limactl output budget, the ${String(LAB_VM_MAX_COMMAND_BYTES)}-byte command line bound, or the ${String(LAB_VM_START_TIMEOUT_MS)} ms first-boot deadline.`,
   );

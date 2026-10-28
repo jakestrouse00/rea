@@ -1,6 +1,8 @@
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   AnalysisCancelledError,
+  AnalysisCapabilityUnavailableError,
+  AnalysisResourceConstraintError,
   AnalysisTimeoutError,
 } from "../domain/analysisErrorCore.js";
 import { ProviderAdapterError } from "../domain/providerAdapterError.js";
@@ -42,11 +44,12 @@ export const labVmArguments = {
   ],
   stop: (vmName: string): readonly string[] => ["stop", vmName],
   delete: (vmName: string): readonly string[] => ["delete", "--force", vmName],
+  list: (): readonly string[] => ["list", "--json"],
 } as const;
 
 /** One limactl observation before output is reduced to structural facts. */
 export interface LabVmCommandObservation {
-  readonly exitType: Exclude<LabVmExitType, "cancelled">;
+  readonly exitType: Exclude<LabVmExitType, "cancelled" | "not_started">;
   readonly exitCode: number | null;
   readonly stdout: string;
   readonly stderr: string;
@@ -56,20 +59,66 @@ export interface LabVmCommandObservation {
   readonly durationMs: number;
 }
 
+type TerminalFailure = NonNullable<ReturnType<typeof execFileOutputFailure>>;
+
 const classify = (
-  failure: NonNullable<ReturnType<typeof execFileOutputFailure>>,
+  failure: TerminalFailure,
 ): {
-  readonly exitType: "exited" | "signalled" | "timeout";
+  readonly exitType: LabVmCommandObservation["exitType"];
   readonly exitCode: number | null;
-} =>
-  typeof failure.code === "number"
-    ? {
-        exitType: failure.killed ? "timeout" : "exited",
-        exitCode: failure.code,
-      }
-    : failure.killed
-      ? { exitType: "timeout", exitCode: null }
-      : { exitType: "signalled", exitCode: null };
+} => {
+  const exitCode = typeof failure.code === "number" ? failure.code : null;
+  // Exceeding the retained-output budget stops the process, so `killed` alone
+  // does not distinguish that outcome from a deadline or a signal.
+  if (failure.outputTruncated)
+    return { exitType: "output_truncated", exitCode };
+  if (typeof failure.code === "number")
+    return {
+      exitType: failure.killed ? "timeout" : "exited",
+      exitCode,
+    };
+  return failure.killed
+    ? { exitType: "timeout", exitCode }
+    : { exitType: "signalled", exitCode };
+};
+
+/** Spawn errors describe a missing or unusable executable, not a run. */
+const SPAWN_FAILURE_CODES = new Set([
+  "ENOENT",
+  "EACCES",
+  "EPERM",
+  "ENOTDIR",
+  "ENOEXEC",
+]);
+
+/** A spawn error code on the rejection means no process ever existed. */
+const spawnFailureCode = (cause: unknown): string | undefined => {
+  if (!(cause instanceof Error) || !("code" in cause)) return undefined;
+  const code = cause.code;
+  return typeof code === "string" && SPAWN_FAILURE_CODES.has(code)
+    ? code
+    : undefined;
+};
+
+const spawnFailure = (
+  operation: string,
+  executable: string,
+  code: string,
+  cause: unknown,
+): AnalysisError =>
+  new AnalysisCapabilityUnavailableError(
+    LAB_VM_PROVIDER.id,
+    operation,
+    `The selected limactl binary could not be started (${code}): ${executable}`,
+    {
+      cause,
+      diagnostics: {
+        boundary: "provider-launch",
+        selected_binary: executable,
+        system_code: code,
+      },
+    },
+  );
 
 /** Retain a bounded diagnostic tail without publishing the command's output. */
 const labVmDiagnosticExcerpt = (
@@ -110,6 +159,9 @@ export const runLabVmCommand = async (
   } catch (cause) {
     if (cause instanceof ExecFileOutputCancelledError)
       return err(new AnalysisCancelledError(operation, { cause: cause.cause }));
+    const spawnCode = spawnFailureCode(cause);
+    if (spawnCode !== undefined)
+      return err(spawnFailure(operation, executable, spawnCode, cause));
     const failure = execFileOutputFailure(cause);
     if (failure === undefined)
       return err(
@@ -121,15 +173,32 @@ export const runLabVmCommand = async (
         }),
       );
     const capturedOutput = execFileFailureCapturedOutput(failure);
-    const observed: LabVmCommandObservation = {
-      ...classify(failure),
-      stdout: failure.stdout,
-      stderr: failure.stderr,
-      stdoutBytes: failure.stdoutBytes ?? failure.stdout.length,
-      stderrBytes: failure.stderrBytes ?? failure.stderr.length,
-      outputTruncated: failure.outputTruncated,
-      durationMs: Date.now() - startedAt,
-    };
+    const exitCode = typeof failure.code === "number" ? failure.code : null;
+    const excerpt = labVmDiagnosticExcerpt(failure.stderr);
+    const observed = classify(failure);
+    if (observed.exitType === "output_truncated")
+      return err(
+        new AnalysisResourceConstraintError(
+          operation,
+          "memory",
+          `limactl output exceeded the ${String(limits.maxOutputBytes)}-byte retained budget during ${operation}`,
+          {
+            max_output_bytes: limits.maxOutputBytes,
+            stdout_bytes: failure.stdoutBytes ?? failure.stdout.length,
+            stderr_bytes: failure.stderrBytes ?? failure.stderr.length,
+          },
+          {
+            cause,
+            capturedOutput,
+            retryable: true,
+            remediationAction:
+              "Rerun the command with quieter output; the retained-output budget has no runtime override.",
+            ...(excerpt === ""
+              ? {}
+              : { diagnostics: { stderr_excerpt: excerpt } }),
+          },
+        ),
+      );
     if (observed.exitType === "timeout")
       return err(
         new AnalysisTimeoutError(operation, limits.timeoutMs, {
@@ -137,7 +206,7 @@ export const runLabVmCommand = async (
           capturedOutput,
           diagnostics: {
             timeout_ms: limits.timeoutMs,
-            stderr_excerpt: labVmDiagnosticExcerpt(failure.stderr),
+            ...(excerpt === "" ? {} : { stderr_excerpt: excerpt }),
           },
         }),
       );
@@ -147,9 +216,7 @@ export const runLabVmCommand = async (
           cause,
           capturedOutput,
           userMessage: `limactl ended on ${failure.signal ?? "a signal"} during ${operation}${
-            failure.stderr.trim() === ""
-              ? ""
-              : `: ${labVmDiagnosticExcerpt(failure.stderr)}`
+            excerpt === "" ? "" : `: ${excerpt}`
           }`,
         }),
       );
@@ -158,18 +225,8 @@ export const runLabVmCommand = async (
         cause,
         capturedOutput,
         userMessage: `limactl exited with status ${String(failure.code)} during ${operation}${
-          failure.stderr.trim() === ""
-            ? ""
-            : `: ${labVmDiagnosticExcerpt(failure.stderr)}`
+          excerpt === "" ? "" : `: ${excerpt}`
         }`,
-        ...(failure.outputTruncated
-          ? {
-              diagnostics: {
-                max_output_bytes: limits.maxOutputBytes,
-                output_truncated: true,
-              },
-            }
-          : {}),
       }),
     );
   }

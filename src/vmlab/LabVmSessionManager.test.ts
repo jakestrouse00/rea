@@ -11,8 +11,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createTestTempDirectory } from "../../tests/fixtures/temporaryDirectory.js";
+import {
+  AnalysisInputError,
+  AnalysisResourceConstraintError,
+} from "../domain/analysisErrorCore.js";
 import type { Evidence } from "../domain/evidence.js";
-import { LAB_VM_COMMAND_ENV } from "../domain/vmlab/labVm.js";
+import {
+  LAB_VM_COMMAND_ENV,
+  LAB_VM_MAX_COMMAND_BYTES,
+} from "../domain/vmlab/labVm.js";
 import {
   labVmCommandResultSchema,
   labVmStartResultSchema,
@@ -41,7 +48,11 @@ type Behaviour = string | ((context: Harness) => string);
 
 const harness = async (
   behaviour: Behaviour,
-  options: { readonly supported?: boolean } = {},
+  options: {
+    readonly supported?: boolean;
+    /** Replace the template-root release so a partial cleanup can be exercised. */
+    readonly closeRoot?: () => Promise<void>;
+  } = {},
 ): Promise<Harness> => {
   const root = await temporaryRoot();
   const workspace = join(root, "workspace");
@@ -56,9 +67,11 @@ const harness = async (
     environment: { [LAB_VM_COMMAND_ENV]: command },
     createRuntimeRoot: async () => ({
       path: runtimeRoot,
-      close: async () => {
-        await rm(runtimeRoot, { recursive: true, force: true });
-      },
+      close:
+        options.closeRoot ??
+        (async () => {
+          await rm(runtimeRoot, { recursive: true, force: true });
+        }),
     }),
     ...(options.supported === false
       ? { platform: "linux" as const, arch: "x64" }
@@ -107,6 +120,31 @@ const waitForArguments = async (
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error(`Timed out waiting for ${token} to reach ${logPath}`);
+};
+
+/**
+ * A stand-in that models instance state: `start` records the instance name,
+ * `list --json` reports that instance while it exists, so absence is a real
+ * observation rather than an inference from a failed command.
+ */
+const statefulLimactl = (
+  context: { readonly root: string },
+  deleteCase: string,
+): string => {
+  const state = join(context.root, "state");
+  return [
+    `state="${state}"`,
+    'mkdir -p "$state"',
+    'if [ "$1" = "start" ]; then printf \'%s\' "$4" > "$state/name"; exit 0; fi',
+    'if [ "$1" = "list" ]; then',
+    '  if [ -f "$state/name" ] && [ ! -f "$state/gone" ]; then',
+    '    printf \'{"name":"%s","status":"Running"}\\n\' "$(cat "$state/name")"',
+    "  fi",
+    "  exit 0",
+    "fi",
+    `if [ "$1" = "delete" ]; then ${deleteCase}; fi`,
+    "exit 0",
+  ].join("\n");
 };
 
 const sessionIdOf = (evidence: Evidence): string =>
@@ -396,6 +434,88 @@ describe("run_lab_vm_command", () => {
     );
     expect(partial).toMatchObject({ exit_type: "cancelled" });
   }, 20_000);
+});
+
+describe("run_lab_vm_command admission and limits", () => {
+  it("stops a command that exceeds the retained-output budget", async () => {
+    const created = await harness(
+      'if [ "$1" = "shell" ]; then head -c 5000000 /dev/zero | tr \'\\0\' x; fi\nexit 0',
+    );
+    const sessionId = await startSession(created);
+    const run = await created.manager.run({
+      sessionId,
+      command: "verbose-build",
+      timeoutMs: 10_000,
+    });
+    expect(run.ok).toBe(false);
+    if (run.ok) return;
+    expect(run.error).toBeInstanceOf(AnalysisResourceConstraintError);
+    if (!(run.error instanceof AnalysisResourceConstraintError)) return;
+    expect(run.error.reportedLimits).toMatchObject({
+      max_output_bytes: 4 * 1024 * 1024,
+    });
+    const partial = labVmCommandResultSchema.parse(
+      (run.error.partialObservation as Evidence).normalized_result,
+    );
+    expect(partial).toMatchObject({
+      exit_type: "output_truncated",
+      output_truncated: true,
+    });
+    expect(run.error.userMessage ?? run.error.message).toContain(
+      "retained budget",
+    );
+  }, 20_000);
+
+  it("reports a launch that never produced a process as not_started", async () => {
+    const created = await harness("exit 0");
+    const sessionId = await startSession(created);
+    // The file stays an executable regular file, so admission passes; its
+    // interpreter does not exist, so the spawn itself fails.
+    await writeFile(
+      join(created.root, "limactl"),
+      "#!/nonexistent/rea-interpreter\nexit 0\n",
+      { mode: 0o700 },
+    );
+    const run = await created.manager.run({
+      sessionId,
+      command: "uname -a",
+      timeoutMs: 5_000,
+    });
+    expect(run.ok).toBe(false);
+    if (run.ok) return;
+    expect(run.error._tag).toBe("AnalysisCapabilityUnavailableError");
+    expect(run.error.diagnostics).toMatchObject({
+      boundary: "provider-launch",
+      system_code: "ENOENT",
+    });
+    const partial = labVmCommandResultSchema.parse(
+      (run.error.partialObservation as Evidence).normalized_result,
+    );
+    expect(partial).toMatchObject({
+      exit_type: "not_started",
+      exit_code: null,
+      stdout_bytes: 0,
+      stderr_bytes: 0,
+    });
+  });
+
+  it("refuses a command line longer than one argv element", async () => {
+    const created = await harness("exit 0");
+    const sessionId = await startSession(created);
+    const run = await created.manager.run({
+      sessionId,
+      command: "a".repeat(LAB_VM_MAX_COMMAND_BYTES + 1),
+      timeoutMs: 1_000,
+    });
+    expect(run.ok).toBe(false);
+    if (run.ok) return;
+    expect(run.error).toBeInstanceOf(AnalysisInputError);
+    if (!(run.error instanceof AnalysisInputError)) return;
+    expect(run.error.issues).toEqual([
+      expect.objectContaining({ path: ["command"], reason: "out_of_range" }),
+    ]);
+    expect(await loggedArguments(created.logPath)).not.toContain("shell");
+  });
 
   it("refuses an unknown session identity without running a command", async () => {
     const created = await harness("exit 0");
@@ -438,17 +558,13 @@ describe("stop_lab_vm", () => {
   });
 
   it("retains ownership after a failed removal and releases it on retry", async () => {
-    const created = await harness(({ root }) => {
-      const marker = join(root, "allow-delete");
-      return [
-        `if [ "$1" = "delete" ] && [ ! -f "${marker}" ]; then`,
-        '  echo "instance busy" >&2',
-        "  exit 3",
-        "fi",
-        "exit 0",
-      ].join("\n");
-    });
-    const marker = join(created.root, "allow-delete");
+    const created = await harness((context) =>
+      statefulLimactl(
+        context,
+        'if [ ! -f "$state/allow" ]; then echo "instance busy" >&2; exit 3; fi; : > "$state/gone"',
+      ),
+    );
+    const marker = join(created.root, "state", "allow");
     const sessionId = await startSession(created);
     const stopped = await created.manager.stop({ sessionId });
     expect(stopped.ok).toBe(false);
@@ -512,6 +628,120 @@ describe("stop_lab_vm", () => {
       labVmStopResultSchema.parse(retried.value.normalized_result),
     ).toMatchObject({ deleted: true });
   }, 20_000);
+});
+
+describe("stop_lab_vm retained cleanup", () => {
+  it("re-runs only removal steps it has not observed", async () => {
+    let closeAttempts = 0;
+    let createdRuntimeRoot = "";
+    const created = await harness(
+      (context) => statefulLimactl(context, ': > "$state/gone"'),
+      {
+        closeRoot: async () => {
+          closeAttempts += 1;
+          if (closeAttempts === 1)
+            throw new Error("template root is still busy");
+          await rm(createdRuntimeRoot, { recursive: true, force: true });
+        },
+      },
+    );
+    createdRuntimeRoot = created.runtimeRoot;
+    const sessionId = await startSession(created);
+    const stopped = await created.manager.stop({ sessionId });
+    expect(stopped.ok).toBe(false);
+    if (stopped.ok) return;
+    expect(stopped.error.cleanupResources).toContain(
+      `lab-vm-template:${created.runtimeRoot}`,
+    );
+    expect(closeAttempts).toBe(1);
+    const retried = await created.manager.stop({ sessionId });
+    if (!retried.ok) throw retried.error;
+    expect(
+      labVmStopResultSchema.parse(retried.value.normalized_result),
+    ).toMatchObject({ session_id: sessionId, stop: null, deleted: true });
+    expect(closeAttempts).toBe(2);
+    // The instance was already removed, so no retry may delete it again.
+    expect(
+      (await loggedArguments(created.logPath)).filter(
+        (argument) => argument === "delete",
+      ),
+    ).toHaveLength(1);
+    await expect(stat(created.runtimeRoot)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("releases an instance an operator already removed", async () => {
+    const created = await harness((context) =>
+      statefulLimactl(
+        context,
+        'if [ -f "$state/gone" ]; then echo "instance not found" >&2; exit 3; fi; echo "instance busy" >&2; exit 3',
+      ),
+    );
+    const sessionId = await startSession(created);
+    const stopped = await created.manager.stop({ sessionId });
+    expect(stopped.ok).toBe(false);
+    if (stopped.ok) return;
+    expect(
+      stopped.error.cleanupResources.some((resource) =>
+        resource.startsWith("lab-vm:rea-lab-"),
+      ),
+    ).toBe(true);
+    // The operator removes the instance by hand; the retry observes absence
+    // through limactl list instead of re-running a doomed delete forever.
+    await writeFile(join(created.root, "state", "gone"), "");
+    const retried = await created.manager.stop({ sessionId });
+    if (!retried.ok) throw retried.error;
+    expect(
+      labVmStopResultSchema.parse(retried.value.normalized_result),
+    ).toMatchObject({ session_id: sessionId, stop: null, deleted: true });
+    const released = await created.manager.stop({ sessionId });
+    expect(released.ok).toBe(false);
+  });
+
+  it("serializes concurrent stops of one live session", async () => {
+    const created = await harness((context) =>
+      statefulLimactl(context, ': > "$state/gone"'),
+    );
+    const sessionId = await startSession(created);
+    const outcomes = await Promise.all([
+      created.manager.stop({ sessionId }),
+      created.manager.stop({ sessionId }),
+    ]);
+    expect(outcomes.filter((outcome) => outcome.ok)).toHaveLength(1);
+    const refused = outcomes.find((outcome) => !outcome.ok);
+    expect(refused?.error._tag).toBe("AnalysisInputError");
+    const arguments_ = await loggedArguments(created.logPath);
+    expect(arguments_.filter((argument) => argument === "stop")).toHaveLength(
+      1,
+    );
+    expect(arguments_.filter((argument) => argument === "delete")).toHaveLength(
+      1,
+    );
+  });
+
+  it("serializes concurrent retries of one retained owner", async () => {
+    const created = await harness((context) =>
+      statefulLimactl(
+        context,
+        'if [ ! -f "$state/allow" ]; then echo "instance busy" >&2; exit 3; fi; : > "$state/gone"',
+      ),
+    );
+    const sessionId = await startSession(created);
+    const first = await created.manager.stop({ sessionId });
+    expect(first.ok).toBe(false);
+    await writeFile(join(created.root, "state", "allow"), "");
+    const outcomes = await Promise.all([
+      created.manager.stop({ sessionId }),
+      created.manager.stop({ sessionId }),
+    ]);
+    expect(outcomes.map((outcome) => outcome.ok)).toEqual([true, true]);
+    expect(
+      (await loggedArguments(created.logPath)).filter(
+        (argument) => argument === "delete",
+      ),
+    ).toHaveLength(2);
+  });
 
   it("keeps a typed cancellation beside the cleanup that still owns the instance", async () => {
     const created = await harness("exit 0");
@@ -538,13 +768,10 @@ describe("stop_lab_vm", () => {
 
 describe("server shutdown", () => {
   it("reports a retained owner and refuses a replacement while it is owned", async () => {
-    const created = await harness("exit 0");
-    await startSession(created);
-    await writeFile(
-      join(created.root, "limactl"),
-      '#!/bin/sh\nif [ "$1" = "delete" ]; then exit 9; fi\nexit 0\n',
-      { mode: 0o700 },
+    const created = await harness((context) =>
+      statefulLimactl(context, "exit 9"),
     );
+    await startSession(created);
     const closed = await created.manager.closeAll();
     expect(closed.ok).toBe(false);
     if (closed.ok) return;

@@ -22,12 +22,14 @@ import {
 } from "../domain/analysisErrorCore.js";
 import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import type { Evidence } from "../domain/evidence.js";
+import type { JsonValue } from "../domain/jsonValue.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { providerConfigurationRefusal } from "../domain/providerConfigurationRefusal.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   LAB_VM_DEFAULT_COMMAND_TIMEOUT_MS,
   LAB_VM_DRIVER,
+  LAB_VM_MAX_COMMAND_BYTES,
   LAB_VM_GUEST_WORKSPACE,
   LAB_VM_LIVE_CAPACITY,
   LAB_VM_MAX_WORKSPACE_CHANGES,
@@ -81,19 +83,33 @@ export interface LabVmSessionManagerOptions {
   readonly arch?: string;
 }
 
+/** Removal sub-steps this process has already observed for one instance. */
+interface LabVmRemoval {
+  /** `limactl delete --force`, or absence from the instance list, was observed clean. */
+  instanceRemoved: boolean;
+  /** The private template root was removed. */
+  templateRemoved: boolean;
+}
+
 interface LabVmOwner {
   readonly sessionId: string;
   readonly vmName: string;
   readonly root: RuntimeRoot;
+  readonly removal: LabVmRemoval;
+  /** Serializes this identity's work, including retained cleanup retries. */
+  queue: Promise<unknown>;
 }
 
 interface LiveLabVm extends LabVmOwner {
   readonly workspacePath: string;
-  queue: Promise<unknown>;
 }
 
 const REMEDIATION =
-  "Stop and remove the retained instance with the selected limactl, then retry stop_lab_vm or restart REA.";
+  "Retry stop_lab_vm: REA re-runs only the removal steps it has not observed, and confirms an instance that is already gone through limactl list. Restart REA only to abandon the retained identity.";
+
+/** One bounded excerpt of limactl stderr can carry proxied guest bytes. */
+const STDERR_EXCERPT_NOTE =
+  "A failure message can include up to 512 bytes of limactl stderr, which limactl shell proxies from the guest; successful observations publish no guest output bytes.";
 
 const isLabVmFailure = (value: unknown): value is LabVmConfigurationFailure =>
   value instanceof LabVmConfigurationFailure;
@@ -274,7 +290,13 @@ export class LabVmSessionManager implements LabVmPort {
     if (!boot.ok) {
       const rollback = await this.#removeInstance(
         configuration.value,
-        { sessionId: `rollback-${vmName}`, vmName, root: root.value },
+        {
+          sessionId: `rollback-${vmName}`,
+          vmName,
+          root: root.value,
+          removal: { instanceRemoved: false, templateRemoved: false },
+          queue: Promise.resolve(),
+        },
         operation,
         undefined,
       );
@@ -288,6 +310,7 @@ export class LabVmSessionManager implements LabVmPort {
       vmName,
       workspacePath: workspace.value,
       root: root.value,
+      removal: { instanceRemoved: false, templateRemoved: false },
       queue: Promise.resolve(),
     };
     this.#live.set(sessionId, live);
@@ -311,6 +334,7 @@ export class LabVmSessionManager implements LabVmPort {
         [
           LAB_VM_UNVERIFIED_NOTE,
           LAB_VM_SANDBOX_NOTE,
+          STDERR_EXCERPT_NOTE,
           "A clean limactl exit proves the start command returned, not that every guest startup script completed.",
           ...outputLimitLimitations(boot.value),
         ],
@@ -349,11 +373,13 @@ export class LabVmSessionManager implements LabVmPort {
         return err(unknownSession(operation, request.sessionId, false));
       const configuration = this.#configuration(operation);
       if (!configuration.ok) return configuration;
-      return this.#retryOwner(
-        configuration.value,
-        retained,
-        operation,
-        options?.signal,
+      return this.#enqueue(retained, () =>
+        this.#retryOwner(
+          configuration.value,
+          retained,
+          operation,
+          options?.signal,
+        ),
       );
     }
     return this.#enqueue(live, () =>
@@ -376,11 +402,13 @@ export class LabVmSessionManager implements LabVmPort {
         failures.set(retained.sessionId, configuration.error);
         continue;
       }
-      const retried = await this.#retryOwner(
-        configuration.value,
-        retained,
-        "stop_lab_vm",
-        undefined,
+      const retried = await this.#enqueue(retained, () =>
+        this.#retryOwner(
+          configuration.value,
+          retained,
+          "stop_lab_vm",
+          undefined,
+        ),
       );
       if (!retried.ok) failures.set(retained.sessionId, retried.error);
     }
@@ -413,12 +441,16 @@ export class LabVmSessionManager implements LabVmPort {
     request: LabVmRunRequest,
     signal: AbortSignal | undefined,
   ): Promise<Result<Evidence, AnalysisError>> {
+    const released = this.#releasedRefusal(live, operation);
+    if (released !== null) return err(released);
     if (signal?.aborted === true)
       return err(
         new AnalysisCancelledError(operation, { cause: signal.reason }),
       );
     const configuration = this.#configuration(operation);
     if (!configuration.ok) return configuration;
+    const oversized = commandBoundRefusal(operation, request.command);
+    if (oversized !== null) return err(oversized);
     const before = await inventoryWorkspace(
       live.workspacePath,
       operation,
@@ -474,7 +506,8 @@ export class LabVmSessionManager implements LabVmPort {
       [
         LAB_VM_UNVERIFIED_NOTE,
         LAB_VM_SANDBOX_NOTE,
-        "Guest output bytes stay in the VM; this observation retains exit structure and workspace paths only.",
+        STDERR_EXCERPT_NOTE,
+        "Successful observations retain exit structure and workspace paths only; guest output bytes stay in the VM.",
         "produced_paths and modified_paths compare two bounded inventories of the mounted workspace; a change inside the guest that never touches the mount is not observed.",
         ...(result.changes_truncated
           ? [
@@ -499,6 +532,9 @@ export class LabVmSessionManager implements LabVmPort {
     operation: string,
     signal: AbortSignal | undefined,
   ): Promise<Result<Evidence, AnalysisError>> {
+    // A queued call must not act on an identity another call already released.
+    const released = this.#releasedRefusal(live, operation);
+    if (released !== null) return err(released);
     const configuration = this.#configuration(operation);
     if (!configuration.ok) return configuration;
     const stopped = await runLabVmCommand(
@@ -530,6 +566,7 @@ export class LabVmSessionManager implements LabVmPort {
       [
         LAB_VM_UNVERIFIED_NOTE,
         LAB_VM_SANDBOX_NOTE,
+        STDERR_EXCERPT_NOTE,
         ...outputLimitLimitations(stopped.value),
       ],
     );
@@ -574,44 +611,114 @@ export class LabVmSessionManager implements LabVmPort {
         },
         [
           LAB_VM_UNVERIFIED_NOTE,
-          "This call removed an instance whose stop observation was retained earlier; no stop call was re-observed here.",
+          "This call removed an instance without re-observing a stop call; any earlier stop outcome was reported by the call that produced it.",
         ],
       ),
     );
   }
 
-  /** Remove one owned instance and its template root; null means released. */
+  /**
+   * Remove one owned instance and its template root; null means released.
+   *
+   * Each sub-step is recorded on the owner once observed, so a retry runs only
+   * the steps that are still unproven. A failed `delete --force` is not proof
+   * that the instance survives: `limactl list --json` is the absence
+   * observation, which keeps the documented retry meaningful after an
+   * operator removed the instance by hand.
+   */
   async #removeInstance(
     configuration: LabVmConfiguration,
     owner: LabVmOwner,
     operation: string,
     signal: AbortSignal | undefined,
   ): Promise<ProviderCleanupError | null> {
-    const removed = await runLabVmCommand(
+    if (!owner.removal.instanceRemoved) {
+      const removed = await runLabVmCommand(
+        operation,
+        configuration.command,
+        labVmArguments.delete(owner.vmName),
+        {
+          timeoutMs: configuration.defaultCommandTimeoutMs,
+          maxOutputBytes: configuration.maxOutputBytes,
+        },
+        signal,
+      );
+      if (removed.ok) owner.removal.instanceRemoved = true;
+      else {
+        const absent = await this.#instanceAbsent(
+          configuration,
+          owner.vmName,
+          operation,
+          signal,
+        );
+        if (absent !== true)
+          return this.#cleanupError(
+            owner.vmName,
+            operation,
+            removed.error,
+            [`lab-vm:${owner.vmName}`],
+            {
+              absence_observation:
+                absent === false ? "instance still listed" : "unverified",
+            },
+          );
+        owner.removal.instanceRemoved = true;
+      }
+    }
+    if (!owner.removal.templateRemoved) {
+      try {
+        await owner.root.close();
+        owner.removal.templateRemoved = true;
+      } catch (cause: unknown) {
+        return this.#cleanupError(owner.vmName, operation, cause, [
+          `lab-vm-template:${owner.root.path}`,
+        ]);
+      }
+    }
+    this.#live.delete(owner.sessionId);
+    this.#retained.delete(owner.sessionId);
+    return null;
+  }
+
+  /**
+   * Observe whether the instance still exists.
+   *
+   * `limactl list --json` prints one JSON object per instance. An unreadable
+   * reply stays unknown, so an absent instance is never inferred from a
+   * failed command's silence.
+   */
+  async #instanceAbsent(
+    configuration: LabVmConfiguration,
+    vmName: string,
+    operation: string,
+    signal: AbortSignal | undefined,
+  ): Promise<boolean | undefined> {
+    const listed = await runLabVmCommand(
       operation,
       configuration.command,
-      labVmArguments.delete(owner.vmName),
+      labVmArguments.list(),
       {
         timeoutMs: configuration.defaultCommandTimeoutMs,
         maxOutputBytes: configuration.maxOutputBytes,
       },
       signal,
     );
-    if (!removed.ok) {
-      return this.#cleanupError(owner.vmName, operation, removed.error, [
-        `lab-vm:${owner.vmName}`,
-      ]);
+    if (!listed.ok) return undefined;
+    const names: string[] = [];
+    for (const line of listed.value.stdout.split("\n")) {
+      if (line.trim() === "") continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        return undefined;
+      }
+      if (typeof parsed !== "object" || parsed === null) return undefined;
+      const name = Reflect.get(parsed, "name");
+      if (typeof name !== "string") return undefined;
+      names.push(name);
     }
-    try {
-      await owner.root.close();
-    } catch (cause: unknown) {
-      return this.#cleanupError(owner.vmName, operation, cause, [
-        `lab-vm-template:${owner.root.path}`,
-      ]);
-    }
-    this.#live.delete(owner.sessionId);
-    this.#retained.delete(owner.sessionId);
-    return null;
+    return !names.includes(vmName);
   }
 
   /**
@@ -629,11 +736,7 @@ export class LabVmSessionManager implements LabVmPort {
     // A requested stop leaves the live registry: guest work is no longer
     // admitted, but the instance stays owned until removal is observed.
     this.#live.delete(owner.sessionId);
-    this.#retained.set(owner.sessionId, {
-      sessionId: owner.sessionId,
-      vmName: owner.vmName,
-      root: owner.root,
-    });
+    this.#retained.set(owner.sessionId, owner);
     const cleanup =
       cause instanceof ProviderCleanupError
         ? cause
@@ -652,6 +755,7 @@ export class LabVmSessionManager implements LabVmPort {
     operation: string,
     cause: unknown,
     resources: readonly string[],
+    diagnostics: Readonly<Record<string, JsonValue>> = {},
   ): ProviderCleanupError {
     const reason = cause instanceof Error ? cause.message : String(cause);
     return new ProviderCleanupError(
@@ -663,6 +767,7 @@ export class LabVmSessionManager implements LabVmPort {
         ...(cause instanceof Error && "code" in cause
           ? { system_code: String(cause.code) }
           : {}),
+        ...diagnostics,
       },
       {
         operation,
@@ -708,13 +813,36 @@ export class LabVmSessionManager implements LabVmPort {
     }
   }
 
+  /** Refuse work for a queued owner that a preceding call already released. */
+  #releasedRefusal(
+    owner: LiveLabVm,
+    operation: string,
+  ): AnalysisInputError | null {
+    if (this.#live.get(owner.sessionId) === owner) return null;
+    if (this.#retained.has(owner.sessionId))
+      return unknownSession(operation, owner.sessionId, true);
+    return new AnalysisInputError(
+      operation,
+      {
+        userMessage: `The lab VM session ${owner.sessionId} was released by an earlier call; call start_lab_vm for a new VM.`,
+      },
+      [
+        {
+          path: ["session_id"],
+          reason: "invalid_value",
+          message: "Expected a live session_id issued by this server.",
+        },
+      ],
+    );
+  }
+
   #ownedSessions(): ReadonlySet<string> {
     return new Set([...this.#live.keys(), ...this.#retained.keys()]);
   }
 
-  #enqueue<T>(live: LiveLabVm, work: () => Promise<T>): Promise<T> {
-    const next = live.queue.then(work, work);
-    live.queue = next.then(
+  #enqueue<T>(owner: LabVmOwner, work: () => Promise<T>): Promise<T> {
+    const next = owner.queue.then(work, work);
+    owner.queue = next.then(
       () => undefined,
       () => undefined,
     );
@@ -797,13 +925,43 @@ const commandFacts = (input: {
   changes_truncated: input.changes.truncated,
 });
 
+/** One argv element cannot exceed the host's per-argument limit. */
+const commandBoundRefusal = (
+  operation: string,
+  command: string,
+): AnalysisInputError | null => {
+  const bytes = Buffer.byteLength(command, "utf8");
+  if (bytes <= LAB_VM_MAX_COMMAND_BYTES) return null;
+  return new AnalysisInputError(
+    operation,
+    {
+      userMessage: `The guest command line is ${String(bytes)} UTF-8 bytes; the bound is ${String(LAB_VM_MAX_COMMAND_BYTES)} because it travels as one argv element to limactl.`,
+    },
+    [
+      {
+        path: ["command"],
+        reason: "out_of_range",
+        message: `Shorten the command line to ${String(LAB_VM_MAX_COMMAND_BYTES)} UTF-8 bytes or fewer; pass a script path instead of an inline script when the line is longer.`,
+      },
+    ],
+  );
+};
+
 const exitTypeOf = (
   executed: Result<LabVmCommandObservation, AnalysisError>,
-): "exited" | "signalled" | "timeout" | "cancelled" => {
+):
+  | "exited"
+  | "signalled"
+  | "timeout"
+  | "cancelled"
+  | "output_truncated"
+  | "not_started" => {
   if (executed.ok) return "exited";
   const error = executed.error;
   if (error instanceof AnalysisCancelledError) return "cancelled";
+  if (error instanceof AnalysisCapabilityUnavailableError) return "not_started";
   if (error instanceof AnalysisTimeoutError) return "timeout";
+  if (error.capturedOutput?.truncated === true) return "output_truncated";
   if (error.capturedOutput?.signal != null) return "signalled";
   return "exited";
 };

@@ -9,7 +9,7 @@ import {
 /** One observed limactl call: how it ended and how long it ran. */
 export const labVmCallSchema = z.strictObject({
   exit_type: labVmExitTypeSchema.describe(
-    "exited: limactl reported an exit status. signalled: limactl ended on a signal without a status. timeout: REA stopped it at its deadline. cancelled: the caller cancelled the operation.",
+    "exited: limactl reported an exit status. signalled: limactl ended on a signal without a status. timeout: REA stopped it at its deadline. cancelled: the caller cancelled the operation. output_truncated: the retained output budget stopped it. not_started: no process was spawned, so no exit exists.",
   ),
   exit_code: z
     .int()
@@ -76,7 +76,7 @@ export const labVmStopResultSchema = z.strictObject({
   stop: labVmCallSchema
     .nullable()
     .describe(
-      "The stop call observed by this request, or null when a retry only removed an instance whose stop observation was already retained.",
+      "The stop call observed by this request, or null when a retry removed an instance without re-observing a stop call.",
     ),
   deleted: z
     .boolean()

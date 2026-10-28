@@ -37,19 +37,28 @@ stop_lab_vm {"session_id":"…"}
    clean exit means the start command returned; it does not prove that every
    guest startup script finished.
 2. `run_lab_vm_command` passes the command line to `/bin/sh -lc` inside the
-   guest with `/workspace` as the working directory. Guest output bytes are not
-   published: Evidence keeps the exit type, exit code, duration, stdout and
-   stderr byte counts, truncation, and the workspace paths the command
-   produced, modified, or removed. Those paths come from a bounded inventory
-   taken immediately before and after the command, so a change that never
-   touches the mount is not observed.
+   guest with `/workspace` as the working directory. The line travels as one
+   argv element, so it is limited to 131072 UTF-8 bytes; longer work belongs in a
+   script inside the workspace. Successful observations publish no guest output
+   bytes: Evidence keeps the exit type, exit code, duration, stdout and stderr
+   byte counts, truncation, and the workspace paths the command produced,
+   modified, or removed. Those paths come from a bounded inventory taken
+   immediately before and after the command, so a change that never touches the
+   mount is not observed. The exit type distinguishes `exited`, `signalled`,
+   `timeout`, cancellation, `output_truncated` (the retained-output budget
+   stopped the process), and `not_started` (no process existed, so the launch
+   failed rather than the guest).
 3. `stop_lab_vm` runs `limactl stop` and then `limactl delete --force`, and
    releases the session identity only after both were observed. The mounted
    workspace is left untouched, so artifacts the guest wrote there remain on
    the host. A failed stop or removal keeps the identity retained and admits
-   no further guest command; calling `stop_lab_vm` again retries that owner, and
-   a retry that only observes removal reports `stop: null` instead of inventing
-   a second stop call.
+   no further guest command. Calling `stop_lab_vm` again retries that owner:
+   each removal step is recorded once observed, so a retry re-runs only the
+   steps that are still unproven, and an instance that is already gone is
+   confirmed through `limactl list --json` rather than by repeating a delete
+   that cannot succeed. Concurrent retries of one identity are serialized, so
+   only one of them can run a removal step. A retry that only observes removal
+   reports `stop: null` instead of inventing a second stop call.
 
 One REA server owns at most one lab VM at a time. That is a capacity bound, not
 a claim that a second VM would not fit: each VM is a complete guest operating
@@ -63,8 +72,16 @@ reports the lane's availability from the owner's own observation, including the
   zero exit status establishes the command's own report, not the correctness of
   what it built.
 - `produced_paths`, `modified_paths`, and `removed_paths` compare two bounded
-  inventories of the mounted workspace. `changes_truncated` marks a bounded
-  inventory or change list that stopped before covering the workspace.
+  inventories of the mounted workspace's regular files. Directories are
+  descended into; symbolic links, sockets, FIFOs and device nodes are neither
+  traversed nor reported, so a command that only creates or removes a link is
+  not reported. `changes_truncated` marks a bounded inventory or change list
+  that stopped before covering the workspace.
+- Successful observations carry no guest output. A **failure** message can
+  include up to 512 bytes of the `limactl` stderr tail, and `limactl shell`
+  proxies guest output through that stream, so a bounded guest excerpt can
+  reach an error reply. Evidence states this in its limitations; the excerpt is
+  never part of a successful result.
 - A timeout stops the owned `limactl` invocation at its deadline. It does not
   prove that a command it had already handed to the guest stopped running in
   the VM. `stop_lab_vm` removes the instance, which is what ends guest work.
@@ -83,6 +100,8 @@ reports the lane's availability from the owner's own observation, including the
 | Live lab VMs per REA server                   | 1                                | None in this release |
 | First boot (`limactl start`) deadline         | 900000 ms                        | None in this release |
 | Guest command deadline (`command_timeout_ms`) | 120000 ms default, 1..2147483647 | Per call             |
+| Guest command line                            | 131072 UTF-8 bytes               | None in this release |
+| Failure-message stderr excerpt                | 512 bytes                        | None in this release |
 | Retained `limactl` output per stream          | 4194304 bytes                    | None in this release |
 | Workspace inventory entries                   | 20000                            | None in this release |
 | Retained produced/modified/removed paths      | 512                              | None in this release |
@@ -90,8 +109,17 @@ reports the lane's availability from the owner's own observation, including the
 ## Verification status
 
 The automated tests use a scripted `limactl` stand-in: it records argv, writes
-into the mounted workspace, and returns scripted exit statuses. They are
-offline and require no Lima installation. They do not establish real `vz`
-behavior, Rosetta translation, guest-image acquisition, or real guest teardown.
+into the mounted workspace, keeps instance state for `limactl list --json`, and
+returns scripted exit statuses. They are offline and require no Lima
+installation.
+
+The absence confirmation assumes `limactl list --json` prints one JSON object
+per instance with a `name` field, and that `start`, `shell`, `stop`, and
+`delete --force` accept the argv this lane builds. The suite does not verify
+those assumptions against a real Lima build, and it does not establish real
+`vz` behavior, Rosetta translation, guest-image acquisition, or real guest
+teardown. An unreadable instance list leaves absence unproven, so the retry
+keeps the identity rather than releasing it.
+
 See [autonomous execution](./autonomous-execution.md) before pointing this lane
 at anything other than a lab-owned target.

@@ -60,7 +60,8 @@ environment, and autonomous lanes reuse both rather than inventing prose:
   actually touched.
 - **Limitations.** Anything the lane could not observe stays in `limitations`:
   a bounded inventory, a guest-side effect that never touched the mount, a
-  cleanup that remains owned.
+  cleanup that remains owned, and — for any lane that proxies a guest — the fact
+  that a failure message can carry a bounded excerpt of proxied guest output.
 
 A scope recorded this way is comparable across runs and exportable, which is
 what an audit needs. Prose in a commit message is not.

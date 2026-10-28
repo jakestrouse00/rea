@@ -8,7 +8,10 @@ import {
   rawBinaryEntryPointSchema,
   rawBinarySelectionError,
 } from "../domain/rawBinary.js";
-import { labVmCommandTimeoutField } from "../domain/vmlab/labVm.js";
+import {
+  LAB_VM_MAX_COMMAND_BYTES,
+  labVmCommandTimeoutField,
+} from "../domain/vmlab/labVm.js";
 import { z } from "zod";
 import { analysisProviderSelectorSchema } from "./providerSelection.js";
 
@@ -90,13 +93,20 @@ export const startLabVmInputSchema = z.strictObject({
   ),
 });
 
+const utf8Bytes = (value: string): number =>
+  new TextEncoder().encode(value).byteLength;
+
 /** Run one shell command line through the guest exec channel. */
 export const runLabVmCommandInputSchema = z.strictObject({
   session_id: labVmSessionIdSchema,
   command: nulFreeStringSchema
     .min(1)
+    .refine(
+      (value) => utf8Bytes(value) <= LAB_VM_MAX_COMMAND_BYTES,
+      `A guest command line travels as one argv element to limactl, so it is limited to ${String(LAB_VM_MAX_COMMAND_BYTES)} UTF-8 bytes. Pass a script path instead of an inline script when the line is longer.`,
+    )
     .describe(
-      "Command line passed to /bin/sh -lc inside the guest, with the workspace as the working directory.",
+      `Command line passed to /bin/sh -lc inside the guest, with the workspace as the working directory. Limited to ${String(LAB_VM_MAX_COMMAND_BYTES)} UTF-8 bytes because the line is one argv element.`,
     ),
   command_timeout_ms: labVmCommandTimeoutField,
 });

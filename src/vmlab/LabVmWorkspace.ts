@@ -22,10 +22,12 @@ export interface WorkspaceInventory {
 }
 
 /**
- * Inventory a caller-selected workspace without following symbolic links.
+ * Inventory the regular files of a caller-selected workspace.
  *
- * Symbolic links are reported as entries only, never traversed, so a link
- * cannot pull an unrelated host directory into the observed scope.
+ * Directories are descended into, and symbolic links, sockets, FIFOs and
+ * device nodes are neither traversed nor reported. A link therefore cannot
+ * pull an unrelated host directory into the observed scope, and a command that
+ * only creates or removes a link is not reported as a produced or removed path.
  */
 export const inventoryWorkspace = async (
   root: string,
