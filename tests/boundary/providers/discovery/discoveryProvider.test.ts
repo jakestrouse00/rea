@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 
 import { DiscoveryProvider } from "../../../../src/discovery/DiscoveryProvider.js";
 import { inspectDiscoveryProvider } from "../../../../src/discovery/DiscoveryDoctor.js";
-import type { FileCloseResourceOwner } from "../../../../src/application/AnalysisProvider.js";
+import type { RetainedResourceScope } from "../../../../src/application/AnalysisProvider.js";
 import { projectAnalysisError } from "../../../../src/domain/analysisErrorProjection.js";
 import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js";
 import {
@@ -11,10 +11,10 @@ import {
 } from "./fakeDiscovery.js";
 
 const doctorOptions = {
-  fileCloseResources: {
+  resourceScope: {
     retain: () => undefined,
     run: (op: () => unknown) => op(),
-  } as unknown as FileCloseResourceOwner,
+  } as unknown as RetainedResourceScope,
 };
 
 const providerFor = async (
@@ -212,6 +212,313 @@ test("a configured blueutil runs the inquiry window over the fake tool", async (
     name: "TV Remote",
   });
   expect(result.unparsed_lines).toEqual(["unstructured inquiry noise"]);
+});
+
+test("a BLE scan without a configured scanner reports skipped, not failed", async () => {
+  const { provider } = await providerFor({});
+  const result = (await resultOf(provider, {
+    operation: "scan_ble_advertisements",
+    input: { scan_seconds: 2 },
+  })) as {
+    tools: { ble_scanner: string | null };
+    scan_skipped: boolean;
+    skip_reason: string | null;
+    advertisements: unknown[];
+  };
+  expect(result.tools.ble_scanner).toBeNull();
+  expect(result.scan_skipped).toBe(true);
+  expect(result.skip_reason).toContain("REA_BLE_SCANNER_PATH");
+  expect(result.advertisements).toEqual([]);
+});
+
+test("a configured BLE scanner runs the observation window over the fake tool", async () => {
+  const { provider, tools } = await providerFor({
+    bleRaw: [
+      '{"event":"discovered","ts":"2026-10-27T12:00:00.000Z","address_or_uuid":"D2FC1D34-9BA1-4B0D-A6BE-C7E4F1C8A211","name":"Tile Mate","rssi":-62,"connectable":true,"manufacturer_hex":"4c0002151234","service_uuids":["180F"]}',
+      "unstructured ble scan noise",
+    ].join("\n"),
+  });
+  const result = (await resultOf(provider, {
+    operation: "scan_ble_advertisements",
+    input: { scan_seconds: 2 },
+  })) as {
+    tools: { ble_scanner: string | null };
+    scan_skipped: boolean;
+    advertisements: { address_or_uuid: string | null; rssi: number | null }[];
+    unparsed_lines: string[];
+  };
+  expect(result.tools.ble_scanner).toBe(tools.paths.ble_scan);
+  expect(result.scan_skipped).toBe(false);
+  expect(result.advertisements).toHaveLength(1);
+  expect(result.advertisements[0]).toMatchObject({
+    address_or_uuid: "D2FC1D34-9BA1-4B0D-A6BE-C7E4F1C8A211",
+    rssi: -62,
+  });
+  expect(result.unparsed_lines).toEqual(["unstructured ble scan noise"]);
+});
+
+test("packet capture without a configured command is refused with remediation", async () => {
+  const { provider } = await providerFor({});
+  const refusal = await provider.execute({
+    operation: "capture_radio_packets",
+    input: {
+      output_path: "/tmp/rea-test-capture.pcap",
+      duration_seconds: 1,
+      authorize_capture: true,
+    },
+  } as unknown as Parameters<DiscoveryProvider["execute"]>[0]);
+  expect(refusal.ok).toBe(false);
+  if (refusal.ok) throw new Error("expected a configuration refusal");
+  const projected = projectAnalysisError(refusal.error);
+  expect(JSON.stringify(projected)).toContain("REA_PACKET_CAPTURE_COMMAND");
+});
+
+test("a configured capture program writes and the file magic validates", async () => {
+  const { provider, tools } = await providerFor({
+    captureHex: "d4c3b2a1020403000000000000000000ffff000001000000",
+  });
+  const result = (await resultOf(provider, {
+    operation: "capture_radio_packets",
+    input: {
+      output_path: "/tmp/rea-test-capture.pcap",
+      duration_seconds: 1,
+      authorize_capture: true,
+    },
+  })) as {
+    tools: { packet_capture: string | null };
+    format: string;
+    file_bytes: number;
+    duration_seconds: number;
+  };
+  expect(result.tools.packet_capture).toBe(tools.paths.packet_capture);
+  expect(result.format).toBe("pcap");
+  expect(result.file_bytes).toBe(12);
+  expect(result.duration_seconds).toBe(1);
+});
+
+test("the capture refuses without the explicit authorization", async () => {
+  const { provider } = await providerFor({ captureHex: "d4c3b2a1" });
+  const refusal = await provider.execute({
+    operation: "capture_radio_packets",
+    input: {
+      output_path: "/tmp/rea-test-capture.pcap",
+      duration_seconds: 1,
+      authorize_capture: false,
+    },
+  } as unknown as Parameters<DiscoveryProvider["execute"]>[0]);
+  expect(refusal.ok).toBe(false);
+  if (refusal.ok) throw new Error("expected an authorization refusal");
+  const projected = projectAnalysisError(refusal.error);
+  expect(JSON.stringify(projected)).toContain("authorize_capture");
+});
+
+test("interfaces read from ifconfig with the ifIndex mapping and AWDL peers", async () => {
+  const { provider } = await providerFor({
+    ifconfigRaw: [
+      "lo0: flags=8049<UP,LOOPBACK,RUNNING> mtu 16384 index 1",
+      "\tenet 0:0:0:0:0:0",
+      "en0: flags=8863<UP,BROADCAST,SMART,RUNNING> mtu 1500 index 11",
+      "\tinet 192.168.1.20 netmask 0xffffff00 broadcast 192.168.1.255",
+      "\tether 04:5c:6c:aa:bb:cc",
+      "awdl0: flags=8843<UP,BROADCAST,SMART,RUNNING> mtu 1484 index 13",
+      "\tether 02:26:7e:d7:e1:cf",
+      "\ttype: AWDL",
+    ].join("\n"),
+    ndp: [
+      "Neighbor                             Linklayer Address  Netif Expire    S Flags",
+      "fe80::26:7eff:fed7:e1cf%awdl0       2:26:7e:d7:e1:cf   awdl0 permanent  R",
+      "fe80::1%lo0                          lo0                lo0   permanent  R",
+    ].join("\n"),
+  });
+  const result = (await resultOf(provider, {
+    operation: "inspect_network_interfaces",
+    input: { include_neighbors: true },
+  })) as {
+    tools: { ifconfig: string };
+    interfaces: { name: string; mac: string | null; ipv4: string[] }[];
+    interface_indexes: Record<string, string>;
+    peers: { peer: string; mac: string | null; interface: string }[] | null;
+  };
+  expect(result.interfaces.map((row) => row.name)).toEqual([
+    "lo0",
+    "en0",
+    "awdl0",
+  ]);
+  expect(result.interfaces[1]).toMatchObject({
+    mac: "04:5c:6c:aa:bb:cc",
+    ipv4: ["192.168.1.20"],
+  });
+  expect(result.interface_indexes).toEqual({
+    "1": "lo0",
+    "11": "en0",
+    "13": "awdl0",
+  });
+  expect(result.peers).toEqual([]);
+});
+
+test("mDNS resolution follows -L, -Z and -G windows over the fake dns-sd", async () => {
+  const { provider } = await providerFor({
+    resolveRaw: [
+      "Lookup rea-test._http._tcp.local.",
+      " 0:00:00.100  rea-test._http._tcp.local. can be reached at rea-host.local.:8099 (interface 11)",
+    ].join("\n"),
+    zoneRaw: [
+      "Browsing for rea-test._http._tcp.local.",
+      "rea-test._http._tcp.local. 120 IN SRV 0 0 8099 rea-host.local.",
+    ].join("\n"),
+    addressRaw: [" 0:00:00.300  Add  11  4  192.168.1.20 rea-host.local."].join(
+      "\n",
+    ),
+  });
+  const result = (await resultOf(provider, {
+    operation: "resolve_mdns_records",
+    input: {
+      instance: "rea-test",
+      service_type: "_http._tcp.",
+      domain: "local.",
+      resolve_seconds: 2,
+      include_addresses: true,
+    },
+  })) as {
+    tools: { dns_sd: string };
+    srv: { target: string | null; port: number | null };
+    addresses: { address: string }[];
+    zone_ran: boolean;
+    addresses_ran: boolean;
+  };
+  expect(result.tools.dns_sd).toBeTruthy();
+  expect(result.zone_ran).toBe(true);
+  expect(result.addresses_ran).toBe(true);
+  expect(result.addresses).toEqual([{ address: "192.168.1.20" }]);
+});
+
+test("the Wi-Fi lane uses the configured helper and keeps RF rows", async () => {
+  const { provider, tools } = await providerFor({
+    wifiRaw: [
+      '{"ts":1,"bssid":null,"rssi":-67,"noise":0,"channel":1,"band":"2.4","channel_width_mhz":20,"phy_mode":null,"security":null}',
+    ].join("\n"),
+  });
+  const result = (await resultOf(provider, {
+    operation: "scan_wifi_networks",
+    input: { scan_seconds: 4, include_ssid: false },
+  })) as {
+    tools: { wifi_scanner: string | null; system_profiler: string | null };
+    source: string;
+    networks: {
+      bssid: string | null;
+      rssi: number | null;
+      channel: number | null;
+    }[];
+  };
+  expect(result.tools.wifi_scanner).toBe(tools.paths.wifi_scan);
+  expect(result.source).toBe("scanner");
+  expect(result.networks).toEqual([
+    {
+      ts: 1,
+      bssid: null,
+      rssi: -67,
+      noise: 0,
+      channel: 1,
+      band: "2.4",
+      channel_width_mhz: 20,
+      phy_mode: null,
+      security: null,
+    },
+  ]);
+});
+
+test("the Wi-Fi lane falls back to system_profiler's airport cache without a helper", async () => {
+  const { provider, tools } = await providerFor({
+    wifiProfilerRaw: JSON.stringify({
+      SPAirPortDataType: [
+        {
+          _name: "Wi-Fi Information",
+          spairport_airport_other_local_wireless_networks: [
+            {
+              _name: "Neighbor Net",
+              spairport_network_channel: "52 (5GHz, 80MHz)",
+              spairport_network_phymode: "802.11ac",
+              spairport_security_mode: "unknown",
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  const result = (await resultOf(provider, {
+    operation: "scan_wifi_networks",
+    input: { include_ssid: false, scan_seconds: 10 },
+  })) as {
+    tools: { wifi_scanner: string | null };
+    source: string;
+    networks: {
+      ssid?: string;
+      channel: number | null;
+      band: string | null;
+      phy_mode: string | null;
+    }[];
+  };
+  expect(result.tools.wifi_scanner).toBeNull();
+  expect(result.source).toBe("system_profiler");
+  expect(result.networks[0]).toEqual({
+    channel: 52,
+    band: "5",
+    channel_width_mhz: 80,
+    phy_mode: "802.11ac",
+    security: "unknown",
+  });
+  expect(result.networks[0]).not.toHaveProperty("ssid");
+  void tools;
+});
+
+test("serial ports list joins SPPortsDataType rows with device nodes", async () => {
+  const { provider } = await providerFor({
+    serialPortsRaw: JSON.stringify({
+      SPPortsDataType: [
+        {
+          _name: "/dev/cu.usbserial-0001",
+          product: "USB-serial controller",
+          interface_type: "USB",
+        },
+      ],
+    }),
+  });
+  const result = (await resultOf(provider, {
+    operation: "list_serial_ports",
+    input: {},
+  })) as {
+    ports: {
+      device_path: string | null;
+      name: string | null;
+      in_use: boolean | null;
+    }[];
+    unmatched_port_names: string[];
+  };
+  const joined = result.ports.find(
+    (row) => row.name === "/dev/cu.usbserial-0001",
+  );
+  expect(joined).toBeTruthy();
+  expect(joined?.in_use).toBeNull();
+  expect(Array.isArray(result.ports)).toBe(true);
+});
+
+test("a serial observe window reports its stop reason and never writes", async () => {
+  const { provider } = await providerFor({});
+  const result = (await resultOf(provider, {
+    operation: "observe_serial_port",
+    input: {
+      device_path: "/dev/cu.Bluetooth-Incoming-Port",
+      duration_seconds: 1,
+      baud_rate: 9600,
+    },
+  })) as {
+    device_path: string;
+    bytes_observed: number;
+    stop_reason: string;
+  };
+  expect(result.device_path).toBe("/dev/cu.Bluetooth-Incoming-Port");
+  expect(result.bytes_observed).toBe(0);
+  expect(["deadline", "closed", "read_error"]).toContain(result.stop_reason);
 });
 
 test("the bounded browse emits multicast queries and collects instances", async () => {

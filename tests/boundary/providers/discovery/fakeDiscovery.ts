@@ -30,6 +30,24 @@ export interface FakeDiscoveryBehavior {
   }[];
   /** stdout for `blueutil --inquiry-timeout <s> --inquiry`. */
   readonly inquiryRaw?: string;
+  /** stdout for the fake BLE scanner (`ble-scan --seconds <s> ...`). */
+  readonly bleRaw?: string;
+  /** stdout for the fake CoreWLAN helper (`wifi-scan --seconds <s>`). */
+  readonly wifiRaw?: string;
+  /** Hex bytes the fake capture program writes to its first argument. */
+  readonly captureHex?: string;
+  /** stdout for `ifconfig -a -v`. */
+  readonly ifconfigRaw?: string;
+  /** stdout for `system_profiler SPAirPortDataType -json`. */
+  readonly wifiProfilerRaw?: string;
+  /** stdout for `system_profiler SPPortsDataType -json`. */
+  readonly serialPortsRaw?: string;
+  /** stdout for `dns-sd -L ...`. */
+  readonly resolveRaw?: string;
+  /** stdout for `dns-sd -Z ...`. */
+  readonly zoneRaw?: string;
+  /** stdout for `dns-sd -G ...`. */
+  readonly addressRaw?: string;
 }
 
 export interface FakeDiscoveryTools {
@@ -50,6 +68,9 @@ const roleCalls = () => fs.readFileSync(callsPath, "utf8").split("\n").filter(l 
 if (ROLE === "arp") process.stdout.write(behavior.arp ?? "");
 else if (ROLE === "ndp") process.stdout.write(behavior.ndp ?? "");
 else if (ROLE === "dns_sd") {
+  if (process.argv[2] === "-L") { process.stdout.write(behavior.resolveRaw ?? ""); process.exit(0); }
+  else if (process.argv[2] === "-Z") { process.stdout.write(behavior.zoneRaw ?? ""); process.exit(0); }
+  else if (process.argv[2] === "-G") { process.stdout.write(behavior.addressRaw ?? ""); process.exit(0); }
   if (process.argv[3] === "_services._dns-sd._udp") {
     process.stdout.write(behavior.browseMeta ?? "");
     setInterval(() => {}, 1000);
@@ -58,8 +79,13 @@ else if (ROLE === "dns_sd") {
     setInterval(() => {}, 1000);
   }
 } else if (ROLE === "system_profiler") {
-  process.stdout.write(process.argv.includes("SPUSBDataType") ? (behavior.usbRaw ?? "{}") : (behavior.bluetoothRaw ?? "{}"));
-} else if (ROLE === "ping") {
+  if (process.argv.includes("SPUSBDataType")) process.stdout.write(behavior.usbRaw ?? "{}");
+  else if (process.argv.includes("SPBluetoothDataType")) process.stdout.write(behavior.bluetoothRaw ?? "{}");
+  else if (process.argv.includes("SPAirPortDataType")) process.stdout.write(behavior.wifiProfilerRaw ?? "{}");
+  else if (process.argv.includes("SPPortsDataType")) process.stdout.write(behavior.serialPortsRaw ?? "[]");
+  else process.stdout.write("{}");
+} else if (ROLE === "ifconfig") process.stdout.write(behavior.ifconfigRaw ?? "");
+else if (ROLE === "ping") {
   const replies = behavior.pingReplies ?? [];
   const reply = replies[Math.min(roleCalls() - 1, replies.length - 1)] ?? { ok: false };
   if (reply.ok) {
@@ -69,6 +95,17 @@ else if (ROLE === "dns_sd") {
   process.stderr.write("ping: no reply\n");
   process.exit(2);
 } else if (ROLE === "blueutil") process.stdout.write(behavior.inquiryRaw ?? "");
+else if (ROLE === "ble_scan") process.stdout.write(behavior.bleRaw ?? "");
+else if (ROLE === "wifi_scan") { process.stdout.write(behavior.wifiRaw ?? ""); process.exit(0); }
+else if (ROLE === "packet_capture") {
+  try {
+    fs.writeFileSync(process.argv[2], Buffer.from(behavior.captureHex ?? "d4c3b2a10b4a2b3c", "hex"));
+    process.exit(0);
+  } catch (err) {
+    process.stderr.write(String(err));
+    process.exit(1);
+  }
+}
 `;
 
 const ROLES: Readonly<Record<string, string>> = {
@@ -77,6 +114,7 @@ const ROLES: Readonly<Record<string, string>> = {
   REA_DNS_SD_PATH: "dns_sd",
   REA_SYSTEM_PROFILER_PATH: "system_profiler",
   REA_PING_PATH: "ping",
+  REA_IFCONFIG_PATH: "ifconfig",
 };
 
 export const writeFakeDiscovery = async (
@@ -112,6 +150,48 @@ export const writeFakeDiscovery = async (
     await writeFile(path + ".json", JSON.stringify(behavior));
     paths.blueutil = path;
     environment.REA_BLUEUTIL_PATH = path;
+  }
+  if (behavior.bleRaw !== undefined) {
+    const path = join(root, "fake-ble-scan");
+    await writeFile(
+      path,
+      SCRIPT.replaceAll("__ROLE__", "ble_scan").replaceAll(
+        "__NODE__",
+        process.execPath,
+      ),
+    );
+    await chmod(path, 0o755);
+    await writeFile(path + ".json", JSON.stringify(behavior));
+    paths.ble_scan = path;
+    environment.REA_BLE_SCANNER_PATH = path;
+  }
+  if (behavior.wifiRaw !== undefined) {
+    const path = join(root, "fake-wifi-scan");
+    await writeFile(
+      path,
+      SCRIPT.replaceAll("__ROLE__", "wifi_scan").replaceAll(
+        "__NODE__",
+        process.execPath,
+      ),
+    );
+    await chmod(path, 0o755);
+    await writeFile(path + ".json", JSON.stringify(behavior));
+    paths.wifi_scan = path;
+    environment.REA_WIFI_SCANNER_PATH = path;
+  }
+  if (behavior.captureHex !== undefined) {
+    const path = join(root, "fake-packet-capture");
+    await writeFile(
+      path,
+      SCRIPT.replaceAll("__ROLE__", "packet_capture").replaceAll(
+        "__NODE__",
+        process.execPath,
+      ),
+    );
+    await chmod(path, 0o755);
+    await writeFile(path + ".json", JSON.stringify(behavior));
+    paths.packet_capture = path;
+    environment.REA_PACKET_CAPTURE_COMMAND = path;
   }
   return {
     environment,

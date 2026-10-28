@@ -11,7 +11,7 @@ import { DISCOVERY_TOOL_REMEDIATION } from "./DiscoveryRelease.js";
 /**
  * One resolved discovery toolset: Apple-shipped host tools selected at
  * absolute paths (optionally overridden) that all exist and are
- * executable, plus the optional caller-supplied blueutil.
+ * executable, plus the optional caller-supplied blueutil and BLE scanner.
  */
 export interface DiscoveryInstallation {
   readonly configuration: DiscoveryConfiguration;
@@ -21,7 +21,12 @@ export interface DiscoveryInstallation {
     readonly dnsSd: string;
     readonly systemProfiler: string;
     readonly ping: string;
+    readonly ifconfig: string;
     readonly blueutil: string | null;
+    readonly bleScanner: string | null;
+    readonly wifiScanner: string | null;
+    readonly stty: string | null;
+    readonly packetCapture: string | null;
   };
 }
 
@@ -49,6 +54,7 @@ const REQUIRED = [
   ["dnsSd", "REA_DNS_SD_PATH"],
   ["systemProfiler", "REA_SYSTEM_PROFILER_PATH"],
   ["ping", "REA_PING_PATH"],
+  ["ifconfig", "REA_IFCONFIG_PATH"],
 ] as const;
 
 /**
@@ -88,6 +94,28 @@ export const inspectDiscoveryInstallation = async (
     if (await probeExecutable(value.blueutil)) blueutil = value.blueutil;
   }
 
+  let bleScanner: string | null = null;
+  if (value.bleScanner !== null) {
+    if (await probeExecutable(value.bleScanner)) bleScanner = value.bleScanner;
+  }
+
+  let wifiScanner: string | null = null;
+  if (value.wifiScanner !== null) {
+    if (await probeExecutable(value.wifiScanner))
+      wifiScanner = value.wifiScanner;
+  }
+
+  let stty: string | null = null;
+  if (value.stty !== null) {
+    if (await probeExecutable(value.stty)) stty = value.stty;
+  }
+
+  let packetCapture: string | null = null;
+  if (value.packetCapture !== null) {
+    if (await probeExecutable(value.packetCapture))
+      packetCapture = value.packetCapture;
+  }
+
   return ok({
     configuration: value,
     tools: {
@@ -96,7 +124,12 @@ export const inspectDiscoveryInstallation = async (
       dnsSd: value.dnsSd,
       systemProfiler: value.systemProfiler,
       ping: value.ping,
+      ifconfig: value.ifconfig,
       blueutil,
+      bleScanner,
+      wifiScanner,
+      stty,
+      packetCapture,
     },
   });
 };

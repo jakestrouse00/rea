@@ -95,6 +95,20 @@ export const CLI_COMMANDS = Object.freeze({
   browseLanServices: "browse-lan-services",
   listUsbDevices: "list-usb-devices",
   listBluetoothDevices: "list-bluetooth-devices",
+
+  scanBleAdvertisements: "scan-ble-advertisements",
+
+  captureRadioPackets: "capture-radio-packets",
+
+  scanWifiNetworks: "scan-wifi-networks",
+
+  resolveMdnsRecords: "resolve-mdns-records",
+
+  inspectNetworkInterfaces: "inspect-network-interfaces",
+
+  listSerialPorts: "list-serial-ports",
+
+  observeSerialPort: "observe-serial-port",
   probeSubnetReachability: "probe-subnet-reachability",
   captureAndroidPerfetto: "capture-android-perfetto",
   captureAndroidSimpleperf: "capture-android-simpleperf",

@@ -38,10 +38,33 @@ import {
   serviceTypeKey,
 } from "./DiscoveryDeviceOutput.js";
 import {
+  DISCOVERY_BLE_REMEDIATION,
   DISCOVERY_BLUEUTIL_REMEDIATION,
+  DISCOVERY_CAPTURE_REMEDIATION,
   DISCOVERY_LANE_NOTE,
   DISCOVERY_PROVIDER_ID,
 } from "./DiscoveryRelease.js";
+import {
+  executeBleScan,
+  type BleScanNormalizedResult,
+} from "./ble/BleScanExecution.js";
+import {
+  PACKET_CAPTURE_COMMAND_ENV,
+  type CaptureInput,
+} from "./capture/CaptureAnalysis.js";
+import { executePacketCapture } from "./capture/CaptureExecution.js";
+import {
+  executeWifiScan,
+  executeWifiSystemProfiler,
+} from "./wifi/WifiScanExecution.js";
+import { executeMdnsResolve } from "./mdns/MdnsResolveExecution.js";
+import { executeInspectNetworkInterfaces } from "./mdns/NetworkInterfacesExecution.js";
+import {
+  executeListSerialPorts,
+  executeObserveSerialPort,
+  LIST_SERIAL_PORTS_LIMITATIONS,
+  OBSERVE_SERIAL_PORT_LIMITATIONS,
+} from "./serial/SerialExecution.js";
 
 export const DISCOVERY_PROVIDER_IDENTITY = {
   id: DISCOVERY_PROVIDER_ID,
@@ -84,13 +107,24 @@ interface ResolvedInstallation {
   readonly browseProcessTimeoutMs: number;
 }
 
+/** The validated input shape for scan_ble_advertisements. */
+type BleScanNormalizedRequest = {
+  readonly scan_seconds: number;
+  readonly address_filter?: string | undefined;
+};
+
 const toolsOf = (tools: DiscoveryToolset) => ({
   arp: tools.arp,
   ndp: tools.ndp,
   dns_sd: tools.dnsSd,
   system_profiler: tools.systemProfiler,
   ping: tools.ping,
+  ifconfig: tools.ifconfig,
   blueutil: tools.blueutil,
+  ble_scanner: tools.bleScanner,
+  wifi_scanner: tools.wifiScanner,
+  stty: tools.stty,
+  packet_capture: tools.packetCapture,
 });
 
 export class DiscoveryProvider {
@@ -132,9 +166,19 @@ export class DiscoveryProvider {
           dns_sd: installation.value.tools.dnsSd,
           system_profiler: installation.value.tools.systemProfiler,
           ping: installation.value.tools.ping,
+          ifconfig: installation.value.tools.ifconfig,
           ...(installation.value.tools.blueutil === null
             ? {}
             : { blueutil: installation.value.tools.blueutil }),
+          ...(installation.value.tools.bleScanner === null
+            ? {}
+            : { ble_scanner: installation.value.tools.bleScanner }),
+          ...(installation.value.tools.wifiScanner === null
+            ? {}
+            : { wifi_scanner: installation.value.tools.wifiScanner }),
+          ...(installation.value.tools.packetCapture === null
+            ? {}
+            : { packet_capture: installation.value.tools.packetCapture }),
         },
       };
     } catch (cause: unknown) {
@@ -188,6 +232,44 @@ export class DiscoveryProvider {
           return await this.#listUsbDevices(resolvedInstallation, signal);
         case "list_bluetooth_devices":
           return await this.#listBluetoothDevices(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "scan_ble_advertisements":
+          return await this.#scanBle(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "scan_wifi_networks":
+          return await this.#scanWifi(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "resolve_mdns_records":
+          return await this.#resolveMdns(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "inspect_network_interfaces":
+          return await this.#inspectInterfaces(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "list_serial_ports":
+          return await this.#listSerialPorts(resolvedInstallation, signal);
+        case "observe_serial_port":
+          return await this.#observeSerialPort(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "capture_radio_packets":
+          return await this.#capturePackets(
             resolvedInstallation,
             request.input,
             signal,
@@ -510,6 +592,271 @@ export class DiscoveryProvider {
               : []),
           ],
         },
+      ),
+    );
+  }
+
+  async #scanBle(
+    installation: ResolvedInstallation,
+    input: BleScanNormalizedRequest,
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const started = Date.now();
+    const scanner = installation.tools.bleScanner;
+    const limitations: string[] = [
+      DISCOVERY_LANE_NOTE,
+      "The BLE scan runs a CoreBluetooth advertisement observer that only receives advertising packets; it sends no connection requests to peers",
+      "macOS reports BLE peripherals by CoreBluetooth UUID, never by Bluetooth MAC address",
+      "Advertisements reflect only this bounded observation window; absence here is not absence of a beacon",
+    ];
+    if (scanner === null) {
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            scan_seconds: input.scan_seconds,
+            address_filter: null,
+            scan_skipped: true,
+            skip_reason: `The BLE scan source was skipped because REA_BLE_SCANNER_PATH is not configured or the scanner is missing. ${DISCOVERY_BLE_REMEDIATION}`,
+            advertisements: [],
+            window_exhausted: false,
+            elapsed_ms: Date.now() - started,
+            exit_code: null,
+            unparsed_lines: [],
+            coverage: "partial" as const,
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          {
+            limitations: [
+              ...limitations,
+              `The scan source was skipped. ${DISCOVERY_BLE_REMEDIATION}`,
+            ],
+          },
+        ),
+      );
+    }
+    const ran = await executeBleScan(
+      scanner,
+      {
+        scan_seconds: input.scan_seconds,
+        address_filter: input.address_filter ?? null,
+      },
+      signal,
+      this.#launcher,
+    );
+    if (!ran.ok) return ran;
+    const observed: BleScanNormalizedResult = ran.value;
+    return ok(
+      createAnalysisExecution(
+        {
+          tools: toolsOf(installation.tools),
+          scan_skipped: false,
+          skip_reason: null,
+          ...observed,
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        { limitations },
+      ),
+    );
+  }
+
+  async #scanWifi(
+    installation: ResolvedInstallation,
+    input: { readonly include_ssid: boolean; readonly scan_seconds: number },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const scanner = installation.tools.wifiScanner;
+    if (scanner !== null)
+      return await executeWifiScan(scanner, input, signal, this.#launcher, {
+        scanSeconds: input.scan_seconds,
+        toolsEcho: toolsOf(installation.tools),
+      });
+    return await executeWifiSystemProfiler(
+      installation.tools.systemProfiler,
+      input,
+      signal,
+      this.#launcher,
+      { toolsEcho: toolsOf(installation.tools) },
+    );
+  }
+
+  async #resolveMdns(
+    installation: ResolvedInstallation,
+    input: {
+      readonly instance: string;
+      readonly service_type: string;
+      readonly domain: string;
+      readonly resolve_seconds: number;
+      readonly include_addresses: boolean;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const ran = await executeMdnsResolve(
+      installation.tools.dnsSd,
+      input,
+      signal,
+      this.#launcher,
+    );
+    if (!ran.ok) return ran;
+    return ok(
+      createAnalysisExecution(
+        {
+          tools: toolsOf(installation.tools),
+          ...ran.value,
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        {
+          limitations: [
+            DISCOVERY_LANE_NOTE,
+            "dns-sd resolves until each window elapses; an empty window is silence on the multicast network, never proof of absence",
+            "dns-sd output spelling (TXT placement on a continuation line, -Z owner names without the domain, zero-padded IPv6 with %zone suffixes) varies across macOS releases; parsers are format-faithful to the hosts REA was verified on",
+            ...(ran.value.unparsed_lines.length > 0
+              ? [
+                  "unparsed_lines preserves dns-sd framing and rows REA did not recognize",
+                ]
+              : []),
+          ],
+        },
+      ),
+    );
+  }
+
+  async #inspectInterfaces(
+    installation: ResolvedInstallation,
+    input: { readonly include_neighbors: boolean },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const ran = await executeInspectNetworkInterfaces(
+      installation.tools.ifconfig,
+      installation.tools.ndp,
+      input,
+      signal,
+      this.#launcher,
+    );
+    if (!ran.ok) return ran;
+    return ok(
+      createAnalysisExecution(
+        {
+          tools: toolsOf(installation.tools),
+          ...ran.value,
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        {
+          limitations: [
+            DISCOVERY_LANE_NOTE,
+            "The kernel IPv6 neighbor table yields the AWDL peer rows on awdl0/llw0; the host's own link-local entry (awdl0's ether address) is excluded, and a peer present on the radio but absent from the kernel table will not appear",
+            "ifconfig attribute lines REA does not interpret (eflags, agent, media, …) are preserved in unparsed_lines",
+          ],
+        },
+      ),
+    );
+  }
+
+  async #listSerialPorts(
+    installation: ResolvedInstallation,
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const ran = await executeListSerialPorts(
+      installation.tools.systemProfiler,
+      signal,
+      ...(this.#launcher === undefined ? [{}] : [{ launcher: this.#launcher }]),
+    );
+    if (!ran.ok) return ran;
+    return ok(
+      createAnalysisExecution(
+        {
+          ...ran.value,
+          tools: toolsOf(installation.tools),
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        {
+          limitations: [DISCOVERY_LANE_NOTE, ...LIST_SERIAL_PORTS_LIMITATIONS],
+        },
+      ),
+    );
+  }
+
+  async #observeSerialPort(
+    installation: ResolvedInstallation,
+    input: {
+      readonly device_path: string;
+      readonly duration_seconds: number;
+      readonly baud_rate:
+        | 1200
+        | 2400
+        | 4800
+        | 9600
+        | 19200
+        | 38400
+        | 57600
+        | 115200;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const ran = await executeObserveSerialPort(input, signal, {
+      ...(this.#launcher === undefined ? {} : { launcher: this.#launcher }),
+      ...(installation.tools.stty === null
+        ? {}
+        : { sttyPath: installation.tools.stty }),
+    });
+    if (!ran.ok) return ran;
+    return ok(
+      createAnalysisExecution(
+        {
+          ...ran.value,
+          tools: toolsOf(installation.tools),
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        {
+          limitations: [
+            DISCOVERY_LANE_NOTE,
+            ...OBSERVE_SERIAL_PORT_LIMITATIONS,
+          ],
+        },
+      ),
+    );
+  }
+
+  async #capturePackets(
+    installation: ResolvedInstallation,
+    input: CaptureInput,
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const command = input.command ?? installation.tools.packetCapture;
+    if (command === undefined || command === null) {
+      const refusal = new Error(DISCOVERY_CAPTURE_REMEDIATION);
+      return err(
+        providerConfigurationRefusal(
+          DISCOVERY_PROVIDER_ID,
+          "capture_radio_packets",
+          Object.assign(refusal, {
+            diagnostics: { setting: PACKET_CAPTURE_COMMAND_ENV },
+          }) as Error,
+        ),
+      );
+    }
+    const limitations: string[] = [
+      DISCOVERY_LANE_NOTE,
+      "The capture runs the caller-provided program and originates packets and RxFrames from this host for the requested window; REA neither installs the program nor elevates privileges",
+      "The capture file is never deleted: on an early nonzero exit, an unwritten output or an unrecognized magic the bytes remain on disk for caller inspection",
+      "format unknown means the written bytes did not match a recognized pcap/pcapng magic; unknown stays unknown",
+      "Packets the child buffered during termination flushing can extend past the window edge",
+    ];
+    const ran = await executePacketCapture(
+      command,
+      input,
+      signal,
+      this.#launcher,
+    );
+    if (!ran.ok) return ran;
+    return ok(
+      createAnalysisExecution(
+        {
+          tools: toolsOf(installation.tools),
+          ...ran.value,
+        },
+        DISCOVERY_PROVIDER_IDENTITY,
+        { limitations },
       ),
     );
   }

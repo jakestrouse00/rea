@@ -7,7 +7,12 @@ export interface DiscoveryToolset {
   readonly dnsSd: string;
   readonly systemProfiler: string;
   readonly ping: string;
+  readonly ifconfig: string;
   readonly blueutil: string | null;
+  readonly bleScanner: string | null;
+  readonly wifiScanner: string | null;
+  readonly stty: string | null;
+  readonly packetCapture: string | null;
 }
 
 export interface ParsedNeighbor {

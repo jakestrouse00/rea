@@ -35,6 +35,49 @@ Approved by the fork maintainer, with these boundaries:
 - **Verified scope:** only macOS. Other hosts report the provider as
   unavailable instead of pretending parity.
 
+## Maintainer scope decision (extension, 2026-10-28)
+
+Approved by the fork maintainer, the lane extends beyond the neighbor
+inventories above with these boundaries:
+
+- **`scan_ble_advertisements`** observes BLE advertising packets for a
+  bounded window through a caller-supplied CoreBluetooth helper
+  (`REA_BLE_SCANNER_PATH`; reference helper source ships under
+  `third_party/rea-helpers/`). It is receive-only — no connection
+  requests to peers — and macOS reports peripherals by CoreBluetooth
+  UUID, never by MAC address.
+- **`scan_wifi_networks`** observes 802.11 beacon frames through a
+  caller-compiled CoreWLAN helper (`REA_WIFI_SCANNER_PATH`), falling
+  back to the host's `system_profiler` airport scan cache. macOS gates
+  neighbor scans behind Location Services: a TCC denial is a structured
+  failure (never retried), and a withheld BSSID/SSID is preserved as
+  null. SSID inclusion is a caller choice dropped at the parse boundary.
+- **`resolve_mdns_records`** and **`inspect_network_interfaces`** read
+  more of what `browse_lan_services` and `list_network_neighbors` found:
+  bounded `dns-sd -L/-Z/-G` resolution of one instance and the interface
+  table with an ifIndex mapping, with AWDL peers read from the kernel
+  neighbor rows on `awdl0`/`llw0`.
+- **`capture_radio_packets`** runs a caller-provided capture program
+  (`REA_PACKET_CAPTURE_COMMAND`, e.g. a tcpdump wrapper script; REA never
+  installs one and never elevates privileges) for one bounded window,
+  validates the retained file's pcap/pcapng magic and digest, and never
+  deletes the output — even on failure. Requires `authorize_capture:
+  true`. Feed the retained path to `inspect_pcap_capture` afterwards.
+- **`list_serial_ports` / `observe_serial_port`** inventory serial
+  device nodes and read one node's receive side for a bounded window;
+  the write path does not exist in the lane. Opening a port asserts
+  modem-control lines (some devices reset), and the operation is audited
+  `mutatesDevice` for that reason.
+- **`correlate_device_evidence`** queries only the session's retained
+  Evidence ledger: 2..16 caller-selected records are walked for
+  address-like endpoints with all original spellings preserved, matching
+  across records is reported (observed), OUI vendors come from a curated
+  non-exhaustive table derived from the IEEE registry, and same-device
+  claims are never made.
+- **Never installed (extension):** the BLE and Wi-Fi helpers are
+  bring-your-own binaries compiled by the caller; their source ships as
+  reference material only.
+
 ## What each tool reports and what it cannot
 
 - **`list_network_neighbors`** reads the kernel-cached neighbor tables.
@@ -61,14 +104,19 @@ Approved by the fork maintainer, with these boundaries:
 Tools resolve at Apple's standard absolute paths; each has an explicit
 override:
 
-| Tool                | Standard path               | Override                   |
-| ------------------- | --------------------------- | -------------------------- |
-| arp                 | `/usr/sbin/arp`             | `REA_ARP_PATH`             |
-| ndp                 | `/usr/sbin/ndp`             | `REA_NDP_PATH`             |
-| dns-sd              | `/usr/bin/dns-sd`           | `REA_DNS_SD_PATH`          |
-| system_profiler     | `/usr/sbin/system_profiler` | `REA_SYSTEM_PROFILER_PATH` |
-| ping                | `/sbin/ping`                | `REA_PING_PATH`            |
-| blueutil (optional) | caller-installed            | `REA_BLUEUTIL_PATH`        |
+| Tool                       | Standard path               | Override                     |
+| -------------------------- | --------------------------- | ---------------------------- |
+| arp                        | `/usr/sbin/arp`             | `REA_ARP_PATH`               |
+| ndp                        | `/usr/sbin/ndp`             | `REA_NDP_PATH`               |
+| dns-sd                     | `/usr/bin/dns-sd`           | `REA_DNS_SD_PATH`            |
+| system_profiler            | `/usr/sbin/system_profiler` | `REA_SYSTEM_PROFILER_PATH`   |
+| ping                       | `/sbin/ping`                | `REA_PING_PATH`              |
+| ifconfig                   | `/sbin/ifconfig`            | `REA_IFCONFIG_PATH`          |
+| blueutil (optional)        | caller-installed            | `REA_BLUEUTIL_PATH`          |
+| BLE scanner (optional)     | caller-compiled             | `REA_BLE_SCANNER_PATH`       |
+| Wi-Fi helper (optional)    | caller-compiled             | `REA_WIFI_SCANNER_PATH`      |
+| stty (optional)            | `/bin/stty`                 | `REA_STTY_PATH`              |
+| capture program (optional) | caller-provided             | `REA_PACKET_CAPTURE_COMMAND` |
 
 Relative paths are refused fail-closed. `blueutil` is required only by
 the inquiry source; without it that source is skipped and reported as

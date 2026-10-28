@@ -17,6 +17,10 @@ const EXECUTION_WORDING =
   /\b(?:run|runs|running|launch|launches|launching|execute|executes|executing|execution|start|starts|install|installs|uninstall|uninstalls)\b/iu;
 
 const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
+  scan_ble_advertisements:
+    "runs a caller-supplied CoreBluetooth scanner; no target code executes",
+  capture_radio_packets:
+    "runs the caller-provided capture program; no target code executes",
   list_bluetooth_devices:
     "starts a caller-supplied blueutil inquiry window; the radio queries are short-range discovery, no target code runs",
   inspect_analysis_settings:
@@ -199,6 +203,7 @@ describe("tool effects", () => {
       "instrument_with_frida",
       "load_frida_script",
       "observe_native_calls",
+      "observe_serial_port",
       "push_adb_file",
       "resume_frida_session",
       "rizin_debug_command",

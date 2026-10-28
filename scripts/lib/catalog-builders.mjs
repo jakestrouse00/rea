@@ -156,6 +156,7 @@ export const toolFamilyCatalog = (sources) => {
         ...sources.javascriptRecoveryContracts
           .JAVASCRIPT_RECOVERY_TOOL_CONTRACTS,
         ...sources.environmentContracts.ENVIRONMENT_TOOL_CONTRACTS,
+        ...sources.correlationContracts.CORRELATION_TOOL_CONTRACTS,
       ],
     },
     {

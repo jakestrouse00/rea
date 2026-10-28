@@ -3,9 +3,12 @@ import { access, realpath } from "node:fs/promises";
 
 import { err, ok, type Result } from "../domain/result.js";
 import {
+  DISCOVERY_BLE_REMEDIATION,
   DISCOVERY_BLUEUTIL_REMEDIATION,
+  DISCOVERY_CAPTURE_REMEDIATION,
   DISCOVERY_TOOL_REMEDIATION,
   DISCOVERY_UNSUPPORTED_HOST_REMEDIATION,
+  DISCOVERY_WIFI_REMEDIATION,
 } from "./DiscoveryRelease.js";
 
 /** One-shot probe or table read deadline. */
@@ -21,8 +24,17 @@ export interface DiscoveryConfiguration {
   readonly dnsSd: string;
   readonly systemProfiler: string;
   readonly ping: string;
+  readonly ifconfig: string;
   /** Caller-supplied blueutil; absent means the inquiry source stays skipped. */
   readonly blueutil: string | null;
+  /** Caller-supplied BLE scanner; absent means the BLE scan source stays skipped. */
+  readonly bleScanner: string | null;
+  /** Caller-supplied CoreWLAN helper; absent means the RF lane uses the fallback. */
+  readonly wifiScanner: string | null;
+  /** stty, needed only by the serial observe window; absent means it is refused. */
+  readonly stty: string | null;
+  /** Caller-supplied capture program; absent means capture stays unavailable. */
+  readonly packetCapture: string | null;
   readonly operationTimeoutMs: number;
   readonly browseProcessTimeoutMs: number;
 }
@@ -46,13 +58,17 @@ const failure = (
 
 /** Candidate absolute paths per host tool, in preference order. */
 const TOOL_CANDIDATES: Readonly<
-  Record<"arp" | "ndp" | "dnsSd" | "systemProfiler" | "ping", readonly string[]>
+  Record<
+    "arp" | "ndp" | "dnsSd" | "systemProfiler" | "ping" | "ifconfig",
+    readonly string[]
+  >
 > = {
   arp: ["/usr/sbin/arp", "/sbin/arp"],
   ndp: ["/usr/sbin/ndp", "/sbin/ndp"],
   dnsSd: ["/usr/bin/dns-sd"],
   systemProfiler: ["/usr/sbin/system_profiler"],
   ping: ["/sbin/ping", "/usr/sbin/ping"],
+  ifconfig: ["/sbin/ifconfig"],
 };
 
 const ENV_OVERRIDE: Readonly<Record<keyof typeof TOOL_CANDIDATES, string>> = {
@@ -61,6 +77,7 @@ const ENV_OVERRIDE: Readonly<Record<keyof typeof TOOL_CANDIDATES, string>> = {
   dnsSd: "REA_DNS_SD_PATH",
   systemProfiler: "REA_SYSTEM_PROFILER_PATH",
   ping: "REA_PING_PATH",
+  ifconfig: "REA_IFCONFIG_PATH",
 };
 
 const isAbsolute = (p: string): boolean => p.startsWith("/");
@@ -123,16 +140,74 @@ export const readDiscoveryConfiguration = (
       "REA_BLUEUTIL_PATH",
     );
 
+  const bleScannerRaw = environment.REA_BLE_SCANNER_PATH;
+  if (
+    bleScannerRaw !== undefined &&
+    bleScannerRaw.length > 0 &&
+    !isAbsolute(bleScannerRaw)
+  )
+    return failure(
+      "open_options_invalid",
+      `REA_BLE_SCANNER_PATH must be an absolute path; received ${bleScannerRaw}. ${DISCOVERY_BLE_REMEDIATION}`,
+      "REA_BLE_SCANNER_PATH",
+    );
+
+  const packetCaptureRaw = environment.REA_PACKET_CAPTURE_COMMAND;
+  if (
+    packetCaptureRaw !== undefined &&
+    packetCaptureRaw.length > 0 &&
+    !isAbsolute(packetCaptureRaw)
+  )
+    return failure(
+      "open_options_invalid",
+      `REA_PACKET_CAPTURE_COMMAND must be an absolute path; received ${packetCaptureRaw}. ${DISCOVERY_CAPTURE_REMEDIATION}`,
+      "REA_PACKET_CAPTURE_COMMAND",
+    );
+
+  const wifiScannerRaw = environment.REA_WIFI_SCANNER_PATH;
+  if (
+    wifiScannerRaw !== undefined &&
+    wifiScannerRaw.length > 0 &&
+    !isAbsolute(wifiScannerRaw)
+  )
+    return failure(
+      "open_options_invalid",
+      `REA_WIFI_SCANNER_PATH must be an absolute path; received ${wifiScannerRaw}. ${DISCOVERY_WIFI_REMEDIATION}`,
+      "REA_WIFI_SCANNER_PATH",
+    );
+
+  const sttyRaw = environment.REA_STTY_PATH;
+  if (sttyRaw !== undefined && sttyRaw.length > 0 && !isAbsolute(sttyRaw))
+    return failure(
+      "open_options_invalid",
+      `REA_STTY_PATH must be an absolute path; received ${sttyRaw}. The serial lane resolves stty at its standard macOS locations otherwise.`,
+      "REA_STTY_PATH",
+    );
+
   return ok({
     arp: resolved.arp!,
     ndp: resolved.ndp!,
     dnsSd: resolved.dnsSd!,
     systemProfiler: resolved.systemProfiler!,
     ping: resolved.ping!,
+    ifconfig: resolved.ifconfig!,
     blueutil:
       blueutilRaw === undefined || blueutilRaw.length === 0
         ? null
         : blueutilRaw,
+    bleScanner:
+      bleScannerRaw === undefined || bleScannerRaw.length === 0
+        ? null
+        : bleScannerRaw,
+    packetCapture:
+      packetCaptureRaw === undefined || packetCaptureRaw.length === 0
+        ? null
+        : packetCaptureRaw,
+    wifiScanner:
+      wifiScannerRaw === undefined || wifiScannerRaw.length === 0
+        ? null
+        : wifiScannerRaw,
+    stty: sttyRaw === undefined || sttyRaw.length === 0 ? "/bin/stty" : sttyRaw,
     operationTimeoutMs: DEFAULT_OPERATION_TIMEOUT_MS,
     browseProcessTimeoutMs: DEFAULT_DNS_SD_TIMEOUT_MS,
   });

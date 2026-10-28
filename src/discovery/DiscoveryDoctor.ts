@@ -2,7 +2,7 @@ import type {
   DoctorProviderCheck,
   DoctorProviderInspection,
 } from "../application/Doctor.js";
-import type { FileCloseResourceOwner } from "../application/AnalysisProvider.js";
+import type { RetainedResourceScope } from "../application/AnalysisProvider.js";
 import {
   inspectDiscoveryInstallation,
   type DiscoveryReadinessFailure,
@@ -21,7 +21,12 @@ const REGISTRATION_SETTINGS = [
   "REA_DNS_SD_PATH",
   "REA_SYSTEM_PROFILER_PATH",
   "REA_PING_PATH",
+  "REA_IFCONFIG_PATH",
   "REA_BLUEUTIL_PATH",
+  "REA_BLE_SCANNER_PATH",
+  "REA_WIFI_SCANNER_PATH",
+  "REA_STTY_PATH",
+  "REA_PACKET_CAPTURE_COMMAND",
 ] as const;
 
 /**
@@ -33,7 +38,8 @@ export const inspectDiscoveryProvider = async (
   environment: Readonly<NodeJS.ProcessEnv>,
   platform: NodeJS.Platform = process.platform,
   _options: {
-    readonly fileCloseResources: FileCloseResourceOwner;
+    readonly resourceScope: RetainedResourceScope;
+    readonly signal?: AbortSignal;
   },
 ): Promise<DoctorProviderInspection> => {
   const configured = REGISTRATION_SETTINGS.some(
@@ -94,10 +100,22 @@ export const inspectDiscoveryProvider = async (
         name: "installation",
         ok: true,
         code: null,
-        detail: `Host tools resolved: arp, ndp, dns-sd, system_profiler, ping${
+        detail: `Host tools resolved: arp, ndp, dns-sd, system_profiler, ping, ifconfig${
           tools.blueutil === null
             ? "; blueutil not configured, so the Bluetooth inquiry source stays skipped"
             : `; blueutil at ${tools.blueutil}`
+        }${
+          tools.bleScanner === null
+            ? "; BLE scanner not configured, so the BLE advertisement scan source stays skipped"
+            : `; BLE scanner at ${tools.bleScanner}`
+        }${
+          tools.packetCapture === null
+            ? "; capture program not configured, so packet capture stays unavailable"
+            : `; capture program at ${tools.packetCapture}`
+        }${
+          tools.stty === null
+            ? "; stty not found, so the serial observe source is refused on use"
+            : `; stty at ${tools.stty}`
         }. ${DISCOVERY_LANE_NOTE}`,
         remediation: null,
         classification: "config_drift" as const,
@@ -107,7 +125,15 @@ export const inspectDiscoveryProvider = async (
           dns_sd: tools.dnsSd,
           system_profiler: tools.systemProfiler,
           ping: tools.ping,
+          ifconfig: tools.ifconfig,
+          ...(tools.stty === null ? {} : { stty: tools.stty }),
           ...(tools.blueutil === null ? {} : { blueutil: tools.blueutil }),
+          ...(tools.bleScanner === null
+            ? {}
+            : { ble_scanner: tools.bleScanner }),
+          ...(tools.packetCapture === null
+            ? {}
+            : { packet_capture: tools.packetCapture }),
         },
       },
     ],

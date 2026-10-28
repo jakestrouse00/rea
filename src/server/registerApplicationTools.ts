@@ -3,6 +3,7 @@ import type { EvidenceMcpServer } from "./EvidenceMcpServer.js";
 import { registerTraceFeatureTool } from "./registerApplicationTools/traceFeature.js";
 import { registerTraceJavaScriptSemanticsTool } from "./registerApplicationTools/traceSemantics.js";
 import { registerCompareApplicationVersionsTool } from "./registerApplicationTools/compareVersions.js";
+import { registerCorrelateDeviceEvidenceTool } from "./registerApplicationTools/deviceCorrelation.js";
 import { registerCompareSourceToBundleTool } from "./registerApplicationTools/compareSourceToBundle.js";
 import { registerCompareJavaScriptExportShapesTool } from "./registerApplicationTools/compareExportShapes.js";
 import { registerCoverageTools } from "./registerApplicationTools/coverage.js";
@@ -19,6 +20,7 @@ export const registerApplicationTools = (
   registerTraceFeatureTool(server, options);
   registerTraceJavaScriptSemanticsTool(server, options);
   registerCompareApplicationVersionsTool(server, options);
+  registerCorrelateDeviceEvidenceTool(server, options);
   registerCompareSourceToBundleTool(server, options);
   registerCompareJavaScriptExportShapesTool(server, options);
   registerReconstructionObligationLedgerTool(server, options);

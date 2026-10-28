@@ -535,6 +535,52 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
     accessesNetwork: true,
   }),
+  // The BLE scan is receive-only: CoreBluetooth advertisement listening emits
+  // no connection requests, but it launches the caller-supplied scanner.
+  scan_ble_advertisements: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  capture_radio_packets: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  // The RF scan observes 802.11 beacon frames passively; it launches the
+  // caller-built CoreWLAN helper or reads the airport cache.
+  scan_wifi_networks: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  resolve_mdns_records: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
+  inspect_network_interfaces: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  list_serial_ports: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  // Opening a serial node asserts modem-control lines (DTR/RTS); some
+  // hardware reacts (Arduinos reset on port open), so the window is
+  // non-idempotent and device-affecting even though nothing is written.
+  observe_serial_port: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    mutatesDevice: true,
+    idempotent: false,
+  }),
+  // Query-only workflow over the session ledger: reads retained records,
+  // launches nothing, records nothing.
+  correlate_device_evidence: effects({}),
   probe_subnet_reachability: effects({
     mutatesSession: true,
     launchesProcess: true,
