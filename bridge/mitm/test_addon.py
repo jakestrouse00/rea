@@ -133,6 +133,13 @@ class AddonTests(unittest.TestCase):
 
     def tearDown(self):
         sys.stdout = self.previous_stdout
+        for name in (
+            "REA_MITM_HOLD_DIR",
+            "REA_MITM_CONTROL_PATH",
+            "REA_MITM_LISTEN_HOST",
+            "REA_MITM_LISTEN_PORT",
+        ):
+            os.environ.pop(name, None)
         shutil.rmtree(self.hold, ignore_errors=True)
 
     def frames(self):

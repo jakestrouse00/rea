@@ -27,6 +27,7 @@ import { safeParseImmutableEvidence } from "../../domain/evidenceValidation.js";
 import { parseExactJson } from "../../domain/exactJsonNumber.js";
 import { projectInputIssues } from "../../domain/inputIssueProjection.js";
 import { immutableJsonSnapshotMember } from "../../domain/immutableJson.js";
+import { replayBodyByteLength } from "../../domain/replay/replayRequest.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import {
@@ -70,11 +71,6 @@ export type ReplayedBody =
   | { readonly kind: "json"; readonly value: JsonValue }
   | { readonly kind: "text"; readonly text: string };
 
-/** Bytes a padded base64 string decodes to. */
-const decodedBase64Bytes = (encoded: string): number =>
-  Math.floor((encoded.length * 3) / 4) -
-  (encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0);
-
 /** Classify a retained body once: whole JSON-like UTF-8 text within the limit that parses exactly is JSON. */
 export const replayedBody = (exchange: RecordedExchange): ReplayedBody => {
   const text = exchange.bodyText;
@@ -85,7 +81,8 @@ export const replayedBody = (exchange: RecordedExchange): ReplayedBody => {
       encoded: text,
       whole:
         exchange.bodyCut !== true &&
-        decodedBase64Bytes(text) <= REPLAY_BODY_LIMIT_BYTES,
+        replayBodyByteLength({ kind: "base64", base64: text }) <=
+          REPLAY_BODY_LIMIT_BYTES,
     };
   if (
     exchange.bodyCut === true ||

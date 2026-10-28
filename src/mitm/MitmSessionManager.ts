@@ -46,6 +46,7 @@ import {
 import { MitmInventory } from "../domain/mitm/mitmInventory.js";
 import {
   MitmRuleLedger,
+  mitmRuleActionIssue,
   mitmRuleActionSummary,
   mitmRulePhase,
   type MitmRuleMatch,
@@ -622,6 +623,21 @@ export class MitmSessionManager implements MitmInterceptionPort {
         ),
       );
     const action = request.action;
+    const actionIssue = mitmRuleActionIssue(action);
+    if (actionIssue !== undefined)
+      return err(
+        this.#inputError(
+          operation,
+          [
+            {
+              path: ["action"],
+              reason: "invalid_format",
+              message: actionIssue,
+            },
+          ],
+          actionIssue,
+        ),
+      );
     const match: MitmRuleMatch = {
       origins: [...request.match.origins],
       pathPrefixes: [...request.match.pathPrefixes],
@@ -790,6 +806,7 @@ export class MitmSessionManager implements MitmInterceptionPort {
       session.captureDirectory,
       entry.path,
       request.sequence,
+      { bytes: entry.bytes, sha256: entry.sha256 },
     );
     if (!read.ok)
       return err(
@@ -921,9 +938,10 @@ export class MitmSessionManager implements MitmInterceptionPort {
       );
     if (aborted()) return err(this.#cancelled(operation, options.signal!));
     const released = await this.#releaseSession(session, operation);
+    if (released.stop.status !== "incomplete") session.state = "stopped";
     const evidence = this.#stopEvidence(session, released);
-    session.state = "stopped";
-    if (released.captureRemoved) this.#sessions.delete(session.id);
+    if (released.error === null && released.captureRemoved)
+      this.#sessions.delete(session.id);
     if (released.error !== null)
       return err(released.error.retainPartialObservation(evidence));
     if (aborted())
@@ -1019,7 +1037,7 @@ export class MitmSessionManager implements MitmInterceptionPort {
       parameters: { session_id: session.id },
       result: {
         session_id: session.id,
-        state: "stopped" as const,
+        state: session.state,
         daemon: {
           pid: session.daemon.pid ?? null,
           exit:

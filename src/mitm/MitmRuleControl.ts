@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { open, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
@@ -16,6 +16,15 @@ export interface MitmArmedRule {
   readonly action: MitmRuleAction;
   readonly expiresAtMs: number;
 }
+
+/** Filesystem owners the writer uses; a test can make one attempt fail. */
+export interface MitmControlFileOperations {
+  readonly open: typeof open;
+  readonly rename: typeof rename;
+  readonly unlink: typeof unlink;
+}
+
+const FILE_OPERATIONS: MitmControlFileOperations = { open, rename, unlink };
 
 /** Wire shape the addon reads; it carries the values a rewrite needs. */
 interface MitmControlDocument {
@@ -77,27 +86,37 @@ export const mitmControlDocument = (
     })),
   } satisfies MitmControlDocument);
 
-/** Replace the control file atomically so the addon never reads half a rule. */
+/**
+ * Replace the control file atomically so the addon never reads half a rule.
+ *
+ * Each attempt owns a unique temporary path and removes it on every failure
+ * path, so a full disk, an I/O error, or a failed rename never leaves a file
+ * that makes the next attempt fail with EEXIST.
+ */
 export const writeMitmControlFile = async (
   path: string,
   revision: number,
   content: string,
+  operations: MitmControlFileOperations = FILE_OPERATIONS,
 ): Promise<{ readonly revision: number; readonly sha256: string }> => {
   const temporary = join(
     dirname(path),
-    `.${basename(path)}.${String(process.pid)}.tmp`,
+    `.${basename(path)}.${String(process.pid)}.${randomUUID()}.tmp`,
   );
-  const handle = await open(temporary, "wx", 0o600);
+  const handle = await operations.open(temporary, "wx", 0o600);
   try {
     await handle.writeFile(content, "utf8");
     await handle.sync().catch(() => undefined);
-  } finally {
-    await handle.close();
-  }
-  try {
-    await rename(temporary, path);
   } catch (cause: unknown) {
-    await unlink(temporary).catch(() => undefined);
+    await handle.close().catch(() => undefined);
+    await operations.unlink(temporary).catch(() => undefined);
+    throw cause;
+  }
+  await handle.close().catch(() => undefined);
+  try {
+    await operations.rename(temporary, path);
+  } catch (cause: unknown) {
+    await operations.unlink(temporary).catch(() => undefined);
     throw cause;
   }
   return {

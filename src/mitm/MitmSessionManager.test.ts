@@ -108,25 +108,17 @@ const flowLine = (
   ...overrides,
 });
 
-const capturedEntry = (
-  sequence: number,
-  capturePath: string,
-  overrides: Record<string, unknown> = {},
-) => ({
-  ...flowLine(sequence),
-  entry: {
-    path: join(capturePath, "entries", `${String(sequence)}.json`),
-    bytes: 10,
-    sha256: "0".repeat(64),
-  },
-  ...overrides,
-});
-
-const entryStep = (
+const entryAndFlow = (
   sequence: number,
   request: Record<string, unknown>,
   response: Record<string, unknown> | null,
-) => ({ kind: "entry", sequence, request, response });
+) => ({
+  kind: "entryAndFlow",
+  sequence,
+  request,
+  response,
+  line: flowLine(sequence),
+});
 
 interface Harness {
   readonly root: string;
@@ -426,6 +418,25 @@ describe("interception inventory", () => {
     expect(read.stream).toMatchObject({ malformed: 1, unknown_type: 1 });
     expect(read.state).not.toBe("stopped");
   });
+});
+
+describe("interception inventory bounds and identity", () => {
+  it("degrades after more refused frames than its bound", async () => {
+    const steps = Array.from({ length: 33 }, () => ({
+      kind: "raw",
+      text: "not json\n",
+    }));
+    const fixture = await harness({ scenario: { mode: "linger", steps } });
+    const session = await start(fixture);
+    await vi.waitFor(
+      async () => {
+        const read = await readResult(fixture, session.session_id);
+        expect(read.stream.malformed).toBe(33);
+        expect(read.state).toBe("degraded");
+      },
+      { timeout: 5_000, interval: 20 },
+    );
+  });
 
   it("reports body parameters for a second endpoint", async () => {
     const fixture = await harness({
@@ -660,6 +671,32 @@ describe("rewrite rules", () => {
     expect(again.ok).toBe(false);
     expect(again.ok ? "" : again.error._tag).toBe("AnalysisInputError");
   });
+});
+
+describe("rewrite rule refusals", () => {
+  it("refuses a rule header value that would smuggle a second line", async () => {
+    const fixture = await harness({ scenario: { mode: "linger", steps: [] } });
+    const session = await start(fixture);
+    const armed = await fixture.manager.setRule({
+      sessionId: session.session_id,
+      ruleId: undefined,
+      match: { origins: [], pathPrefixes: ["/v1"], methods: [] },
+      action: {
+        kind: "request",
+        setHeaders: [{ name: "x-probe", value: "1\r\nX-Injected: yes" }],
+        removeHeaders: [],
+        setQuery: [],
+        removeQuery: [],
+        bodyBase64: undefined,
+      },
+      ttlMs: 1_000,
+    });
+    expect(armed.ok).toBe(false);
+    expect(armed.ok ? "" : armed.error._tag).toBe("AnalysisInputError");
+    expect(armed.ok ? "" : armed.error.userMessage).toContain(
+      "cannot contain CR, LF, or NUL",
+    );
+  });
 
   it("refuses a rule with no predicate", async () => {
     const fixture = await harness({ scenario: { mode: "linger", steps: [] } });
@@ -709,52 +746,51 @@ describe("rewrite rules", () => {
   });
 });
 
+const scenario = {
+  mode: "linger",
+  steps: [
+    entryAndFlow(
+      1,
+      {
+        method: "POST",
+        url: `${ORIGIN}/v1/items?page=2`,
+        headers: [
+          ["authorization", "Bearer secret"],
+          ["content-type", "application/json"],
+        ],
+        body: '{"a":1}',
+      },
+      { status: 201, body: "created" },
+    ),
+  ],
+};
+
+const ready = async (options: Partial<HarnessOptions> = {}) => {
+  const fixture = await harness({ scenario, ...options });
+  const session = await start(fixture);
+  await waitForFlows(fixture, session.session_id, 1);
+  return { fixture, session };
+};
+
+const replay = (
+  fixture: Harness,
+  sessionId: string,
+  overrides: Partial<{
+    sequence: number;
+    mutation: Record<string, unknown>;
+    dump: { path: string; overwrite: boolean } | undefined;
+  }> = {},
+) =>
+  fixture.manager.replay({
+    sessionId,
+    sequence: overrides.sequence ?? 1,
+    mutation: overrides.mutation ?? {},
+    timeoutMs: 1_000,
+    followRedirects: false,
+    dump: overrides.dump,
+  });
+
 describe("captured-entry replay", () => {
-  const scenario = {
-    mode: "linger",
-    steps: [
-      entryStep(
-        1,
-        {
-          method: "POST",
-          url: `${ORIGIN}/v1/items?page=2`,
-          headers: [
-            ["authorization", "Bearer secret"],
-            ["content-type", "application/json"],
-          ],
-          body: '{"a":1}',
-        },
-        { status: 201, body: "created" },
-      ),
-      { kind: "emit", line: capturedEntry(1, "{{CAPTURE}}") },
-    ],
-  };
-
-  const ready = async (options: Partial<HarnessOptions> = {}) => {
-    const fixture = await harness({ scenario, ...options });
-    const session = await start(fixture);
-    await waitForFlows(fixture, session.session_id, 1);
-    return { fixture, session };
-  };
-
-  const replay = (
-    fixture: Harness,
-    sessionId: string,
-    overrides: Partial<{
-      sequence: number;
-      mutation: Record<string, unknown>;
-      dump: { path: string; overwrite: boolean } | undefined;
-    }> = {},
-  ) =>
-    fixture.manager.replay({
-      sessionId,
-      sequence: overrides.sequence ?? 1,
-      mutation: overrides.mutation ?? {},
-      timeoutMs: 1_000,
-      followRedirects: false,
-      dump: overrides.dump,
-    });
-
   it("writes an owner-only replayable entry record", async () => {
     const { fixture } = await ready();
     const record = join(fixture.capture, "entries", "1.json");
@@ -860,6 +896,31 @@ describe("captured-entry replay", () => {
     expect(sent.ok ? "" : sent.error._tag).toBe("AnalysisInputError");
     expect(fixture.transport.dispatched).toBe(0);
   });
+
+  it("refuses an entry record the structure stream did not announce", async () => {
+    const { fixture, session } = await ready();
+    const recordPath = join(fixture.capture, "entries", "1.json");
+    const original = await readFile(recordPath, "utf8");
+    await writeFile(recordPath, original.replace('"POST"', '"PUTS"'));
+    const sent = await replay(fixture, session.session_id);
+    expect(sent.ok).toBe(false);
+    expect(sent.ok ? "" : sent.error.userMessage).toContain(
+      "digest differs from the frame",
+    );
+    expect(fixture.transport.dispatched).toBe(0);
+  });
+
+  it("refuses a mutated header that would smuggle a second line", async () => {
+    const { fixture, session } = await ready();
+    const sent = await replay(fixture, session.session_id, {
+      mutation: {
+        setHeaders: [{ name: "x-probe", value: "1\r\nX-Injected: yes" }],
+      },
+    });
+    expect(sent.ok).toBe(false);
+    expect(sent.ok ? "" : sent.error._tag).toBe("AnalysisInputError");
+    expect(fixture.transport.dispatched).toBe(0);
+  });
 });
 
 describe("session lifecycle", () => {
@@ -876,6 +937,7 @@ describe("session lifecycle", () => {
     const parsed = mitmStopResultSchema.parse(
       stopped.ok ? stopped.value.normalized_result : {},
     );
+    expect(parsed.state).toBe("stopped");
     expect(parsed.capture.removed).toBe(true);
     expect(parsed.daemon.exit.kind).not.toBe("running");
     await expect(stat(fixture.capture)).rejects.toThrow();
@@ -899,6 +961,17 @@ describe("session lifecycle", () => {
     const first = await fixture.manager.stop({ sessionId: session.session_id });
     expect(first.ok).toBe(false);
     expect(first.ok ? false : first.error.cleanupIncomplete).toBe(true);
+    const retained = mitmStopResultSchema.parse(
+      first.ok
+        ? first.value.normalized_result
+        : (
+            first.error.partialObservation as {
+              normalized_result: unknown;
+            }
+          ).normalized_result,
+    );
+    expect(retained.capture.removed).toBe(false);
+    expect(retained.state).toBe("stopped");
     expect(attempts).toBe(1);
     const retried = await fixture.manager.stop({
       sessionId: session.session_id,

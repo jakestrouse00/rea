@@ -58,6 +58,20 @@ describe("browser_fetch request body bounds", () => {
 });
 
 describe("browser_request_rule_set replacement body bounds", () => {
+  it("admits a padded rule body at the exact byte bound", () => {
+    const base64 = Buffer.alloc(
+      BROWSER_MUTATION_LIMITS.maxRuleBodyBytes,
+    ).toString("base64");
+    const parsed = browserRequestRuleSetInputSchema.safeParse({
+      cdp_endpoint: "http://127.0.0.1:9250",
+      allowed_origins: ["https://app.example.test"],
+      target_id: "allowed-page",
+      match: { methods: ["POST"] },
+      action: { kind: "modify", body_base64: base64 },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
   it("keeps the rule body bound below the request-body bound", () => {
     const base64 = Buffer.alloc(
       BROWSER_MUTATION_LIMITS.maxRuleBodyBytes + 1,

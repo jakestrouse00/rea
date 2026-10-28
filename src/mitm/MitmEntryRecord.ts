@@ -47,6 +47,7 @@ export type MitmEntryFailure =
   | "record-missing"
   | "record-outside-capture"
   | "record-too-large"
+  | "record-digest-mismatch"
   | "record-invalid"
   | "record-sequence-mismatch"
   | "body-outside-capture"
@@ -67,11 +68,18 @@ const failure = <Read extends MitmEntryRead | HeldBodyRead>(
   detail: string,
 ): Read => ({ ok: false, reason, detail }) as Read;
 
+/** Facts the structure stream announced when the addon wrote the record. */
+export interface MitmEntryIdentity {
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
 /** Read the request facts and body bytes of one captured entry. */
 export const readMitmEntry = async (
   captureDirectory: string,
   recordPath: string,
   sequence: number,
+  identity?: MitmEntryIdentity,
 ): Promise<MitmEntryRead> => {
   if (!isPathWithinRoot(captureDirectory, recordPath))
     return failure(
@@ -95,9 +103,28 @@ export const readMitmEntry = async (
       "record-too-large",
       `The entry record exceeds ${String(MITM_LIMITS.maxEntryRecordBytes)} bytes`,
     );
+  let stored: Buffer;
+  try {
+    stored = await readFile(recordPath);
+  } catch {
+    return failure("record-missing", "The entry record no longer exists");
+  }
+  if (identity !== undefined && identity.bytes !== stored.byteLength)
+    return failure(
+      "record-digest-mismatch",
+      "The entry record length differs from the frame that announced it",
+    );
+  if (
+    identity !== undefined &&
+    createHash("sha256").update(stored).digest("hex") !== identity.sha256
+  )
+    return failure(
+      "record-digest-mismatch",
+      "The entry record digest differs from the frame that announced it",
+    );
   let decoded: unknown;
   try {
-    decoded = JSON.parse(await readFile(recordPath, "utf8"));
+    decoded = JSON.parse(stored.toString("utf8"));
   } catch {
     return failure("record-invalid", "The entry record is not valid JSON");
   }

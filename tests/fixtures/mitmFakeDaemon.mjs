@@ -17,9 +17,14 @@
  *       { "kind": "sleep", "ms": 20 },
  *       { "kind": "entry", "sequence": 1,
  *         "request": {"method", "url", "headers", "body"},
- *         "response": {"status", "body"} | null }
+ *         "response": {"status", "body"} | null },
+ *       { "kind": "entryAndFlow", "sequence": 1, "line": {...},
+ *         "request": {...}, "response": {...} | null }
  *     ]
  *   }
+ *
+ * `entryAndFlow` writes the record first and replaces the emitted line's
+ * `entry` with the retained file's real path, size, and digest.
  */
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, chmodSync } from "node:fs";
@@ -64,55 +69,59 @@ const ready =
 
 if (ready !== false) write(ready);
 
+const writeEntry = (step) => {
+  const request = step.request;
+  const requestBody = Buffer.from(request.body ?? "", "utf8");
+  const requestHold =
+    requestBody.length === 0
+      ? null
+      : retain(join("bodies", `${step.sequence}.req.bin`), requestBody);
+  const responseBody =
+    step.response === null || step.response === undefined
+      ? Buffer.alloc(0)
+      : Buffer.from(step.response.body ?? "", "utf8");
+  const responseHold =
+    responseBody.length === 0
+      ? null
+      : retain(join("bodies", `${step.sequence}.res.bin`), responseBody);
+  const record = {
+    version: 1,
+    sequence: step.sequence,
+    method: request.method,
+    url: request.url,
+    headers: request.headers ?? [],
+    body: {
+      path: requestHold?.path ?? null,
+      bytes: requestBody.length,
+      sha256: requestHold?.sha256 ?? null,
+    },
+    response:
+      step.response === null || step.response === undefined
+        ? null
+        : {
+            status: step.response.status,
+            body: {
+              path: responseHold?.path ?? null,
+              bytes: responseBody.length,
+              sha256: responseHold?.sha256 ?? null,
+            },
+          },
+  };
+  return retain(
+    join("entries", `${step.sequence}.json`),
+    Buffer.from(JSON.stringify(record)),
+  );
+};
+
 const run = async () => {
   for (const step of scenario.steps ?? []) {
     if (step.kind === "emit") write(step.line);
     else if (step.kind === "raw") process.stdout.write(step.text);
     else if (step.kind === "sleep")
       await new Promise((resolve) => setTimeout(resolve, step.ms));
-    else if (step.kind === "entry") {
-      const request = step.request;
-      const requestBody = Buffer.from(request.body ?? "", "utf8");
-      const requestHold =
-        requestBody.length === 0
-          ? null
-          : retain(join("bodies", `${step.sequence}.req.bin`), requestBody);
-      const responseBody =
-        step.response === null || step.response === undefined
-          ? Buffer.alloc(0)
-          : Buffer.from(step.response.body ?? "", "utf8");
-      const responseHold =
-        responseBody.length === 0
-          ? null
-          : retain(join("bodies", `${step.sequence}.res.bin`), responseBody);
-      const record = {
-        version: 1,
-        sequence: step.sequence,
-        method: request.method,
-        url: request.url,
-        headers: request.headers ?? [],
-        body: {
-          path: requestHold?.path ?? null,
-          bytes: requestBody.length,
-          sha256: requestHold?.sha256 ?? null,
-        },
-        response:
-          step.response === null || step.response === undefined
-            ? null
-            : {
-                status: step.response.status,
-                body: {
-                  path: responseHold?.path ?? null,
-                  bytes: responseBody.length,
-                  sha256: responseHold?.sha256 ?? null,
-                },
-              },
-      };
-      retain(
-        join("entries", `${step.sequence}.json`),
-        Buffer.from(JSON.stringify(record)),
-      );
-    }
+    else if (step.kind === "entry") writeEntry(step);
+    else if (step.kind === "entryAndFlow")
+      write({ ...step.line, sequence: step.sequence, entry: writeEntry(step) });
   }
   if (scenario.mode === "exit") process.exit(0);
 };

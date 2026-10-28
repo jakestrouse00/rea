@@ -64,8 +64,8 @@ const issue = (
 
 const utf8Length = (value: string): number => Buffer.byteLength(value, "utf8");
 
-/** CR, LF, and NUL cannot appear in one header line. */
-const hasLineBreakOrNul = (value: string): boolean => {
+/** CR, LF, and NUL cannot appear in one header line or query field. */
+export const hasHeaderLineBreakOrNul = (value: string): boolean => {
   for (const character of value) {
     const code = character.codePointAt(0);
     if (code === 0 || code === 10 || code === 13) return true;
@@ -73,13 +73,17 @@ const hasLineBreakOrNul = (value: string): boolean => {
   return false;
 };
 
+/** One HTTP field-name token, shared by every lane that composes headers. */
+export const isHttpFieldNameToken = (value: string): boolean =>
+  HEADER_NAME.test(value);
+
 /** Validate one header name and value without inspecting their meaning. */
 const headerIssues = (
   header: ReplayHeader,
   path: readonly (string | number)[],
 ): readonly AnalysisInputIssue[] => {
   const issues: AnalysisInputIssue[] = [];
-  if (!HEADER_NAME.test(header.name))
+  if (!isHttpFieldNameToken(header.name))
     issues.push(
       issue(
         [...path, "name"],
@@ -87,7 +91,7 @@ const headerIssues = (
         "An HTTP header name is a token: no spaces, colons, or control characters.",
       ),
     );
-  if (hasLineBreakOrNul(header.value))
+  if (hasHeaderLineBreakOrNul(header.value))
     issues.push(
       issue(
         [...path, "value"],

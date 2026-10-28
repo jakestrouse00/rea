@@ -2,6 +2,10 @@ import type {
   MitmRuleActionSummary,
   MitmRuleClearResult,
 } from "./mitmInterception.js";
+import {
+  hasHeaderLineBreakOrNul,
+  isHttpFieldNameToken,
+} from "../replay/replayRequest.js";
 import { MITM_LIMITS, type MitmRulePhase } from "./mitmLimits.js";
 import type { MitmRuleMatchEvent } from "./mitmStream.js";
 
@@ -37,6 +41,38 @@ export type MitmRuleAction =
 
 export const mitmRulePhase = (action: MitmRuleAction): MitmRulePhase =>
   action.kind;
+
+/**
+ * Refuse a rule action that cannot be applied as one header or query line.
+ *
+ * The advertised schema already carries these predicates; this owner keeps the
+ * invariant for any application caller that did not come through that schema,
+ * because the addon writes these values into a live proxy.
+ */
+export const mitmRuleActionIssue = (
+  action: MitmRuleAction,
+): string | undefined => {
+  for (const header of action.setHeaders) {
+    if (!isHttpFieldNameToken(header.name))
+      return "A rule header name is a token: no spaces, colons, or control characters.";
+    if (hasHeaderLineBreakOrNul(header.value))
+      return "A rule header value cannot contain CR, LF, or NUL.";
+  }
+  for (const name of action.removeHeaders)
+    if (!isHttpFieldNameToken(name))
+      return "A removed header name is a token: no spaces, colons, or control characters.";
+  if (action.kind !== "request") return undefined;
+  for (const field of action.setQuery) {
+    if (hasHeaderLineBreakOrNul(field.name))
+      return "A rule query field name cannot contain CR, LF, or NUL.";
+    if (hasHeaderLineBreakOrNul(field.value))
+      return "A rule query field value cannot contain CR, LF, or NUL.";
+  }
+  for (const name of action.removeQuery)
+    if (hasHeaderLineBreakOrNul(name))
+      return "A removed query field name cannot contain CR, LF, or NUL.";
+  return undefined;
+};
 
 /** Value-free, names-only projection of one rule action. */
 export const mitmRuleActionSummary = (

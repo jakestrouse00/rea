@@ -91,9 +91,13 @@ they are reported as untrusted data.
 
 A frame that does not parse, exceeds 262144 bytes, or carries an unknown type is
 counted (`stream.malformed`, `stream.oversized`, `stream.unknown_type`) and the
-session keeps capturing. After 32 refused frames the session reports
-`state: "degraded"`, because a partially parsed stream is not complete
-observation. It never crashes the proxy on its own output.
+session keeps capturing. Malformed and oversized frames count toward the
+refused-frame bound: after 32 of them the session reports `state: "degraded"`,
+because a partially parsed stream is not complete observation. An unknown frame
+type is counted separately and does not by itself degrade the session — it names
+a vocabulary the addon and this build disagree about, so its frames are omitted
+while the frames this build does parse stay usable. The proxy is never crashed
+by its own output.
 
 ## Inventory
 

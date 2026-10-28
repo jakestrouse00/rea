@@ -75,8 +75,9 @@ const connectClient = async () => {
       mode: "linger",
       steps: [
         {
-          kind: "entry",
+          kind: "entryAndFlow",
           sequence: 1,
+          line: flowLine(1),
           request: {
             method: "GET",
             url: `${ORIGIN}/v1/items/7`,
@@ -84,17 +85,6 @@ const connectClient = async () => {
             body: "",
           },
           response: { status: 200, body: "{}" },
-        },
-        {
-          kind: "emit",
-          line: {
-            ...flowLine(1),
-            entry: {
-              path: join(capture, "entries", "1.json"),
-              bytes: 10,
-              sha256: "0".repeat(64),
-            },
-          },
         },
       ],
     }),

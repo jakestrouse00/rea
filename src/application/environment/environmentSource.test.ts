@@ -18,6 +18,7 @@ import { createEvidence, type Evidence } from "../../domain/evidence.js";
 import { inspectAnalysisView } from "../analysisView/AnalysisViewService.js";
 import type { WebNetworkCaptureRecord } from "../../domain/webNetworkCapture.js";
 import {
+  REPLAY_BODY_LIMIT_BYTES,
   loadEnvironmentSource,
   recordedExchange,
   replayedBody,
@@ -89,6 +90,54 @@ it.each([
       });
       expect(recordedExchange(record, line).bodyText).toBeNull();
     }
+  },
+);
+
+it.each([
+  { bytes: REPLAY_BODY_LIMIT_BYTES, whole: true },
+  { bytes: REPLAY_BODY_LIMIT_BYTES + 1, whole: false },
+])(
+  "classifies a padded base64 body by its decoded bytes ($bytes bytes)",
+  ({ bytes, whole }) => {
+    const encoded = Buffer.alloc(bytes, 0xff).toString("base64");
+    const record: WebNetworkCaptureRecord = {
+      ordinal: 0,
+      location: { kind: "json-pointer", pointer: "/log/entries/0" },
+      reported: {
+        request: { method: "GET", url: "https://example.invalid/blob" },
+        response: {
+          status: 200,
+          content: {
+            mimeType: "application/octet-stream",
+            text: encoded,
+            encoding: "base64",
+          },
+        },
+      },
+      numeric_literals: [],
+      binary_fields: [
+        {
+          pointer: "/response/content/text",
+          representation: "har-base64-content",
+          state: "retained",
+          content_base64: encoded,
+          bytes: Buffer.alloc(bytes, 0xff).length,
+          sha256: createHash("sha256")
+            .update(Buffer.alloc(bytes, 0xff))
+            .digest("hex"),
+        },
+      ],
+      redactions: [],
+      limitations: [],
+    };
+    const line = readRecordedRequestLine(record.reported, true, () => true);
+    if (line?.kind !== "line")
+      throw new Error("Expected a recorded request line");
+    expect(replayedBody(recordedExchange(record, line))).toEqual({
+      kind: "base64",
+      encoded,
+      whole,
+    });
   },
 );
 

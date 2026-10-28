@@ -317,7 +317,7 @@ export type MitmReplaySendResult = z.infer<typeof mitmReplaySendResultSchema>;
 /** Observed release of one proxy session and its capture directory. */
 export const mitmStopResultSchema = z.strictObject({
   session_id: z.string().uuid(),
-  state: z.literal("stopped"),
+  state: z.enum(MITM_SESSION_STATES),
   daemon: z.strictObject({
     pid: z.int().min(0).nullable(),
     exit: z.strictObject({

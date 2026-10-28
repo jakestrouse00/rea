@@ -258,7 +258,7 @@ const browserRequestRuleActionSchema = z.discriminatedUnion("kind", [
       const bytes =
         value.body_base64 === undefined
           ? 0
-          : Math.floor((value.body_base64.length * 3) / 4);
+          : replayBodyByteLength({ kind: "base64", base64: value.body_base64 });
       if (bytes > BROWSER_MUTATION_LIMITS.maxRuleBodyBytes)
         context.addIssue({
           code: "custom",

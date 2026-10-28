@@ -3,7 +3,11 @@ import { z } from "zod";
 import { absoluteLocalPathStringSchema } from "../../domain/localPath.js";
 import { MITM_LIMITS, MITM_TARGET_APPS } from "../../domain/mitm/mitmLimits.js";
 import { REPLAY_LIMITS } from "../../domain/replay/replayLimits.js";
-import { replayBodyByteLength } from "../../domain/replay/replayRequest.js";
+import {
+  hasHeaderLineBreakOrNul,
+  isHttpFieldNameToken,
+  replayBodyByteLength,
+} from "../../domain/replay/replayRequest.js";
 import { isCanonicalBase64 } from "../../domain/stringPatterns.js";
 import {
   replayBodyInputSchema,
@@ -54,14 +58,44 @@ const mitmRuleMatchSchema = z
       });
   });
 
+const mitmRuleHeaderNameSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine(
+    isHttpFieldNameToken,
+    "An HTTP header name is a token: no spaces, colons, or control characters.",
+  );
+
+const mitmRuleQueryNameSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine(
+    (value) => !hasHeaderLineBreakOrNul(value),
+    "A query field name cannot contain CR, LF, or NUL.",
+  );
+
 const mitmRuleHeaderSchema = z.strictObject({
-  name: z.string().min(1).max(256),
-  value: z.string().max(REPLAY_LIMITS.maxHeaderBytes),
+  name: mitmRuleHeaderNameSchema,
+  value: z
+    .string()
+    .max(REPLAY_LIMITS.maxHeaderBytes)
+    .refine(
+      (value) => !hasHeaderLineBreakOrNul(value),
+      "A header value cannot contain CR, LF, or NUL.",
+    ),
 });
 
 const mitmRuleQuerySchema = z.strictObject({
-  name: z.string().min(1).max(256),
-  value: z.string().max(REPLAY_LIMITS.maxHeaderBytes),
+  name: mitmRuleQueryNameSchema,
+  value: z
+    .string()
+    .max(REPLAY_LIMITS.maxHeaderBytes)
+    .refine(
+      (value) => !hasHeaderLineBreakOrNul(value),
+      "A query field value cannot contain CR, LF, or NUL.",
+    ),
 });
 
 const mitmRuleBodySchema = z
@@ -91,7 +125,7 @@ const mitmRuleActionSchema = z.discriminatedUnion("kind", [
       .max(MITM_LIMITS.maxRuleHeaderEdits)
       .default([]),
     remove_headers: z
-      .array(z.string().min(1).max(256))
+      .array(mitmRuleHeaderNameSchema)
       .max(MITM_LIMITS.maxRuleHeaderEdits)
       .default([]),
     set_query: z
@@ -99,7 +133,7 @@ const mitmRuleActionSchema = z.discriminatedUnion("kind", [
       .max(MITM_LIMITS.maxRuleQueryEdits)
       .default([]),
     remove_query: z
-      .array(z.string().min(1).max(256))
+      .array(mitmRuleQueryNameSchema)
       .max(MITM_LIMITS.maxRuleQueryEdits)
       .default([]),
     body_base64: mitmRuleBodySchema.optional(),
@@ -111,7 +145,7 @@ const mitmRuleActionSchema = z.discriminatedUnion("kind", [
       .max(MITM_LIMITS.maxRuleHeaderEdits)
       .default([]),
     remove_headers: z
-      .array(z.string().min(1).max(256))
+      .array(mitmRuleHeaderNameSchema)
       .max(MITM_LIMITS.maxRuleHeaderEdits)
       .default([]),
     status: z.int().min(100).max(999).optional(),
