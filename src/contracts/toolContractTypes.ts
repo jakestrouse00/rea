@@ -36,6 +36,7 @@ export const TOOL_KINDS = [
   "managed-decompiler-provider",
   "python-decompiler-provider",
   "jvm-decompiler-provider",
+  "protobuf-provider",
   "firmware-provider",
   "browser-provider",
   "electron-provider",

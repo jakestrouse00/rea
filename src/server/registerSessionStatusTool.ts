@@ -56,6 +56,12 @@ export interface SessionAvailabilityProbes {
   readonly jvmDecompilerAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly protobufRecoveryAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly grpcReflectionAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -91,6 +97,8 @@ const probeSessionAvailability = (
   readonly dotnetDecompiler: ProviderAvailability | undefined;
   readonly pythonDecompiler: ProviderAvailability | undefined;
   readonly jvmDecompiler: ProviderAvailability | undefined;
+  readonly protobufRecovery: ProviderAvailability | undefined;
+  readonly grpcReflection: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
@@ -107,6 +115,8 @@ const probeSessionAvailability = (
     probes.dotnetDecompilerAvailability?.(signal) ?? undefined,
     probes.pythonDecompilerAvailability?.(signal) ?? undefined,
     probes.jvmDecompilerAvailability?.(signal) ?? undefined,
+    probes.protobufRecoveryAvailability?.(signal) ?? undefined,
+    probes.grpcReflectionAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
@@ -123,6 +133,8 @@ const probeSessionAvailability = (
       dotnetDecompiler,
       pythonDecompiler,
       jvmDecompiler,
+      protobufRecovery,
+      grpcReflection,
       apktool,
       jeb,
       evmLimiter,
@@ -138,6 +150,8 @@ const probeSessionAvailability = (
       dotnetDecompiler,
       pythonDecompiler,
       jvmDecompiler,
+      protobufRecovery,
+      grpcReflection,
       apktool,
       jeb,
       evmLimiter,
@@ -213,6 +227,17 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.jvmDecompiler === undefined
             ? {}
             : { jvmDecompilerAvailability: availabilityResults.jvmDecompiler }),
+          ...(availabilityResults.protobufRecovery === undefined
+            ? {}
+            : {
+                protobufRecoveryAvailability:
+                  availabilityResults.protobufRecovery,
+              }),
+          ...(availabilityResults.grpcReflection === undefined
+            ? {}
+            : {
+                grpcReflectionAvailability: availabilityResults.grpcReflection,
+              }),
           ...(availabilityResults.apktool === undefined
             ? {}
             : { apktoolAnalysisAvailability: availabilityResults.apktool }),

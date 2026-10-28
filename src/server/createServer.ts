@@ -220,6 +220,10 @@ import type { JvmDecompilerPort } from "../application/jvmdecomp/JvmDecompilerPo
 import { JvmDecompilerService } from "../application/jvmdecomp/JvmDecompilerService.js";
 import { createJvmDecompilerProvider } from "../composition/jvmdecomp.js";
 import { registerJvmDecompilerTools } from "./registerJvmDecompilerTools.js";
+import type { ProtobufRecoveryPort } from "../application/protobufrecovery/ProtobufRecoveryPort.js";
+import { ProtobufRecoveryService } from "../application/protobufrecovery/ProtobufRecoveryService.js";
+import { createProtobufRecoveryProvider } from "../composition/protobufrecovery.js";
+import { registerProtobufRecoveryTools } from "./registerProtobufRecoveryTools.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -309,6 +313,7 @@ export interface CreateServerOptions {
   readonly dotnetDecompiler?: DotnetDecompilerPort;
   readonly pythonDecompiler?: PythonDecompilerPort;
   readonly jvmDecompiler?: JvmDecompilerPort;
+  readonly protobufRecovery?: ProtobufRecoveryPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -649,6 +654,8 @@ export const createServer = (
     options.pythonDecompiler ?? createPythonDecompilerProvider(environment);
   const jvmDecompiler =
     options.jvmDecompiler ?? createJvmDecompilerProvider(environment);
+  const protobufRecovery =
+    options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -681,6 +688,7 @@ export const createServer = (
       dotnetDecompiler.close(),
       pythonDecompiler.close(),
       jvmDecompiler.close(),
+      protobufRecovery.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -981,6 +989,13 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerProtobufRecoveryTools(
+    server,
+    new ProtobufRecoveryService(protobufRecovery),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -1079,6 +1094,12 @@ export const createServer = (
         pythonDecompiler.inspectAvailability(signal),
       jvmDecompilerAvailability: (signal) =>
         jvmDecompiler.inspectAvailability(signal),
+      protobufRecoveryAvailability: (signal) =>
+        protobufRecovery.inspectRecoveryAvailability?.(signal) ??
+        protobufRecovery.inspectAvailability(signal),
+      grpcReflectionAvailability: (signal) =>
+        protobufRecovery.inspectReflectionAvailability?.(signal) ??
+        protobufRecovery.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),

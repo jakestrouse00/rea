@@ -352,6 +352,17 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
     writesFilesystem: true,
   }),
+  recover_proto_definitions: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  enumerate_grpc_reflection: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
   inspect_apple_ips: evidence,
   inspect_devicetree: evidence,
   inspect_kernel_module: evidence,

@@ -105,6 +105,8 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "decompile_python_bytecode",
   "decompile_jar_class",
   "decompile_jar_archive",
+  "recover_proto_definitions",
+  "enumerate_grpc_reflection",
 ]);
 
 describe("CLI canonical tool coverage", () => {

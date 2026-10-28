@@ -155,6 +155,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
     },
     {
+      id: "protobuf",
+      surface: "protobuf-provider",
+      contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+    },
+    {
       id: "discovery",
       surface: "discovery-provider",
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
@@ -562,6 +567,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.jvmDecompilerProvider.JVM_DECOMPILER_PROVIDER_IDENTITY,
       contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.protobufProvider.PROTOBUF_RECOVERY_PROVIDER_IDENTITY,
+      contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

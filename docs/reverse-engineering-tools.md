@@ -176,4 +176,6 @@ The signature lane is caller-supplied and fail-closed. `REA_CAPA_COMMAND` select
 
 The decompiler lane is likewise caller-supplied. `REA_ILSPY_CMD_PATH` selects ilspycmd, `REA_PYLINGUAL_COMMAND` or `REA_PYCDC_COMMAND` selects the Python decompiler, and `REA_VINEFLOWER_JAR` plus `JAVA_HOME` or `PATH` selects the JVM decompiler. Only declaration structure reaches Evidence; recovered source text stays out. See [.NET](./dotnet-decompilation.md), [Python](./python-decompilation.md), and [JVM](./jvm-decompilation.md).
 
+Protobuf recovery selects pbtk or protodump through `REA_PBTK_COMMAND` / `REA_PROTODUMP_COMMAND`, and gRPC reflection selects grpcurl through `REA_GRPCURL_COMMAND`; all three require absolute paths. Recovered `.proto` files are published with digests and only their structure reaches Evidence. See [protobuf recovery](./protobuf-recovery.md).
+
 Provider capture limits are separate from the MCP response budget. A result that fits the provider limit may still exceed the default 10 MiB MCP response budget and return a transport `resource_constraint`. Configure `REA_MCP_MAX_RESPONSE_BYTES` to match a larger client receive buffer when that client supports one; otherwise use retained Evidence/export or complete CLI JSON output. See [MCP response limits](./mcp-contracts.md#tool-results).

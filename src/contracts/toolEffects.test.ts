@@ -70,6 +70,8 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "runs a caller-selected Vineflower JAR over one class, not the class code",
   decompile_jar_archive:
     "runs a caller-selected Vineflower JAR over a container, not its classes",
+  recover_proto_definitions:
+    "runs a caller-selected recovery tool over the artifact, not its code",
   inspect_erlang_beam: "states that it does not execute bytecode",
   inspect_sqlite_database:
     "uses a trusted inspector worker without executing application code or caller SQL",

@@ -104,6 +104,8 @@ export type AvailabilityPolicy = {
   readonly dotnetDecompilerAvailability?: ProviderAvailability;
   readonly pythonDecompilerAvailability?: ProviderAvailability;
   readonly jvmDecompilerAvailability?: ProviderAvailability;
+  readonly protobufRecoveryAvailability?: ProviderAvailability;
+  readonly grpcReflectionAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -652,6 +654,17 @@ const workflowAvailabilityFor = ({
       policy.jvmDecompilerAvailability,
       "Set REA_VINEFLOWER_JAR to a caller-supplied Vineflower JAR (absolute path) and provide JDK 11 or newer through JAVA_HOME or PATH. This checks the JAR and Java version only; a container path is still required per request.",
     );
+  if (kind === "protobuf-provider") {
+    if (name === "enumerate_grpc_reflection")
+      return ownerProbeAvailability(
+        policy.grpcReflectionAvailability,
+        "Set REA_GRPCURL_COMMAND to a caller-supplied grpcurl binary (absolute path). This checks the selection only; a caller-declared endpoint is still required per request.",
+      );
+    return ownerProbeAvailability(
+      policy.protobufRecoveryAvailability,
+      "Set REA_PBTK_COMMAND or REA_PROTODUMP_COMMAND to a caller-supplied recovery tool (absolute path). This checks the selection only; an artifact path and output directory are still required per request.",
+    );
+  }
   if (kind === "apktool-provider")
     return ownerProbeAvailability(
       policy.apktoolAnalysisAvailability,

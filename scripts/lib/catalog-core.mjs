@@ -125,6 +125,9 @@ const SOURCE_PATHS = {
   jvmDecompilerContracts:
     "dist/contracts/jvmdecomp/jvmDecompilerToolContracts.js",
   jvmDecompilerProvider: "dist/jvmdecomp/JvmDecompilerProvider.js",
+  protobufContracts:
+    "dist/contracts/protobufrecovery/protobufRecoveryToolContracts.js",
+  protobufProvider: "dist/protobufrecovery/ProtobufRecoveryProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:
