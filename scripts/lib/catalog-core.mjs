@@ -141,6 +141,8 @@ const SOURCE_PATHS = {
   emuProvider: "dist/emu/EmuProvider.js",
   angrContracts: "dist/contracts/angr/angrToolContracts.js",
   angrProvider: "dist/angr/AngrProvider.js",
+  protolearnContracts: "dist/contracts/protolearn/protolearnToolContracts.js",
+  protolearnProvider: "dist/protolearn/ProtocolLearningProvider.js",
   crashTriageContracts:
     "dist/contracts/crashTriage/crashTriageToolContracts.js",
   crashTriageProvider: "dist/domain/crashTriage/crashReport.js",

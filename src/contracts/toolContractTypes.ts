@@ -52,6 +52,7 @@ export const TOOL_KINDS = [
   "emulator",
   "symbolic-engine",
   "mobile-toolchain-provider",
+  "protocol-learning",
   "session",
 ] as const;
 

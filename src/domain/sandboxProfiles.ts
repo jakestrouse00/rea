@@ -104,6 +104,14 @@ const absolutePath = (value: string, field: string): string => {
 const ipv4 = /^(?:\d{1,3})\.(?:\d{1,3})\.(?:\d{1,3})\.(?:\d{1,3})$/u;
 const ipv6 = /^[0-9a-f:]+$/iu;
 
+/**
+ * Addresses the kernel's profile grammar can name. `sandbox-exec` accepts only
+ * `*` or `localhost` as a host in a network address and refuses a numeric
+ * literal outright ("host must be * or localhost"), so only a loopback
+ * destination is expressible as an exact one.
+ */
+const expressibleHosts = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
+
 const remote = (allowance: SandboxNetworkAllowance, index: number): string => {
   const { host, port } = allowance;
   if (!ipv4.test(host) && !(host.includes(":") && ipv6.test(host)))
@@ -116,8 +124,13 @@ const remote = (allowance: SandboxNetworkAllowance, index: number): string => {
       "invalid_port",
       `network_allowlist[${String(index)}].port must be an integer from 1 to 65535: ${String(port)}`,
     );
+  if (!expressibleHosts.has(host))
+    throw new SandboxProfileRejection(
+      "unrepresentable",
+      `network_allowlist[${String(index)}].host is not a loopback address: the kernel's profile grammar admits only "*" or "localhost" as a named host, so an exact destination elsewhere cannot be expressed (${host}). Reach the lab through a loopback forwarder.`,
+    );
   return quote(
-    `${host}:${String(port)}`,
+    `localhost:${String(port)}`,
     `network_allowlist[${String(index)}]`,
   );
 };

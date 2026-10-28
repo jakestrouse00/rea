@@ -310,6 +310,12 @@ import type { MobileToolchainPort } from "../application/mobile/MobileToolchainP
 import { MobileToolchainService } from "../application/mobile/MobileToolchainService.js";
 import { createMobileToolchainProvider } from "../composition/mobile.js";
 import { registerMobileToolchainTools } from "./registerMobileToolchainTools.js";
+import type { ProtocolLearningPort } from "../application/protolearn/ProtocolLearningPort.js";
+import {
+  createProtocolLearningProvider,
+  protocolLearningProbeEnabled,
+} from "../composition/protolearn.js";
+import { registerProtolearnTools } from "./registerProtolearnTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -385,6 +391,8 @@ export interface CreateServerOptions {
   readonly angr?: AngrAnalysisPort;
   /** Caller-supplied mobile toolchain; omitted means the lanes are selected from the environment. */
   readonly mobileToolchain?: MobileToolchainPort;
+  /** Protocol learning lane; omitted means the lane is selected from the environment. */
+  readonly protocolLearning?: ProtocolLearningPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   /** LIEF deep-parse lane; omitted means the lane is selected from the environment. */
@@ -544,6 +552,10 @@ const installSessionToolAvailability = (
         platform === "darwin" &&
         (isAbsolute(environment.REA_BLE_GATT_PATH ?? "") ||
           isAbsolute(environment.REA_BLEAK_PYTHON ?? "")),
+      probeLearnedModelEnabled: protocolLearningProbeEnabled(
+        environment,
+        options.protocolLearning !== undefined,
+      ),
     },
   });
   const policy = (): AvailabilityPolicy => {
@@ -778,6 +790,9 @@ export const createServer = (
     createAngrAnalysisProvider(environment, analysisSettings.read);
   const mobileToolchain =
     options.mobileToolchain ?? createMobileToolchainProvider(environment);
+  const protocolLearning =
+    options.protocolLearning ??
+    createProtocolLearningProvider(environment, analysisSettings.read);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -831,6 +846,7 @@ export const createServer = (
       emu.close(),
       angr.close(),
       mobileToolchain.close(),
+      protocolLearning.close(),
       discovery.close(),
       windowsArtifacts.close(),
       lief.close(),
@@ -1251,6 +1267,13 @@ export const createServer = (
   registerMobileToolchainTools(
     server,
     new MobileToolchainService(mobileToolchain),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerProtolearnTools(
+    server,
+    protocolLearning,
     toolLogger,
     recordEvidence,
     analysisAdmission,

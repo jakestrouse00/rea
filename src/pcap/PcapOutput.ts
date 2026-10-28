@@ -8,12 +8,10 @@ import { parseRecordedTransportUrl } from "../domain/recordedTransportUrl.js";
 import { fixedAllowanceOptions } from "../domain/fixedAllowanceRemediation.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { clientHelloFingerprints } from "../domain/pcap/tlsFingerprint.js";
+import { readTsharkPacketLayers } from "./TsharkJson.js";
 
 const OPERATION = "inspect_pcap_capture";
-/** Bounds JSON decoding plus its expanded object graph before JSON.parse. */
-export const TSHARK_JSON_MAX_BYTES = 8 * 1024 * 1024;
 const MAX_RETAINED_BYTES = 16 * 1024 * 1024;
-const MAX_DECODED_BYTES = 128 * 1024 * 1024;
 
 const assertOutputReadActive = (signal: AbortSignal | undefined): void => {
   if (signal?.aborted)
@@ -172,64 +170,15 @@ export interface TsharkFields {
   readonly partial: boolean;
 }
 
-const object = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /** Validate the fixed JSON field representation before retaining aggregate facts. */
 export const parseTsharkJsonOutput = async (
   stdout: string,
   signal?: AbortSignal,
 ): Promise<TsharkFields> => {
-  assertOutputReadActive(signal);
-  if (Buffer.byteLength(stdout) > TSHARK_JSON_MAX_BYTES)
-    throw new AnalysisResourceConstraintError(
-      OPERATION,
-      "memory",
-      "tshark JSON exceeds the bounded decoding budget",
-      { max_json_bytes: TSHARK_JSON_MAX_BYTES },
-      fixedAllowanceOptions("The tshark JSON decoding allowance", "capture"),
-    );
-  // The selected-field protocol has five container levels. Reject deeper
-  // graphs before materializing them; quoted brackets are string data.
-  let depth = 0,
-    quoted = false,
-    escaped = false;
-  let decodedBytes = stdout.length * 2;
-  for (let index = 0; index < stdout.length; index += 1) {
-    if (index % 65536 === 0) {
-      await yieldToEventLoop();
-      assertOutputReadActive(signal);
-    }
-    const char = stdout[index];
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') {
-      quoted = true;
-      decodedBytes += 64;
-    } else if (char === "{" || char === "[") {
-      decodedBytes += 128;
-      if (++depth > 5) protocolFailure("unexpected JSON nesting");
-    } else if (char === "}" || char === "]") depth -= 1;
-    else if (char === ":" || char === ",") decodedBytes += 128;
-    if (decodedBytes > MAX_DECODED_BYTES)
-      throw new AnalysisResourceConstraintError(
-        OPERATION,
-        "memory",
-        "tshark JSON expansion exceeds the decoding budget",
-        { max_decoded_bytes: MAX_DECODED_BYTES },
-        fixedAllowanceOptions("The tshark JSON expansion allowance", "capture"),
-      );
-  }
-  let packets: unknown;
-  try {
-    packets = JSON.parse(stdout) as unknown;
-  } catch (cause) {
-    throw new AnalysisProtocolError("tshark emitted malformed JSON", { cause });
-  }
-  if (!Array.isArray(packets))
-    return protocolFailure("tshark packet root must be an array");
+  const read = await readTsharkPacketLayers(stdout, {
+    operation: OPERATION,
+    ...(signal === undefined ? {} : { signal }),
+  });
   const endpoints = new Map<string, number>();
   const dns = new Map<string, Set<string>>();
   const sni = new Set<string>();
@@ -262,40 +211,13 @@ export const parseTsharkJsonOutput = async (
       set.add(value);
     }
   };
-  for (let index = 0; index < packets.length; index += 1) {
+  for (let index = 0; index < read.length; index += 1) {
     if (index % 256 === 0) {
       await yieldToEventLoop();
       assertOutputReadActive(signal);
     }
-    const packet: unknown = packets[index];
-    if (
-      !object(packet) ||
-      !object(packet._source) ||
-      !object(packet._source.layers)
-    )
-      return protocolFailure(
-        `packet ${String(index + 1)} lacks _source.layers`,
-      );
-    const layers = packet._source.layers;
-    for (const [key, value] of Object.entries(layers))
-      if (
-        !Array.isArray(value) ||
-        !value.every((item) => typeof item === "string")
-      )
-        return protocolFailure(
-          `packet ${String(index + 1)} field ${key} must be an array of strings`,
-        );
-    const field = (name: string): readonly string[] =>
-      (layers[name] as string[] | undefined) ?? [];
-    const frame = field("frame.number");
-    if (
-      frame.length !== 1 ||
-      !/^\d+$/u.test(frame[0]!) ||
-      Number(frame[0]) !== index + 1
-    )
-      return protocolFailure(
-        "frame inventory is missing, duplicated or out of order",
-      );
+    const layers = read[index] ?? {};
+    const field = (name: string): readonly string[] => layers[name] ?? [];
     const protocolStack = field("frame.protocols");
     if (protocolStack.length !== 1)
       return protocolFailure(
@@ -509,7 +431,7 @@ export const parseTsharkJsonOutput = async (
     unattributedDnsAddresses: [...unattributed],
     unattributedDnsAddressCount: unattributed.size,
     unattributedDnsPackets: unattributedPackets,
-    packetCount: packets.length,
+    packetCount: read.length,
     partial:
       observedUris.size > uris.size ||
       unattributedPackets > 0 ||

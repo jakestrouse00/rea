@@ -434,6 +434,21 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
   }),
+  learn_protocol_model: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+  }),
+  probe_learned_model: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  export_protocol_grammar: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+  }),
   recover_go_symbols: effects({
     mutatesSession: true,
     launchesProcess: true,

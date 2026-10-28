@@ -84,6 +84,10 @@ export default defineConfig({
             link: "/mobile-runtime-toolchain",
           },
           {
+            text: "Protocol learning",
+            link: "/protocol-learning",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

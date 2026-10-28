@@ -34,6 +34,7 @@ export interface SessionAvailabilityDefaults {
     | "angrSymbolicEnabled"
     | "fuzzingCampaignEnabled"
     | "bleGattEnabled"
+    | "probeLearnedModelEnabled"
   >;
 }
 
@@ -84,6 +85,8 @@ export const sessionAvailabilityPolicy = (
       fuzzingCampaignEnabled:
         defaults.optionalFeatures?.fuzzingCampaignEnabled ?? false,
       bleGattEnabled: defaults.optionalFeatures?.bleGattEnabled ?? false,
+      probeLearnedModelEnabled:
+        defaults.optionalFeatures?.probeLearnedModelEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:
