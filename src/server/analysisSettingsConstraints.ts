@@ -1,6 +1,6 @@
 import { getHeapStatistics } from "node:v8";
 import { MAX_JSON_DEPTH } from "../domain/jsonValue.js";
-import { DEFAULT_VIEW8_OPERATION_TIMEOUT_MS as VIEW8_OPERATION_TIMEOUT_MS } from "../javascript/v8/View8Release.js";
+import { DEFAULT_VIEW8_OPERATION_TIMEOUT_MS } from "../domain/javascript/v8Bytecode.js";
 import { CRASH_MINIMIZE_DEFAULT_TIMEOUT_MS } from "../domain/crashTriage/crashMinimization.js";
 import {
   FRIDA_RPC_DEFAULT_TIMEOUT_MS,
@@ -72,7 +72,7 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
   {
     control: "view8.operation_timeout",
     authority: "fixed" as const,
-    value: VIEW8_OPERATION_TIMEOUT_MS,
+    value: DEFAULT_VIEW8_OPERATION_TIMEOUT_MS,
     unit: "ms",
     observation: "known" as const,
     recovery:

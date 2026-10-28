@@ -4,6 +4,19 @@ import { digestSchema } from "../digests.js";
 import { absoluteLocalPathStringSchema } from "../localPath.js";
 
 const countSchema = z.int().nonnegative();
+
+/**
+ * Fixed View8 operation deadline. The provider applies it to every run and
+ * analysis settings reports it as a fixed constraint, so the value lives in
+ * this pure layer instead of the provider module that both owners cannot share.
+ */
+export const DEFAULT_VIEW8_OPERATION_TIMEOUT_MS = 300_000;
+
+/** Bounded capture budget for one disassembly stream. */
+export const VIEW8_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
+
+/** Bounded admission for one selected bytecode artifact. */
+export const VIEW8_MAX_INPUT_BYTES = 64 * 1024 * 1024;
 const wordSchema = z.int().nonnegative().max(0xffff_ffff);
 
 /**

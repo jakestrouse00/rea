@@ -21,14 +21,16 @@ export const VIEW8_OUTPUT_REMEDIATION = `Confirm the selected View8 launcher pri
 export const VIEW8_LANE_UNVERIFIED_NOTE =
   "View8's command line and disassembly text are documented assumptions and no verified View8 release is pinned; this lane decodes the cached-data header itself against pinned layouts and reports disassembly digest and size only.";
 
-/** Fixed operation deadline for one bounded View8 run. */
-export const DEFAULT_VIEW8_OPERATION_TIMEOUT_MS = 300_000;
-
-/** Bounded capture budget for one disassembly stream. */
-export const VIEW8_MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
-
-/** Bounded admission for one selected bytecode artifact. */
-export const VIEW8_MAX_INPUT_BYTES = 64 * 1024 * 1024;
+/**
+ * Resource policy for this lane. The values are owned by the domain so that
+ * non-provider layers can cite them without importing provider construction;
+ * the lane re-exports them from its own constants module.
+ */
+export {
+  DEFAULT_VIEW8_OPERATION_TIMEOUT_MS,
+  VIEW8_MAX_INPUT_BYTES,
+  VIEW8_MAX_OUTPUT_BYTES,
+} from "../../domain/javascript/v8Bytecode.js";
 
 /**
  * High 16 bits of V8's cached-data magic. Some builds XOR the low bits with
