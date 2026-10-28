@@ -51,6 +51,20 @@ export const BROWSER_REQUEST_RULE_SCOPE_LIMITATION =
 /** A hold is a paused request the browser is waiting to release. */
 export const BROWSER_REQUEST_RULE_HOLD_LIMITATION = `A hold rule leaves matched requests paused until something continues them. REA releases every held request it still owns when the rule is cleared or the server closes, and fails closed with BlockedByClient once ${String(BROWSER_MUTATION_LIMITS.maxHeldRequestsPerRule)} requests are held at once. Traffic paused by a rule is not answered while it stays held.`;
 
+/** Retrying a release is safe because REA keeps every fact it did not release. */
+export const BROWSER_REQUEST_RULE_RETRY_REMEDIATION =
+  "Retry browser_request_rule_clear with this rule_id. REA keeps the rule's decision ledger and every held request it could not release, and re-runs only the release steps it has not observed.";
+
+/** A rule whose release failed stays owned, so its ledger outlives the attempt. */
+export const BROWSER_REQUEST_RULE_RELEASE_RETRY_LIMITATION =
+  "An earlier release attempt for this rule did not finish. This release retried it; the counters and decisions below cover the rule's whole lifetime, not only the attempt that succeeded.";
+
+/** Every rule release that is still incomplete is named, never summarised away. */
+export const retainedRuleReleaseLimitation = (
+  ruleIds: readonly string[],
+): string =>
+  `Release is still incomplete for rule ${ruleIds.join(", ")}; REA retains each rule's decision ledger and held requests so browser_request_rule_clear can retry them.`;
+
 /** Rule decisions are value-free observations of REA's own choices. */
 export const BROWSER_REQUEST_RULE_VALUE_FREE_LIMITATION =
   "Retained decisions report the method, origin, path, resource type, and the decision REA made. Request and response header values, query values, and rewritten bodies are never retained.";

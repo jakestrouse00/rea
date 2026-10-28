@@ -8,11 +8,16 @@ import type {
 } from "../domain/browserMutation.js";
 import {
   BROWSER_REQUEST_RULE_HOLD_LIMITATION,
+  BROWSER_REQUEST_RULE_RELEASE_RETRY_LIMITATION,
+  BROWSER_REQUEST_RULE_RETRY_REMEDIATION,
   BROWSER_REQUEST_RULE_SCOPE_LIMITATION,
   BROWSER_REQUEST_RULE_VALUE_FREE_LIMITATION,
   browserRequestRuleClearResultSchema,
+  retainedRuleReleaseLimitation,
 } from "../domain/browserMutation.js";
 import { BROWSER_MUTATION_LIMITS } from "../domain/browserMutationLimits.js";
+import { ProviderCleanupError } from "../domain/providerCleanupError.js";
+import { CDP_BROWSER_PROVIDER_IDENTITY } from "./providerIdentities.js";
 import type { CdpEvent } from "./CdpConnection.js";
 import {
   closeCdpTargetSession,
@@ -63,6 +68,8 @@ interface RuleRecord extends ArmedBrowserRequestRule {
   timer: ReturnType<typeof setTimeout> | undefined;
   detach: () => void;
   releasing: Promise<BrowserRequestRuleClearResult> | undefined;
+  retainedFailure: ProviderCleanupError | undefined;
+  retainedReason: ReleaseReason | undefined;
 }
 
 /** One request decision REA made while a rule held the Fetch domain open. */
@@ -132,6 +139,7 @@ export class BrowserRequestRuleRegistry {
         detail: `At most ${String(BROWSER_MUTATION_LIMITS.maxArmedRules)} request rules may stay armed at once. Clear one before arming another.`,
       });
     const expiresAt = Date.now() + ttlMs;
+    const retainedReleases = this.#retainedRuleIds();
     this.#rules.set(rule.ruleId, this.#record(rule, ttlMs, expiresAt));
     return {
       rule_id: rule.ruleId,
@@ -155,6 +163,9 @@ export class BrowserRequestRuleRegistry {
         ...(rule.action.kind === "hold"
           ? [BROWSER_REQUEST_RULE_HOLD_LIMITATION]
           : []),
+        ...(retainedReleases.length === 0
+          ? []
+          : [retainedRuleReleaseLimitation(retainedReleases)]),
       ],
     };
   }
@@ -217,12 +228,14 @@ export class BrowserRequestRuleRegistry {
       timer: undefined,
       detach: () => undefined,
       releasing: undefined,
+      retainedFailure: undefined,
+      retainedReason: undefined,
     };
     record.detach = rule.session.connection.onEvent((event) => {
       this.#onEvent(record, event);
     });
     record.timer = setTimeout(() => {
-      void this.#release(record, "expired").catch(() => undefined);
+      void this.#expire(record);
     }, ttlMs);
     record.timer.unref();
     return record;
@@ -233,8 +246,33 @@ export class BrowserRequestRuleRegistry {
     reason: ReleaseReason,
     signal?: AbortSignal,
   ): Promise<BrowserRequestRuleClearResult> {
-    record.releasing ??= this.#releaseOnce(record, reason, signal);
-    return await record.releasing;
+    if (record.releasing !== undefined) return await record.releasing;
+    const attempt = this.#releaseOnce(
+      record,
+      record.retainedReason ?? reason,
+      signal,
+    );
+    record.releasing = attempt;
+    try {
+      return await attempt;
+    } finally {
+      if (record.releasing === attempt) record.releasing = undefined;
+    }
+  }
+
+  /**
+   * Automatic expiry keeps a failed release owned and visible.
+   *
+   * The failure stays on the record, so the ledger survives, new traffic is
+   * answered, and the next clear or shutdown reports the retained release
+   * instead of this timer discarding it.
+   */
+  async #expire(record: RuleRecord): Promise<void> {
+    try {
+      await this.#release(record, "expired");
+    } catch {
+      // #release already retained the record with its typed failure.
+    }
   }
 
   async #releaseOnce(
@@ -246,28 +284,80 @@ export class BrowserRequestRuleRegistry {
     record.timer = undefined;
     record.detach();
     try {
-      for (const [requestId, held] of record.held) {
-        record.held.delete(requestId);
-        await this.#send(record, "Fetch.continueRequest", requestId);
-        record.counters.held_released += 1;
-        record.budget.push(
-          decision({
-            method: held.method,
-            url: held.url,
-            resourceType: held.resourceType,
-            decision: "released",
-          }),
-        );
-      }
-      await closeCdpTargetSession(
-        record.session,
-        ["Fetch"],
-        signal,
-        this.owner,
-      );
-    } finally {
-      this.#rules.delete(record.ruleId);
+      await this.#releaseHeldRequests(record);
+      await this.#closeRuleSession(record, signal);
+    } catch (cause: unknown) {
+      const failure = this.#releaseFailure(record, reason, cause);
+      record.retainedFailure = failure;
+      record.retainedReason ??= reason;
+      record.detach = record.session.connection.onEvent((event) => {
+        this.#onEvent(record, event);
+      });
+      throw failure;
     }
+    this.#rules.delete(record.ruleId);
+    return this.#clearedResult(record, reason);
+  }
+
+  /** Answer every held request, keeping any the browser did not accept for retry. */
+  async #releaseHeldRequests(record: RuleRecord): Promise<void> {
+    for (const [requestId, held] of record.held) {
+      if (!(await this.#send(record, "Fetch.continueRequest", requestId)))
+        continue;
+      record.held.delete(requestId);
+      record.counters.held_released += 1;
+      record.budget.push(
+        decision({
+          method: held.method,
+          url: held.url,
+          resourceType: held.resourceType,
+          decision: "released",
+        }),
+      );
+    }
+  }
+
+  /** Retry only this rule's retained transport, then close its Fetch domain. */
+  async #closeRuleSession(
+    record: RuleRecord,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    await this.owner.retry(record.session.connection);
+    await closeCdpTargetSession(record.session, ["Fetch"], signal, this.owner);
+  }
+
+  /** Keep the rule identity retryable beside the transport that did not close. */
+  #releaseFailure(
+    record: RuleRecord,
+    reason: ReleaseReason,
+    cause: unknown,
+  ): ProviderCleanupError {
+    return new ProviderCleanupError(
+      CDP_BROWSER_PROVIDER_IDENTITY.id,
+      [
+        ...(cause instanceof ProviderCleanupError
+          ? cause.cleanupResources
+          : []),
+        `browser-request-rule:${record.ruleId}`,
+      ],
+      {
+        reason: cause instanceof Error ? cause.message : String(cause),
+        rule_id: record.ruleId,
+        release_reason: reason,
+      },
+      {
+        operation: RULE_CLEAR_OPERATION,
+        cause,
+        remediationAction: BROWSER_REQUEST_RULE_RETRY_REMEDIATION,
+      },
+    );
+  }
+
+  #clearedResult(
+    record: RuleRecord,
+    reason: ReleaseReason,
+  ): BrowserRequestRuleClearResult {
+    const unreleased = record.held.size;
     return browserRequestRuleClearResultSchema.parse({
       rule_id: record.ruleId,
       state: "cleared",
@@ -289,6 +379,14 @@ export class BrowserRequestRuleRegistry {
       limitations: [
         BROWSER_REQUEST_RULE_VALUE_FREE_LIMITATION,
         "Counters describe what REA did at the Fetch boundary. A continued request was forwarded unmodified; neither its answer nor the server's response is observed by the rule.",
+        ...(record.retainedFailure === undefined
+          ? []
+          : [BROWSER_REQUEST_RULE_RELEASE_RETRY_LIMITATION]),
+        ...(unreleased === 0
+          ? []
+          : [
+              `${String(unreleased)} held request(s) were released only by closing the rule's transport, after their continue command failed.`,
+            ]),
       ],
     });
   }
@@ -304,7 +402,10 @@ export class BrowserRequestRuleRegistry {
     const method = (cdpStringValue(request?.method) ?? "").toUpperCase();
     const resourceType = cdpStringValue(params?.resourceType) ?? null;
     record.counters.paused += 1;
-    if (record.releasing !== undefined) {
+    if (
+      record.releasing !== undefined ||
+      record.retainedFailure !== undefined
+    ) {
       this.#respond(record, "Fetch.continueRequest", requestId);
       return;
     }
@@ -389,10 +490,25 @@ export class BrowserRequestRuleRegistry {
     method: string,
     requestId: string,
     params: Readonly<Record<string, unknown>> = {},
-  ): Promise<void> {
-    await record.session.connection
-      .send(method, { requestId, ...params }, record.session.sessionId)
-      .catch(() => undefined);
+  ): Promise<boolean> {
+    try {
+      await record.session.connection.send(
+        method,
+        { requestId, ...params },
+        record.session.sessionId,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Rule identities whose release failed and has not been observed yet. */
+  #retainedRuleIds(): readonly string[] {
+    return [...this.#rules.values()]
+      .filter(({ retainedFailure }) => retainedFailure !== undefined)
+      .map(({ ruleId }) => ruleId)
+      .sort();
   }
 }
 

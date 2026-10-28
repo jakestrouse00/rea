@@ -312,6 +312,14 @@ hold rule fails closed with `BlockedByClient` once 32 requests are held at once
 rather than silently letting traffic through. At most eight rules stay armed at
 a time, and a duplicate `rule_id` is refused instead of replaced.
 
+A release that cannot close its transport keeps the rule and its whole ledger
+retained, and a rule whose `ttl_ms` deadline could not be released is named in
+the next `browser_request_rule_set` limitation. Retrying
+`browser_request_rule_clear` finishes only the release steps REA has not
+observed, and reports the retained counters and decisions instead of starting a
+new ledger. A held request whose continue command failed is reported as released
+only by that transport close, never counted as confirmed.
+
 Rule observations are value-free: each retained decision reports the method,
 origin, path, query parameter names, resource type, and the decision REA made,
 never a header value, query value, or rewritten body. That hygiene is

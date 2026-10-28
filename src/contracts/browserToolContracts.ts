@@ -391,7 +391,7 @@ export const BROWSER_TOOL_CONTRACTS = [
     name: "browser_request_rule_clear",
     ...toolContractMetadata("browser_request_rule_clear"),
     description:
-      "Release one armed request rule. Every request the rule still holds is continued before the Fetch domain is disabled, so no paused request outlives the rule that owned it, and the result reports the counters and the retained interception decisions with their omission reasons. Clearing a rule this REA process does not own fails instead of guessing at another server's state.",
+      "Release one armed request rule. Every request the rule still holds is continued before the Fetch domain is disabled, so no paused request outlives the rule that owned it, and the result reports the counters and the retained interception decisions with their omission reasons. A release that fails keeps the rule and its ledger, so retrying this call finishes the release instead of losing what the rule observed; a rule this REA process does not own fails instead of guessing at another server's state.",
     kind: "browser-provider",
     inputSchema: browserRequestRuleClearInputSchema,
     outputSchema: ruleClearOutputSchema,

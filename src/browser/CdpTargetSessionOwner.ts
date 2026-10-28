@@ -187,6 +187,21 @@ export class CdpTargetSessionOwner {
     }
   }
 
+  /** Retry one retained transport; a no-op unless its close already failed. */
+  async retry(connection: CdpConnection): Promise<void> {
+    const record = this.#connections.get(connection);
+    if (record === undefined || record.active || record.failure === undefined)
+      return;
+    try {
+      await record.cleanupLease.release();
+      this.#connections.delete(connection);
+    } catch (cause: unknown) {
+      const failure = cleanupError(record, cause);
+      record.failure = failure;
+      throw failure;
+    }
+  }
+
   /** Retry only retained failed transports; active peers finish their own cleanup. */
   async close(): Promise<void> {
     this.#closing = true;

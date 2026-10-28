@@ -1,7 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { WebSocket } from "ws";
 
 import { CdpBrowserProvider } from "../../../src/browser/CdpBrowserProvider.js";
 import { BROWSER_MUTATION_LIMITS } from "../../../src/domain/browserMutationLimits.js";
+import { projectAnalysisError } from "../../../src/domain/analysisErrorProjection.js";
+import { ProviderCleanupError } from "../../../src/domain/providerCleanupError.js";
 import {
   browserRequestRuleSetInputSchema,
   type BrowserRequestRuleSetInput,
@@ -414,6 +417,117 @@ describe("browser request rule ownership", () => {
   });
 });
 
+describe("browser request rule release retention", () => {
+  it("keeps the ledger of a rule whose release failed and retries it", async () => {
+    const browser = await startFakeCdpBrowser();
+    trackBrowser(browser);
+    const provider = new CdpBrowserProvider();
+    const close = vi
+      .spyOn(WebSocket.prototype, "close")
+      .mockImplementationOnce(() => {
+        throw new Error("controlled close failure");
+      });
+    const terminate = vi
+      .spyOn(WebSocket.prototype, "terminate")
+      .mockImplementation(() => undefined);
+    try {
+      await expectBrowserMutation(
+        provider.armRequestRule(
+          parsedRule(browser, {
+            match: { methods: ["POST"] },
+            action: { kind: "hold" },
+          }),
+        ),
+      );
+      browser.emitEvent(
+        pausedEvent(
+          "req-retained",
+          `${browser.allowedOrigin}/api/checkout`,
+          "POST",
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const failed = await analyzeBrowserMutation(
+        provider.clearRequestRule({ rule_id: RULE_ID }),
+      );
+      expect(failed).toBeInstanceOf(ProviderCleanupError);
+      expect(failed.cleanupResources).toContain(
+        `browser-request-rule:${RULE_ID}`,
+      );
+      expect(projectAnalysisError(failed).remediation.action).toContain(
+        "browser_request_rule_clear",
+      );
+
+      close.mockRestore();
+      terminate.mockRestore();
+      const released = await expectBrowserMutation(
+        provider.clearRequestRule({ rule_id: RULE_ID }),
+      );
+      expect(released.release_reason).toBe("cleared");
+      expect(released.counters).toMatchObject({ paused: 1, held: 1 });
+      expect(released.decisions.items.map(({ decision }) => decision)).toEqual([
+        "held",
+        "released",
+      ]);
+      expect(released.limitations.join(" ")).toContain(
+        "An earlier release attempt",
+      );
+      expect(commandsFor(browser, "Fetch.disable")).toHaveLength(1);
+    } finally {
+      close.mockRestore();
+      terminate.mockRestore();
+      await provider.close();
+    }
+  });
+
+  it("reports held traffic it could not continue instead of dropping it", async () => {
+    let continueFailures = 1;
+    const browser = await startFakeCdpBrowser({
+      commandError: (command) => {
+        if (
+          command.method !== "Fetch.continueRequest" ||
+          continueFailures === 0
+        )
+          return undefined;
+        continueFailures -= 1;
+        return { code: -32_603, message: "controlled continue failure" };
+      },
+    });
+    trackBrowser(browser);
+    const provider = new CdpBrowserProvider();
+    try {
+      await expectBrowserMutation(
+        provider.armRequestRule(
+          parsedRule(browser, {
+            match: { methods: ["POST"] },
+            action: { kind: "hold" },
+          }),
+        ),
+      );
+      browser.emitEvent(
+        pausedEvent(
+          "req-unconfirmed",
+          `${browser.allowedOrigin}/api/checkout`,
+          "POST",
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      const cleared = await expectBrowserMutation(
+        provider.clearRequestRule({ rule_id: RULE_ID }),
+      );
+      expect(cleared.counters).toMatchObject({ held: 1, held_released: 0 });
+      expect(cleared.decisions.items.map(({ decision }) => decision)).toEqual([
+        "held",
+      ]);
+      expect(cleared.limitations.join(" ")).toContain(
+        "released only by closing the rule's transport",
+      );
+    } finally {
+      await provider.close();
+    }
+  });
+});
+
 describe("browser request rule release cancellation", () => {
   it("still releases held traffic when the caller cancels the clear", async () => {
     const browser = await startFakeCdpBrowser();
@@ -480,6 +594,70 @@ describe("browser request rule release cancellation", () => {
       );
       expect(failureText(cleared)).toContain("not armed");
     } finally {
+      await provider.close();
+    }
+  });
+
+  it("reports a failed expiry release instead of discarding its ledger", async () => {
+    const browser = await startFakeCdpBrowser();
+    trackBrowser(browser);
+    const provider = new CdpBrowserProvider();
+    const close = vi
+      .spyOn(WebSocket.prototype, "close")
+      .mockImplementationOnce(() => {
+        throw new Error("controlled close failure");
+      });
+    const terminate = vi
+      .spyOn(WebSocket.prototype, "terminate")
+      .mockImplementation(() => undefined);
+    try {
+      await expectBrowserMutation(
+        provider.armRequestRule(
+          parsedRule(browser, {
+            match: { methods: ["POST"] },
+            action: { kind: "hold" },
+            ttl_ms: 5,
+          }),
+        ),
+      );
+      browser.emitEvent(
+        pausedEvent(
+          "req-expiry",
+          `${browser.allowedOrigin}/api/checkout`,
+          "POST",
+        ),
+      );
+      await waitFor(
+        () => commandsFor(browser, "Fetch.disable").length === 1,
+        "the expiry release started at the deadline",
+      );
+      await new Promise((resolve) => setTimeout(resolve, 1_200));
+      const armed = await expectBrowserMutation(
+        provider.armRequestRule(
+          parsedRule(browser, {
+            rule_id: "00000000-0000-4000-8000-000000000007",
+            match: { methods: ["GET"] },
+            action: { kind: "block" },
+          }),
+        ),
+      );
+      expect(armed.limitations.join(" ")).toContain(
+        "Release is still incomplete",
+      );
+      expect(armed.limitations.join(" ")).toContain(RULE_ID);
+      close.mockRestore();
+      terminate.mockRestore();
+      const cleared = await expectBrowserMutation(
+        provider.clearRequestRule({ rule_id: RULE_ID }),
+      );
+      expect(cleared.release_reason).toBe("expired");
+      expect(cleared.counters).toMatchObject({ held: 1, held_released: 1 });
+      expect(cleared.limitations.join(" ")).toContain(
+        "An earlier release attempt",
+      );
+    } finally {
+      close.mockRestore();
+      terminate.mockRestore();
       await provider.close();
     }
   });
