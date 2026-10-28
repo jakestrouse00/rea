@@ -128,6 +128,24 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   inspect_desktop_application: evidence,
+  http_replay_session_start: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  http_replay_send: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  http_replay_session_status: effects(),
+  http_replay_session_close: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+  }),
   register_fuzzing_campaign: effects({
     mutatesSession: true,
     writesFilesystem: true,

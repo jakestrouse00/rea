@@ -46,6 +46,7 @@ export const TOOL_KINDS = [
   "pcap-provider",
   "application",
   "crash-triage",
+  "replay-provider",
   "session",
 ] as const;
 

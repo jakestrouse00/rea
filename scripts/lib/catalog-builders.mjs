@@ -215,6 +215,11 @@ export const toolFamilyCatalog = (sources) => {
       ],
     },
     {
+      id: "replay",
+      surface: "replay-provider",
+      contracts: sources.replayContracts.REPLAY_TOOL_CONTRACTS,
+    },
+    {
       id: "crash-triage",
       surface: "crash-triage",
       contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,

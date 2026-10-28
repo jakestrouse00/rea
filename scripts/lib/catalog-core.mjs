@@ -135,6 +135,7 @@ const SOURCE_PATHS = {
   protobufProvider: "dist/protobufrecovery/ProtobufRecoveryProvider.js",
   bindiffContracts: "dist/contracts/bindiff/bindiffToolContracts.js",
   bindiffProvider: "dist/bindiff/BindiffProvider.js",
+  replayContracts: "dist/contracts/replay/ReplayToolContracts.js",
   crashTriageContracts:
     "dist/contracts/crashTriage/crashTriageToolContracts.js",
   crashTriageProvider: "dist/domain/crashTriage/crashReport.js",

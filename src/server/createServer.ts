@@ -273,6 +273,12 @@ import { createLabVmService } from "../composition/vmlab.js";
 import { createCrashTriageService } from "../composition/crashTriage.js";
 import type { CrashTriagePort } from "../application/crashTriage/CrashTriagePort.js";
 import { registerCrashTriageTools } from "./registerCrashTriageTools.js";
+import type { ReplayPort } from "../application/replay/ReplayPort.js";
+import {
+  createReplayService,
+  replayAllowedOriginsConfigured,
+} from "../composition/replay.js";
+import { registerReplayTools } from "./registerReplayTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -336,6 +342,8 @@ export interface CreateServerOptions {
   /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
   readonly labVm?: LabVmPort;
   readonly crashTriage?: CrashTriagePort;
+  /** Active request plane; omitted means the lane is selected from the environment. */
+  readonly replay?: ReplayPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -469,6 +477,7 @@ const installSessionToolAvailability = (
         options.electronActiveObservation !== undefined,
       v8InspectorObservationEnabled:
         options.javascriptRuntimeObservation !== undefined,
+      replayEnabled: replayAllowedOriginsConfigured(environment),
     },
   });
   const policy = (): AvailabilityPolicy => {
@@ -687,6 +696,7 @@ export const createServer = (
   const labVm = options.labVm ?? createLabVmService(environment);
   const crashTriage =
     options.crashTriage ?? createCrashTriageService(environment);
+  const replay = options.replay ?? createReplayService(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -725,6 +735,9 @@ export const createServer = (
         if (!closed.ok) throw closed.error;
       }),
       crashTriage.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      replay.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
       discovery.close(),
@@ -1107,6 +1120,12 @@ export const createServer = (
   registerCrashTriageTools({
     server,
     crashTriage,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerReplayTools({
+    server,
+    replay,
     logger: toolLogger,
     recordEvidence,
   });

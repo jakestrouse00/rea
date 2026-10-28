@@ -13,6 +13,7 @@ import {
 } from "../domain/analysisErrorBase.js";
 import { err, ok, type Result } from "../domain/result.js";
 import { isUrlLikeModuleSpecifier } from "../domain/webBundleAnalyzerAst.js";
+import { isFetchRedirectStatus } from "../domain/fetchRedirectStatus.js";
 import { analyzeParsedJavaScriptReferences } from "../domain/javascript/javascriptSemanticAnalysis.js";
 import { traverseJavaScriptAst } from "../domain/javascript/javascriptSemanticTraversal.js";
 import { parseJavaScriptSource } from "../domain/javascript/javascriptSourceParser.js";
@@ -445,19 +446,9 @@ const fetchOne = async (
   }
 };
 
-/**
- * Fetch redirect statuses per WHATWG Fetch (redirect status list:
- * 301, 302, 303, 307, 308). Single owner for redirect decisions.
- * 300/304/305/306 carry `Location` without being redirects — following
- * them would replace the observed failure with an unrelated map.
- * See https://fetch.spec.whatwg.org/#redirect-status
- */
-export const isFetchRedirectStatus = (status: number): boolean =>
-  status === 301 ||
-  status === 302 ||
-  status === 303 ||
-  status === 307 ||
-  status === 308;
+// Fetch redirect statuses are owned by `domain/fetchRedirectStatus.ts`, which
+// the active request plane shares.
+export { isFetchRedirectStatus } from "../domain/fetchRedirectStatus.js";
 
 const fetchFollowingApprovedRedirects = async (
   initialUrl: string,

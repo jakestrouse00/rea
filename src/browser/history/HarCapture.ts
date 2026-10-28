@@ -26,16 +26,23 @@ type Projection = Pick<
   "reported" | "numeric_literals" | "binary_fields" | "redactions"
 >;
 
+/**
+ * Validate one parsed HAR container against the pinned profile.
+ *
+ * Numbers arrive as `LosslessNumber`, so validation judges a disposable
+ * projection where unsafe literals are still numbers. Returns the entries whose
+ * producer representation was adapted; throws `CaptureFormatError` otherwise.
+ */
+export const validateHarContainer = (raw: unknown): readonly number[] =>
+  createHarValidator()(projectHar(raw, [], "validation").reported);
+
 /** Decode a retained HAR, validating a disposable projection of source facts. */
 export const decodeHarCapture = (
   text: string,
   sensitiveValues: readonly string[],
 ): DecodedCapture => {
   const raw = parseCaptureJson(text, "HAR");
-  const validation = projectHar(raw, [], "validation");
-  const adaptedPlaywrightEntries = new Set(
-    createHarValidator()(validation.reported),
-  );
+  const adaptedPlaywrightEntries = new Set(validateHarContainer(raw));
   if (
     !captureObject(raw) ||
     !captureObject(raw.log) ||

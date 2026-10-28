@@ -145,6 +145,33 @@ describe("ADB and Apktool host availability", () => {
   });
 });
 
+describe("active request plane availability", () => {
+  it("stays provider_missing until an operator approves an origin", () => {
+    const disabled = buildCapabilityInventory(status(), enabledPolicy);
+    for (const name of [
+      "http_replay_session_start",
+      "http_replay_send",
+      "http_replay_session_status",
+      "http_replay_session_close",
+    ] as const)
+      expect(disabled.find((tool) => tool.name === name)).toMatchObject({
+        available: false,
+        reason: "provider_missing",
+      });
+    expect(
+      disabled.find((tool) => tool.name === "http_replay_send")?.remediation,
+    ).toContain("REA_REPLAY_ALLOWED_ORIGINS");
+
+    const enabled = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      replayEnabled: true,
+    });
+    expect(
+      enabled.find((tool) => tool.name === "http_replay_send"),
+    ).toMatchObject({ available: true, reason: "available" });
+  });
+});
+
 describe("capability failure reasons", () => {
   it("keeps an unavailable Android runtime distinct from a missing provider", () => {
     const inventory = buildCapabilityInventory(status(), {

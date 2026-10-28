@@ -45,6 +45,7 @@ import {
 } from "./CapabilityClientRequirements.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
+import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
@@ -128,6 +129,8 @@ export type AvailabilityPolicy = {
   readonly electronObservationEnabled?: boolean;
   readonly electronAutomationEnabled?: boolean;
   readonly v8InspectorObservationEnabled?: boolean;
+  /** The active request plane is configured with at least one allowed origin. */
+  readonly replayEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -748,6 +751,13 @@ const workflowAvailabilityFor = ({
       policy.labVmAvailability,
       LAB_VM_COMMAND_REMEDIATION,
     );
+  if (kind === "replay-provider")
+    return policy.replayEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+        };
   if (kind === "session") return { reason: "available", remediation: null };
   return null;
 };

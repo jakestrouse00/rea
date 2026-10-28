@@ -6,6 +6,11 @@ import {
   FRIDA_RPC_DEFAULT_TIMEOUT_MS,
   FRIDA_RPC_MAX_TIMEOUT_MS,
 } from "../domain/fridaRpc.js";
+import { REPLAY_LIMITS } from "../domain/replay/replayLimits.js";
+import {
+  REPLAY_ALLOWED_ORIGINS_ENV,
+  REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+} from "../domain/replay/replayOrigins.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -107,5 +112,21 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "ms",
     observation: "known" as const,
     recovery: `A frida_rpc_call waits for the caller's timeout_ms, default ${String(FRIDA_RPC_DEFAULT_TIMEOUT_MS)} ms and at most ${String(FRIDA_RPC_MAX_TIMEOUT_MS)} ms. This release has no runtime override for that bound. REA stops waiting at the deadline but cannot cancel the call inside the target, so the target may still complete it; raising the host tool-call deadline does not make the target reply sooner.`,
+  },
+  {
+    control: REPLAY_ALLOWED_ORIGINS_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "origins",
+    observation: "unknown" as const,
+    recovery: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+  },
+  {
+    control: "replay.request_timeout",
+    authority: "fixed" as const,
+    value: REPLAY_LIMITS.maxTimeoutMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `One http_replay_send waits for the caller's timeout_ms, default ${String(REPLAY_LIMITS.defaultTimeoutMs)} ms and at most ${String(REPLAY_LIMITS.maxTimeoutMs)} ms. This release has no runtime override for that bound. REA dispatches once and never retries, so a timed-out request is a terminal observation; raising the host tool-call deadline does not make the target answer sooner.`,
   },
 ];

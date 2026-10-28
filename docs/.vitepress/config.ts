@@ -60,6 +60,7 @@ export default defineConfig({
           { text: "Process capture", link: "/process-capture" },
           { text: "Lab VMs", link: "/lab-vms" },
           { text: "Crash triage", link: "/crash-triage" },
+          { text: "HTTP replay", link: "/replay-client" },
           {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",

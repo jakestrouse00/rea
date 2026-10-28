@@ -86,6 +86,14 @@ export const closeBinaryInputSchema = z.strictObject({
 /** Session identity issued by `start_lab_vm`; not a binary target identity. */
 export const labVmSessionIdSchema = z.string().uuid();
 
+/** Session identity issued by `http_replay_session_start`. */
+export const replaySessionIdSchema = z
+  .string()
+  .uuid()
+  .describe(
+    "Replay session identity issued by http_replay_session_start for this REA server's lifetime.",
+  );
+
 /** Start one lab VM on the caller's workspace mount. */
 export const startLabVmInputSchema = z.strictObject({
   workspace_path: absoluteLocalPathStringSchema.describe(
