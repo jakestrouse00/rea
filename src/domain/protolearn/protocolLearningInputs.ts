@@ -145,6 +145,7 @@ export const protolearnRequestSchema = z.discriminatedUnion("operation", [
 ]);
 
 export type ProtolearnRequest = z.output<typeof protolearnRequestSchema>;
+export type ProtolearnRequestInput = z.input<typeof protolearnRequestSchema>;
 
 /** Identity of one exported seed, with the transitions it exercises. */
 export const protocolGrammarSeedSchema = z.strictObject({

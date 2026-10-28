@@ -39,6 +39,7 @@ import {
 import {
   protolearnRequestSchema,
   type ProtolearnRequest,
+  type ProtolearnRequestInput,
 } from "../domain/protolearn/protocolLearningInputs.js";
 import {
   protocolModelSchema,
@@ -182,7 +183,7 @@ export class ProtocolLearningProvider {
   }
 
   async execute(
-    request: ProtolearnRequest,
+    request: ProtolearnRequestInput,
     options?: ExecutionOptions,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
     const caller = options?.signal;
