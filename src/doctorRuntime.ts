@@ -112,10 +112,12 @@ export const createSystemDoctorHost = (
       }),
       await inspectFridaRuntimeProvider(),
       await inspectIdeviceProvider(environment, process.platform, {
-        fileCloseResources,
+        resourceScope,
+        signal: inspectionSignal,
       }),
       await inspectDiscoveryProvider(environment, process.platform, {
-        fileCloseResources,
+        resourceScope,
+        signal: inspectionSignal,
       }),
       await inspectLlvmPdbutil(environment),
       await inspectWindowsArtifacts(),

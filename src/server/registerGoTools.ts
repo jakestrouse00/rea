@@ -6,7 +6,10 @@ import { toolContract } from "../contracts/toolContracts.js";
 import type { Logger } from "pino";
 import type { WithAdmittedAnalysis } from "./analysisAdmission.js";
 import { createEvidenceToolHandler } from "./contractToolHandler.js";
-import { applicationToolRegistrationOptions } from "./toolRegistrationOptions.js";
+import {
+  applicationToolRegistrationOptions,
+  toolRegistrationOptions,
+} from "./toolRegistrationOptions.js";
 
 /** Bind the exact Go contract to its shared workflow and owning session Evidence ledger. */
 export const registerGoTools = (

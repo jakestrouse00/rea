@@ -7,7 +7,10 @@ import { toolContract } from "../contracts/toolContracts.js";
 import type { Logger } from "pino";
 import type { WithAdmittedAnalysis } from "./analysisAdmission.js";
 import { createEvidenceToolHandler } from "./contractToolHandler.js";
-import { applicationToolRegistrationOptions } from "./toolRegistrationOptions.js";
+import {
+  applicationToolRegistrationOptions,
+  toolRegistrationOptions,
+} from "./toolRegistrationOptions.js";
 
 /** Bind the exact Rust contracts to their shared workflows and owning session Evidence ledger. */
 export const registerRustTools = (

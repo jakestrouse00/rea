@@ -2,7 +2,7 @@ import type {
   DoctorProviderCheck,
   DoctorProviderInspection,
 } from "../application/Doctor.js";
-import type { FileCloseResourceOwner } from "../application/AnalysisProvider.js";
+import type { RetainedResourceScope } from "../application/AnalysisProvider.js";
 import {
   inspectIdeviceInstallation,
   type IdeviceReadinessFailure,
@@ -31,7 +31,8 @@ export const inspectIdeviceProvider = async (
   environment: Readonly<NodeJS.ProcessEnv>,
   platform: NodeJS.Platform = process.platform,
   _options: {
-    readonly fileCloseResources: FileCloseResourceOwner;
+    readonly resourceScope: RetainedResourceScope;
+    readonly signal?: AbortSignal;
   },
 ): Promise<DoctorProviderInspection> => {
   const configured =

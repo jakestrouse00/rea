@@ -151,7 +151,7 @@ const sectionViews = (container: BinaryContainer): readonly GoSectionView[] =>
 export const readGoPclntabImage = (
   bytes: Buffer,
 ): {
-  readonly container: GoBinaryContainer;
+  readonly container: BinaryContainer;
   readonly pclntab: GoPclntabTable | null;
 } => {
   const container = readBinaryContainer(bytes);
@@ -246,7 +246,7 @@ export const readGoPclntabProcedures = (
 
 /** Producer-shaped candidate spans, declared gopclntab sections first. */
 const pclntabCandidates = (
-  container: GoBinaryContainer,
+  container: BinaryContainer,
 ): {
   readonly declared: readonly PclntabCandidate[];
   readonly searched: readonly PclntabCandidate[];
@@ -313,7 +313,7 @@ const isModuledataSection = (name: string): boolean =>
 
 const parsePclntab = (
   bytes: Buffer,
-  container: GoBinaryContainer,
+  container: BinaryContainer,
   candidate: PclntabCandidate,
   declared: boolean,
 ): GoPclntabTable | null => {
@@ -556,7 +556,7 @@ interface ModuledataProbe {
  */
 const findModuledata = (
   bytes: Buffer,
-  container: GoBinaryContainer,
+  container: BinaryContainer,
   reader: BinaryReader,
   probe: ModuledataProbe,
 ): GoModuledataFacts => {
@@ -581,7 +581,7 @@ const findModuledata = (
 };
 
 const moduledataSpans = (
-  container: GoBinaryContainer,
+  container: BinaryContainer,
 ): readonly PclntabCandidate[] => {
   if (container.sections.length === 0)
     return container.mappings

@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { IdeviceProvider } from "../../../../src/idevice/IdeviceProvider.js";
 import { inspectIdeviceProvider } from "../../../../src/idevice/IdeviceDoctor.js";
-import type { FileCloseResourceOwner } from "../../../../src/application/AnalysisProvider.js";
+import type { RetainedResourceScope } from "../../../../src/application/AnalysisProvider.js";
 import { projectAnalysisError } from "../../../../src/domain/analysisErrorProjection.js";
 import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js";
 import {
@@ -15,10 +15,10 @@ import {
 } from "./fakeIdevice.js";
 
 const doctorOptions = {
-  fileCloseResources: {
+  resourceScope: {
     retain: () => undefined,
     run: (op: () => unknown) => op(),
-  } as unknown as FileCloseResourceOwner,
+  } as unknown as RetainedResourceScope,
 };
 
 const providerFor = async (
