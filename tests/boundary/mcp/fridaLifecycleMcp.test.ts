@@ -32,6 +32,7 @@ import { jsonObjectSchema } from "../../../src/domain/jsonValue.js";
 import { nativeCallPartialObservationSchema } from "../../../src/domain/native/nativeCallPartialObservation.js";
 import { err, ok } from "../../../src/domain/result.js";
 import { FridaInstrumentationManager } from "../../../src/frida/FridaInstrumentationManager.js";
+import { FRIDA_RPC_INVENTORY_EPILOGUE } from "../../../src/frida/fridaRpcInventory.js";
 import { silentLogger } from "../../../src/logger.js";
 import { createServer } from "../../../src/server/createServer.js";
 import { EvidenceMcpServer } from "../../../src/server/EvidenceMcpServer.js";
@@ -60,6 +61,19 @@ const gate = () => {
   };
 };
 
+/**
+ * REA loads the caller's source followed by its own rpc-inventory epilogue.
+ * The fixture records the caller-authored source after confirming that suffix.
+ */
+const callerSource = (loaded: string): string => {
+  if (!loaded.endsWith(FRIDA_RPC_INVENTORY_EPILOGUE))
+    throw new Error(
+      "Frida script source is missing REA's rpc inventory epilogue",
+    );
+  return loaded.slice(0, loaded.length - FRIDA_RPC_INVENTORY_EPILOGUE.length);
+};
+
+// eslint-disable-next-line max-lines-per-function -- every lifecycle case drives the same focused native fixture.
 const nativeFixture = () => {
   const created: string[] = [];
   const loaded: string[] = [];
@@ -81,6 +95,9 @@ const nativeFixture = () => {
     remoteRemovals: 0,
     removalFailures: 0,
     message: undefined as FridaMessage | undefined,
+    /** What the target's rpc-inventory epilogue reports; undefined = no report. */
+    rpcInventory: undefined as readonly unknown[] | null | undefined,
+    rpc: {} as Record<string, (...args: unknown[]) => Promise<unknown>>,
   };
   let detached = false;
   let onDetached: (() => void) | undefined;
@@ -109,7 +126,7 @@ const nativeFixture = () => {
       markDetached();
     },
     async createScript(source) {
-      created.push(source);
+      created.push(callerSource(source));
       await controls.create();
       let destroyed = false;
       let listener:
@@ -119,6 +136,11 @@ const nativeFixture = () => {
         get isDestroyed() {
           return destroyed;
         },
+        exports: new Proxy({} as Script["exports"], {
+          get(_target, property) {
+            return Reflect.get(controls.rpc, property);
+          },
+        }),
         message: {
           connect(handler) {
             listener = handler;
@@ -129,15 +151,26 @@ const nativeFixture = () => {
         },
         async load() {
           await controls.load();
-          loaded.push(source);
+          loaded.push(callerSource(source));
           listener?.(
-            controls.message ?? { type: "send", payload: source },
+            controls.message ?? {
+              type: "send",
+              payload: callerSource(source),
+            },
             null,
           );
+          if (controls.rpcInventory !== undefined)
+            listener?.(
+              {
+                type: "send",
+                payload: { __rea_frida_rpc_inventory__: controls.rpcInventory },
+              },
+              null,
+            );
           controls.afterLoad();
         },
         async unload() {
-          unloaded.push(source);
+          unloaded.push(callerSource(source));
           if (controls.unloadFailures > 0) {
             controls.unloadFailures -= 1;
             throw new Error("transient unload failure");
@@ -715,6 +748,12 @@ const callPartialFridaLoadError = async (
       return unusedFridaPortMethod();
     },
     async unloadScript() {
+      return unusedFridaPortMethod();
+    },
+    rpcInventory() {
+      return unusedFridaPortMethod();
+    },
+    async callRpc() {
       return unusedFridaPortMethod();
     },
     status() {

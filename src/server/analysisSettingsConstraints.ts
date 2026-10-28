@@ -2,6 +2,10 @@ import { getHeapStatistics } from "node:v8";
 import { MAX_JSON_DEPTH } from "../domain/jsonValue.js";
 import { DEFAULT_VIEW8_OPERATION_TIMEOUT_MS as VIEW8_OPERATION_TIMEOUT_MS } from "../javascript/v8/View8Release.js";
 import { CRASH_MINIMIZE_DEFAULT_TIMEOUT_MS } from "../domain/crashTriage/crashMinimization.js";
+import {
+  FRIDA_RPC_DEFAULT_TIMEOUT_MS,
+  FRIDA_RPC_MAX_TIMEOUT_MS,
+} from "../domain/fridaRpc.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -95,5 +99,13 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     observation: "known" as const,
     recovery:
       "One minimizer run has this default deadline; a caller may pass timeout_ms from 1 to 2147483647, and the retained 4194304-byte per-stream output budget has no runtime override. Raising the deadline does not make a target minimize faster.",
+  },
+  {
+    control: "frida.rpc_timeout",
+    authority: "fixed" as const,
+    value: FRIDA_RPC_MAX_TIMEOUT_MS,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `A frida_rpc_call waits for the caller's timeout_ms, default ${String(FRIDA_RPC_DEFAULT_TIMEOUT_MS)} ms and at most ${String(FRIDA_RPC_MAX_TIMEOUT_MS)} ms. This release has no runtime override for that bound. REA stops waiting at the deadline but cannot cancel the call inside the target, so the target may still complete it; raising the host tool-call deadline does not make the target reply sooner.`,
   },
 ];

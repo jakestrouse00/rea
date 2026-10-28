@@ -15,6 +15,7 @@ import {
   AnalysisInputError,
 } from "../../domain/analysisErrorCore.js";
 import { err, ok, type Result } from "../../domain/result.js";
+import type { JsonValue } from "../../domain/jsonValue.js";
 import { FRIDA_VERIFIED_VERSION } from "../../frida/FridaRelease.js";
 import { fridaSessionStatusInputSchema } from "../../domain/fridaSessionStatus.js";
 import { analysisInputErrorFromIssues } from "../../domain/inputIssueProjection.js";
@@ -240,6 +241,87 @@ export class FridaInstrumentationService {
 
   unloadScript(sessionId: string, scriptId: string, signal?: AbortSignal) {
     return this.#provider.unloadScript(sessionId, scriptId, signal);
+  }
+
+  /** Report the target's own rpc-export inventory for one owned script. */
+  listRpcExports(
+    sessionId: string,
+    scriptId: string,
+  ): Result<Evidence, AnalysisError> {
+    const inventory = this.#provider.rpcInventory(sessionId, scriptId);
+    if (!inventory.ok) return inventory;
+    return ok(
+      fridaEvidence(
+        "frida_rpc_list",
+        {
+          session_id: sessionId,
+          script_id: scriptId,
+          state: inventory.value.state,
+          exports: inventory.value.exports.map(({ name, parameters }) => ({
+            name,
+            parameters,
+          })),
+          exports_truncated: inventory.value.exportsTruncated,
+        },
+        { session_id: sessionId, script_id: scriptId },
+      ),
+    );
+  }
+
+  async callRpc(
+    input: {
+      readonly sessionId: string;
+      readonly scriptId: string;
+      readonly method: string;
+      readonly arguments: readonly JsonValue[];
+      readonly timeoutMs: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<Result<Evidence, AnalysisError>> {
+    if (signal?.aborted)
+      return err(
+        new AnalysisCancelledError("frida_rpc_call", { cause: signal.reason }),
+      );
+    const called = await this.#provider.callRpc(
+      input.sessionId,
+      input.scriptId,
+      {
+        method: input.method,
+        arguments: input.arguments,
+        timeoutMs: input.timeoutMs,
+      },
+      signal,
+    );
+    if (!called.ok) return called;
+    const evidence = fridaEvidence(
+      "frida_rpc_call",
+      {
+        session_id: called.value.sessionId,
+        script_id: called.value.scriptId,
+        method: called.value.method,
+        mutation_authority: {
+          kind: "session-grant" as const,
+          mode: called.value.mode,
+        },
+        value: called.value.value,
+        value_truncated: called.value.valueTruncated,
+        value_capture_limit: called.value.valueCaptureLimit,
+        duration_ms: called.value.durationMs,
+      },
+      {
+        session_id: input.sessionId,
+        script_id: input.scriptId,
+        method: input.method,
+      },
+    );
+    return signal?.aborted
+      ? err(
+          new AnalysisCancelledError("frida_rpc_call", {
+            cause: signal.reason,
+            partialObservation: evidence,
+          }),
+        )
+      : ok(evidence);
   }
 
   status(sessionId: string): FridaSessionStatus | undefined {
@@ -482,7 +564,7 @@ const fridaEvidence = (
         ...(script?.sourceRepresentation === undefined
           ? []
           : [
-              "Invalid UTF-8 in the selected script file was decoded with replacement characters. source_sha256 identifies the original file bytes; raw_result.source_representation.loaded_source_sha256 identifies the UTF-8 encoding of the string passed to Frida.",
+              "Invalid UTF-8 in the selected script file was decoded with replacement characters. source_sha256 identifies the original file bytes; raw_result.source_representation.loaded_source_sha256 identifies the UTF-8 encoding of the selected source, before REA appends its rpc-inventory epilogue.",
             ]),
       ],
     },

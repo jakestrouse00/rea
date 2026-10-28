@@ -94,6 +94,8 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "unload_frida_script",
   "frida_session_status",
   "close_frida_session",
+  "frida_rpc_list",
+  "frida_rpc_call",
   // Caller-supplied signature and decompiler lanes are MCP-only in this batch.
   "analyze_binary_capabilities",
   "scan_artifact_with_rules",

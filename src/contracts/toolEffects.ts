@@ -273,6 +273,15 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  frida_rpc_list: evidence,
+  frida_rpc_call: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   frida_session_status: evidence,
   close_frida_session: effects({
     mutatesTarget: true,

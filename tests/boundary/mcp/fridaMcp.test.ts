@@ -73,6 +73,31 @@ const createFridaTestProvider = (
   async unloadScript() {
     return { ok: true, value: null };
   },
+  rpcInventory() {
+    return {
+      ok: true,
+      value: {
+        state: "observed",
+        exports: [{ name: "ping", parameters: 0 }],
+        exportsTruncated: false,
+      },
+    };
+  },
+  async callRpc(_sessionId, scriptId, request) {
+    return {
+      ok: true,
+      value: {
+        sessionId: "00000000-0000-4000-8000-000000000001",
+        scriptId,
+        method: request.method,
+        mode: "attach",
+        value: { echoed: [...request.arguments] },
+        valueTruncated: false,
+        valueCaptureLimit: null,
+        durationMs: 1,
+      },
+    };
+  },
   status(sessionId) {
     return {
       sessionId,

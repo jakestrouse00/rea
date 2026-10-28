@@ -31,6 +31,8 @@ export const registerFridaTools = (
   const load = toolContract("load_frida_script");
   const resume = toolContract("resume_frida_session");
   const unload = toolContract("unload_frida_script");
+  const rpcList = toolContract("frida_rpc_list");
+  const rpcCall = toolContract("frida_rpc_call");
   const status = toolContract("frida_session_status");
   const close = toolContract("close_frida_session");
   const instrument = toolContract("instrument_with_frida");
@@ -183,6 +185,48 @@ export const registerFridaTools = (
             unload,
           )
         : delivery.toCallToolResult(result, unload);
+    },
+  );
+  server.registerTool(
+    rpcList.name,
+    toolRegistrationOptions(rpcList),
+    async (input) => {
+      const result = service.listRpcExports(input.session_id, input.script_id);
+      if (!result.ok) return delivery.toCallToolResult(result, rpcList);
+      return delivery.toEvidenceToolResult(
+        result.value,
+        rpcList,
+        recordEvidence?.(result.value),
+      );
+    },
+  );
+  server.registerTool(
+    rpcCall.name,
+    toolRegistrationOptions(rpcCall),
+    async (input, context: ServerContext) => {
+      const result = await logToolExecution(logger, rpcCall.name, () =>
+        service.callRpc(
+          {
+            sessionId: input.session_id,
+            scriptId: input.script_id,
+            method: input.method,
+            arguments: input.arguments,
+            timeoutMs: input.timeout_ms,
+          },
+          context.mcpReq.signal,
+        ),
+      );
+      if (!result.ok)
+        return delivery.toPartialErrorToolResult(
+          result.error,
+          rpcCall.returnsTargetContent,
+          recordEvidence,
+        );
+      return delivery.toEvidenceToolResult(
+        result.value,
+        rpcCall,
+        recordEvidence?.(result.value),
+      );
     },
   );
   server.registerTool(

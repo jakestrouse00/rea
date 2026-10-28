@@ -58,6 +58,27 @@ const createProvider = (
   async unloadScript() {
     return { ok: true, value: null };
   },
+  rpcInventory() {
+    return {
+      ok: true,
+      value: { state: "unreported", exports: [], exportsTruncated: false },
+    };
+  },
+  async callRpc(sessionId, scriptId, request) {
+    return {
+      ok: true,
+      value: {
+        sessionId,
+        scriptId,
+        method: request.method,
+        mode: "attach",
+        value: null,
+        valueTruncated: false,
+        valueCaptureLimit: null,
+        durationMs: 0,
+      },
+    };
+  },
   status() {
     return undefined;
   },
@@ -1014,6 +1035,27 @@ it("cleans up a session and returns typed cancellation after a pending start", a
     },
     async unloadScript() {
       return { ok: true, value: null };
+    },
+    rpcInventory() {
+      return {
+        ok: true,
+        value: { state: "unreported", exports: [], exportsTruncated: false },
+      };
+    },
+    async callRpc(sessionId, scriptId, request) {
+      return {
+        ok: true,
+        value: {
+          sessionId,
+          scriptId,
+          method: request.method,
+          mode: "attach",
+          value: null,
+          valueTruncated: false,
+          valueCaptureLimit: null,
+          durationMs: 0,
+        },
+      };
     },
     status() {
       return undefined;

@@ -47,6 +47,8 @@ describe("target-content provenance audit", () => {
     "inspect_adb_client",
     "inspect_apktool_client",
     "update_unknown",
+    "frida_rpc_list",
+    "frida_rpc_call",
   ])("marks %s as returning target content", (name) => {
     expect(
       TOOL_CONTRACTS.find((contract) => contract.name === name)

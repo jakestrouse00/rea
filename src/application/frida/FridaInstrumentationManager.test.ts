@@ -18,7 +18,14 @@ import {
   AnalysisTimeoutError,
 } from "../../domain/analysisErrorCore.js";
 import { FridaInstrumentationManager } from "../../frida/FridaInstrumentationManager.js";
-import { fridaCaptureLimitations } from "../../frida/fridaCaptureLimits.js";
+import {
+  MAX_SESSION_CAPTURE_BYTES,
+  fridaCaptureLimitations,
+} from "../../frida/fridaCaptureLimits.js";
+import {
+  MAX_RPC_EXPORTS,
+  MAX_RPC_EXPORT_NAME_BYTES,
+} from "../../frida/fridaRpcInventory.js";
 import { AnalysisError } from "../../domain/analysisErrorBase.js";
 import { projectAnalysisError } from "../../domain/analysisErrorProjection.js";
 import { FridaInstrumentationService } from "./FridaInstrumentationService.js";
@@ -42,6 +49,12 @@ const signal = <Handler extends (...args: never[]) => void>() => {
 class FakeScript implements Script {
   readonly message =
     signal<(message: FridaMessage, data: Buffer | null) => void>();
+  readonly exports: Script["exports"] = new Proxy({} as Script["exports"], {
+    get: (_target, property) => Reflect.get(this.rpc, property),
+  });
+  readonly rpc: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+  /** What the target's inventory epilogue reports; undefined = no report. */
+  rpcInventory: readonly unknown[] | null | undefined = undefined;
   isDestroyed = false;
   loadFailure: Error | undefined;
   unloadFailureCount = 0;
@@ -67,6 +80,14 @@ class FakeScript implements Script {
       },
       null,
     );
+    if (this.rpcInventory !== undefined)
+      this.message.emit(
+        {
+          type: "send",
+          payload: { __rea_frida_rpc_inventory__: this.rpcInventory },
+        },
+        null,
+      );
   }
 
   async unload(): Promise<void> {
@@ -89,6 +110,8 @@ class FakeSession implements Session {
   nextMessage: FridaMessage | undefined;
   nextLoadFailure: Error | undefined;
   nextUnloadFailureCount = 0;
+  nextRpcInventory: readonly unknown[] | null | undefined = undefined;
+  nextRpc: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
   detachFailureCount = 0;
   scriptLoadGate: Promise<void> | undefined;
   onScriptLoadStarted: (() => void) | undefined;
@@ -112,12 +135,16 @@ class FakeSession implements Session {
     );
     script.loadFailure = this.nextLoadFailure;
     script.unloadFailureCount = this.nextUnloadFailureCount;
+    script.rpcInventory = this.nextRpcInventory;
+    Object.assign(script.rpc, this.nextRpc);
     this.nextPayload = { event: "loaded" };
     this.nextDescription = "script loaded";
     this.nextStack = "";
     this.nextMessage = undefined;
     this.nextLoadFailure = undefined;
     this.nextUnloadFailureCount = 0;
+    this.nextRpcInventory = undefined;
+    this.nextRpc = {};
     this.scripts.push(script);
     return script;
   }
@@ -290,6 +317,19 @@ describe("FridaInstrumentationManager", () => {
         messages: [{ payload: { messages_truncated: true } }],
       }),
     ).toEqual([]);
+    expect(
+      fridaCaptureLimitations({
+        value: { value_truncated: true, payload_truncated: true },
+      }),
+      "a caller-supplied rpc reply cannot claim REA dropped its bytes",
+    ).toEqual([]);
+    expect(
+      fridaCaptureLimitations({
+        value_truncated: true,
+        value_capture_limit: "json_nodes",
+        value: { blob: null },
+      }).join("\n"),
+    ).toContain("JSON node cap");
   });
 
   it("attaches by PID when Frida omits the target from process lookup", async () => {
@@ -1663,4 +1703,330 @@ it("retries only unresolved sessions and resolves the typed close aggregate", as
   await manager.closeAll();
   expect(calls).toEqual([2, 1]);
   expect(failure.cleanupIncomplete).toBe(false);
+});
+
+const loadInlineScript = async (
+  manager: FridaInstrumentationManager,
+  sessionId: string,
+  source = "send(1)",
+): Promise<string> => {
+  const loaded = await manager.loadScript(sessionId, {
+    sourceKind: "inline",
+    source,
+  });
+  if (!loaded.ok) throw loaded.error;
+  return loaded.value.scriptId;
+};
+
+const startRpcSession = async () => {
+  const bindings = new FakeDeviceManager();
+  const { manager, started } = await startLocalAttachedSession(bindings);
+  if (!started.ok) throw started.error;
+  return { bindings, manager, sessionId: started.value.sessionId };
+};
+
+it("records the rpc export surface the target reports when a script loads", async () => {
+  const bindings = new FakeDeviceManager();
+  bindings.device.session.nextRpcInventory = [
+    { name: "snapshot", parameters: 0 },
+    { name: "mutate", parameters: 3 },
+    { name: "constant", parameters: null },
+  ];
+  const { manager, started } = await startLocalAttachedSession(bindings);
+  if (!started.ok) throw started.error;
+  const scriptId = await loadInlineScript(manager, started.value.sessionId);
+  expect(manager.rpcInventory(started.value.sessionId, scriptId)).toEqual({
+    ok: true,
+    value: {
+      state: "observed",
+      exports: [
+        { name: "snapshot", parameters: 0 },
+        { name: "mutate", parameters: 3 },
+        { name: "constant", parameters: null },
+      ],
+      exportsTruncated: false,
+    },
+  });
+  expect(
+    manager.status(started.value.sessionId)?.messages,
+    "the inventory report is REA transport, not a captured caller message",
+  ).toEqual([expect.objectContaining({ type: "send" })]);
+});
+
+it("keeps an unreported rpc inventory unknown and bounds an oversized report", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  const quiet = await loadInlineScript(manager, sessionId, "send(1)");
+  const unknown = manager.rpcInventory(sessionId, quiet);
+  expect(unknown).toEqual({
+    ok: true,
+    value: { state: "unreported", exports: [], exportsTruncated: false },
+  });
+
+  bindings.device.session.nextRpcInventory = Array.from(
+    { length: MAX_RPC_EXPORTS + 1 },
+    (_unused, index) => ({
+      name: `export-${String(index)}`,
+      parameters: 1,
+    }),
+  );
+  const oversized = await loadInlineScript(manager, sessionId, "send(2)");
+  const bounded = manager.rpcInventory(sessionId, oversized);
+  expect(bounded.ok).toBe(true);
+  if (!bounded.ok) return;
+  expect(bounded.value.state).toBe("observed");
+  expect(bounded.value.exports).toHaveLength(MAX_RPC_EXPORTS);
+  expect(bounded.value.exportsTruncated).toBe(true);
+
+  bindings.device.session.nextRpcInventory = [
+    { name: "n".repeat(MAX_RPC_EXPORT_NAME_BYTES + 32), parameters: 0 },
+    { name: 7, parameters: 0 },
+  ];
+  const malformed = await loadInlineScript(manager, sessionId, "send(3)");
+  const partial = manager.rpcInventory(sessionId, malformed);
+  expect(partial.ok).toBe(true);
+  if (!partial.ok) return;
+  expect(partial.value.exports).toHaveLength(1);
+  expect(partial.value.exports[0]?.name).toHaveLength(
+    MAX_RPC_EXPORT_NAME_BYTES,
+  );
+  expect(partial.value.exportsTruncated).toBe(true);
+});
+
+it("returns one bounded rpc reply under the session's start-mode grant", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  bindings.device.session.nextRpcInventory = [{ name: "probe", parameters: 1 }];
+  bindings.device.session.nextRpc = {
+    async probe(value) {
+      return { echoed: value, rows: [1, 2, 3] };
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const called = await manager.callRpc(sessionId, scriptId, {
+    method: "probe",
+    arguments: ["caller-value"],
+    timeoutMs: 1_000,
+  });
+  expect(called).toMatchObject({
+    ok: true,
+    value: {
+      sessionId,
+      scriptId,
+      method: "probe",
+      mode: "attach",
+      value: { echoed: "caller-value", rows: [1, 2, 3] },
+      valueTruncated: false,
+      valueCaptureLimit: null,
+    },
+  });
+});
+
+it("bounds an oversized rpc reply and names the cap that dropped bytes", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  bindings.device.session.nextRpcInventory = [{ name: "huge", parameters: 0 }];
+  bindings.device.session.nextRpc = {
+    async huge() {
+      return { blob: "x".repeat(MAX_SESSION_CAPTURE_BYTES) };
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const called = await manager.callRpc(sessionId, scriptId, {
+    method: "huge",
+    arguments: [],
+    timeoutMs: 1_000,
+  });
+  expect(called.ok).toBe(true);
+  if (!called.ok) return;
+  expect(called.value.valueTruncated).toBe(true);
+  expect(called.value.valueCaptureLimit).toBe("payload_bytes");
+});
+
+it("stops waiting at the rpc deadline without claiming the target stopped", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  let reply: ((value: unknown) => void) | undefined;
+  let markCalled: (() => void) | undefined;
+  const calledAtTarget = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
+  bindings.device.session.nextRpcInventory = [{ name: "slow", parameters: 0 }];
+  bindings.device.session.nextRpc = {
+    slow() {
+      markCalled?.();
+      return new Promise((resolve) => {
+        reply = resolve;
+      });
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const called = await manager.callRpc(sessionId, scriptId, {
+    method: "slow",
+    arguments: [],
+    timeoutMs: 10,
+  });
+  await calledAtTarget;
+  expect(called.ok).toBe(false);
+  if (called.ok) return;
+  expect(called.error).toBeInstanceOf(AnalysisTimeoutError);
+  if (!(called.error instanceof AnalysisTimeoutError)) return;
+  expect(called.error).toMatchObject({
+    operation: "frida_rpc_call",
+    timeoutMs: 10,
+  });
+  expect(called.error.userMessage).toContain("deadlineExpired");
+  expect(called.error.remediationAction).toContain("cannot cancel");
+  reply?.({ late: true });
+  expect(
+    manager.rpcInventory(sessionId, scriptId),
+    "a discarded reply leaves the script owned and its inventory intact",
+  ).toMatchObject({ ok: true, value: { state: "observed" } });
+});
+
+it("returns typed cancellation for an rpc call the caller stopped waiting on", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  let reply: ((value: unknown) => void) | undefined;
+  let markCalled: (() => void) | undefined;
+  const calledAtTarget = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
+  bindings.device.session.nextRpcInventory = [{ name: "slow", parameters: 0 }];
+  bindings.device.session.nextRpc = {
+    slow() {
+      markCalled?.();
+      return new Promise((resolve) => {
+        reply = resolve;
+      });
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const controller = new AbortController();
+  const pending = manager.callRpc(
+    sessionId,
+    scriptId,
+    { method: "slow", arguments: [], timeoutMs: 60_000 },
+    controller.signal,
+  );
+  await calledAtTarget;
+  controller.abort(new Error("caller stopped waiting"));
+  const cancelled = await pending;
+  expect(cancelled.ok).toBe(false);
+  if (cancelled.ok) return;
+  expect(cancelled.error).toMatchObject({
+    _tag: "AnalysisCancelledError",
+    operation: "frida_rpc_call",
+    cause: expect.objectContaining({ message: "caller stopped waiting" }),
+  });
+  reply?.({ late: true });
+});
+
+it("fails a pending rpc call with a typed ownership error once its script unloads", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  let reply: ((value: unknown) => void) | undefined;
+  let markCalled: (() => void) | undefined;
+  const calledAtTarget = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
+  bindings.device.session.nextRpcInventory = [{ name: "slow", parameters: 0 }];
+  bindings.device.session.nextRpc = {
+    slow() {
+      markCalled?.();
+      return new Promise((resolve) => {
+        reply = resolve;
+      });
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const pending = manager.callRpc(sessionId, scriptId, {
+    method: "slow",
+    arguments: [],
+    timeoutMs: 60_000,
+  });
+  await calledAtTarget;
+  expect(await manager.unloadScript(sessionId, scriptId)).toEqual({
+    ok: true,
+    value: null,
+  });
+  const lost = await pending;
+  expect(lost.ok).toBe(false);
+  if (lost.ok) return;
+  expect(lost.error).toBeInstanceOf(AnalysisInputError);
+  if (!(lost.error instanceof AnalysisInputError)) return;
+  expect(lost.error.issues[0]?.message).toContain(
+    "does not establish ownership after unload",
+  );
+  reply?.({ late: true });
+  expect(
+    manager.rpcInventory(sessionId, scriptId),
+    "a known script id alone cannot read a released script",
+  ).toMatchObject({ ok: false });
+  const afterUnload = await manager.callRpc(sessionId, scriptId, {
+    method: "slow",
+    arguments: [],
+    timeoutMs: 1_000,
+  });
+  expect(afterUnload).toMatchObject({ ok: false });
+  if (afterUnload.ok) return;
+  expect(afterUnload.error).toBeInstanceOf(AnalysisInputError);
+  if (!(afterUnload.error instanceof AnalysisInputError)) return;
+  expect(afterUnload.error.issues[0]?.message).toContain(
+    "does not establish ownership after unload",
+  );
+  expect(bindings.device.session.scripts).toHaveLength(1);
+});
+
+it("fails a pending rpc call when its session detaches", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  let markCalled: (() => void) | undefined;
+  const calledAtTarget = new Promise<void>((resolve) => {
+    markCalled = resolve;
+  });
+  bindings.device.session.nextRpcInventory = [{ name: "slow", parameters: 0 }];
+  bindings.device.session.nextRpc = {
+    slow() {
+      markCalled?.();
+      return new Promise(() => {});
+    },
+  };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  const pending = manager.callRpc(sessionId, scriptId, {
+    method: "slow",
+    arguments: [],
+    timeoutMs: 60_000,
+  });
+  await calledAtTarget;
+  bindings.device.session.markDetached();
+  const lost = await pending;
+  expect(lost.ok).toBe(false);
+  if (lost.ok) return;
+  expect(lost.error).toMatchObject({
+    _tag: "AnalysisInputError",
+    operation: "frida_rpc_call",
+  });
+  await manager.closeAll();
+});
+
+it("refuses an rpc name the vendor proxy cannot dispatch or the target did not report", async () => {
+  const { bindings, manager, sessionId } = await startRpcSession();
+  bindings.device.session.nextRpcInventory = [{ name: "ping", parameters: 0 }];
+  bindings.device.session.nextRpc = { async ping() {} };
+  const scriptId = await loadInlineScript(manager, sessionId);
+  for (const method of ["then", "toString", "missing"]) {
+    const refused = await manager.callRpc(sessionId, scriptId, {
+      method,
+      arguments: [],
+      timeoutMs: 1_000,
+    });
+    expect(refused, method).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisInputError", operation: "frida_rpc_call" },
+    });
+    if (refused.ok) continue;
+    expect(refused.error).toBeInstanceOf(AnalysisInputError);
+    if (!(refused.error instanceof AnalysisInputError)) continue;
+    expect(refused.error.issues[0]?.path).toEqual(["method"]);
+  }
+  const unknownSurface = await manager.callRpc(sessionId, scriptId, {
+    method: "ping",
+    arguments: [],
+    timeoutMs: 1_000,
+  });
+  expect(unknownSurface.ok).toBe(true);
 });

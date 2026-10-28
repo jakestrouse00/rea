@@ -1,3 +1,8 @@
+import {
+  FRIDA_OWNED_CAPTURE_LIMITS,
+  type FridaOwnedCaptureLimit,
+} from "../domain/fridaCaptureLimitVocabulary.js";
+
 /** Fixed Frida capture caps. This release has no runtime override. */
 export const MAX_SESSION_CAPTURE_BYTES = 16 * 1024 * 1024;
 export const MAX_MESSAGE_METADATA_BYTES = 128 * 1024;
@@ -9,21 +14,6 @@ export const MAX_JSON_DEPTH = 64;
 export const MAX_BINARY_MESSAGE_BYTES = Math.floor(
   ((MAX_SESSION_CAPTURE_BYTES - 1024 * 1024) * 3) / 4,
 );
-
-/** Why a payload or binary field was shortened. Caller payloads cannot set these. */
-export const FRIDA_OWNED_CAPTURE_LIMITS = [
-  "session_bytes",
-  "message_type",
-  "message_text",
-  "payload_bytes",
-  "json_nodes",
-  "json_depth",
-  "binary_bytes",
-  "unrepresentable",
-] as const;
-
-export type FridaOwnedCaptureLimit =
-  (typeof FRIDA_OWNED_CAPTURE_LIMITS)[number];
 
 const OWNED_CAPTURE_LIMITS = new Set<string>(FRIDA_OWNED_CAPTURE_LIMITS);
 
@@ -56,8 +46,8 @@ const limitationFor = (limit: FridaOwnedCaptureLimit): string => {
 };
 
 /**
- * Read capture caps from REA-owned observation fields. `payload` is caller
- * data, so flags inside it are not REA dropping bytes.
+ * Read capture caps from REA-owned observation fields. `payload` and a Frida
+ * RPC `value` are caller data, so flags inside them are not REA dropping bytes.
  */
 const collectOwnedCaps = (
   value: unknown,
@@ -79,10 +69,12 @@ const collectOwnedCaps = (
     caps.add("message_text");
   if (record.payload_truncated === true)
     caps.add(namedLimit(record.payload_capture_limit) ?? "payload_bytes");
+  if (record.value_truncated === true)
+    caps.add(namedLimit(record.value_capture_limit) ?? "payload_bytes");
   if (record.data_truncated === true)
     caps.add(namedLimit(record.data_capture_limit) ?? "binary_bytes");
   for (const [key, child] of Object.entries(record)) {
-    if (key === "payload") continue;
+    if (key === "payload" || key === "value") continue;
     collectOwnedCaps(child, caps);
   }
 };

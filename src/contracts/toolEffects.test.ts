@@ -228,6 +228,7 @@ describe("tool effects", () => {
       "close_rizin_debug_session",
       "cutter_command",
       "execute_rizin_command",
+      "frida_rpc_call",
       "gdb_console",
       "install_adb_package",
       "instrument_with_frida",

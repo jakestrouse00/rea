@@ -36,8 +36,17 @@ declare module "frida" {
     readonly name: string;
   }
 
+  export interface ScriptExports {
+    readonly [name: string]: (...args: readonly unknown[]) => Promise<unknown>;
+  }
+
   export interface Script {
     readonly isDestroyed: boolean;
+    /**
+     * Proxy over the target's `rpc.exports`. Any non-reserved name yields an
+     * async invoker; the vendor binding exposes no name enumeration.
+     */
+    readonly exports: ScriptExports;
     readonly message: Signal<
       (message: FridaMessage, data: Buffer | null) => void
     >;
