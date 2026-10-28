@@ -36,6 +36,17 @@ import {
   webScreenshotDiffSchema,
   webScreenshotSchema,
 } from "../domain/webScreenshot.js";
+import {
+  browserEvaluateInputSchema,
+  browserEvaluateResultSchema,
+  browserFetchInputSchema,
+  browserFetchResultSchema,
+  browserRequestRuleClearInputSchema,
+  browserRequestRuleClearResultSchema,
+  browserRequestRuleSetInputSchema,
+  browserRequestRuleSetResultSchema,
+} from "../domain/browserMutation.js";
+import { BROWSER_MUTATION_LIMITS } from "../domain/browserMutationLimits.js";
 import { toolContractMetadata } from "./toolEffects.js";
 import { evidenceResultOf } from "./toolOutputSchemaPrimitives.js";
 
@@ -59,6 +70,13 @@ const captureDiffOutputSchema = evidenceResultOf(
 );
 const screenshotOutputSchema = evidenceResultOf(webScreenshotSchema);
 const screenshotDiffOutputSchema = evidenceResultOf(webScreenshotDiffSchema);
+const evaluateOutputSchema = evidenceResultOf(browserEvaluateResultSchema);
+const ruleSetOutputSchema = evidenceResultOf(browserRequestRuleSetResultSchema);
+const ruleClearOutputSchema = evidenceResultOf(
+  browserRequestRuleClearResultSchema,
+);
+const pageFetchOutputSchema = evidenceResultOf(browserFetchResultSchema);
+const exampleRuleId = "0f6a2b1c-6d1a-4f1b-9c3e-1a2b3c4d5e6f";
 
 const endpoint = "http://127.0.0.1:9222";
 const origin = "https://app.example.test";
@@ -315,6 +333,95 @@ export const BROWSER_TOOL_CONTRACTS = [
           before: exampleScreenshot(),
           after: exampleScreenshot(),
           channel_threshold: 0,
+        },
+      },
+    ],
+  },
+  {
+    name: "browser_evaluate",
+    ...toolContractMetadata("browser_evaluate"),
+    description:
+      "Evaluate one caller expression with Runtime.evaluate in the main world of an authorized main frame, then report the answer. The frame is authorized against the declared origin scope before the command is sent; a target REA did not open through its own CDP endpoint, another origin, and a non-page target are refused. The result, its value type, and any exception text are page-authored and reported as untrusted `evaluated-untrusted` text, truncated at " +
+      String(BROWSER_MUTATION_LIMITS.maxEvaluateResultBytes) +
+      " UTF-8 bytes. Evaluation is one page-side effect: it can submit forms, change storage, or dispatch events, and REA cannot undo it.",
+    kind: "browser-provider",
+    inputSchema: browserEvaluateInputSchema,
+    outputSchema: evaluateOutputSchema,
+    examples: [
+      {
+        title: "Read the page title",
+        input: {
+          cdp_endpoint: endpoint,
+          target_id: "TARGET_ID_FROM_LIST_BROWSER_TARGETS",
+          expression: "document.title",
+        },
+      },
+    ],
+  },
+  {
+    name: "browser_request_rule_set",
+    ...toolContractMetadata("browser_request_rule_set"),
+    description:
+      "Arm one CDP Fetch-domain interception rule on an authorized main frame and keep its attached session open until browser_request_rule_clear, its ttl_ms deadline, or server shutdown. The caller supplies the predicates (URL prefixes, methods, CDP resource types) and the action: block, hold, or modify headers, query parameters, and the request body. At least one predicate is required, so no rule matches every request by accident. Interception only applies to requests this attached session is asked to route: cache hits, requests that started before arming, and some service-worker paths are not seen. Retained decisions report method, origin, path, resource type, and REA's decision, never header or query values; enforcement is never budgeted, but the observation ledger stops at " +
+      String(BROWSER_MUTATION_LIMITS.maxRuleDecisions) +
+      " decisions and reports the drop counts.",
+    kind: "browser-provider",
+    inputSchema: browserRequestRuleSetInputSchema,
+    outputSchema: ruleSetOutputSchema,
+    examples: [
+      {
+        title: "Rewrite one API header for a prefix",
+        input: {
+          cdp_endpoint: endpoint,
+          target_id: "TARGET_ID_FROM_LIST_BROWSER_TARGETS",
+          match: {
+            url_prefixes: [`${origin}/api/`],
+            methods: ["GET"],
+          },
+          action: {
+            kind: "modify",
+            set_headers: [{ name: "x-rea-probe", value: "1" }],
+          },
+          ttl_ms: 60_000,
+        },
+      },
+    ],
+  },
+  {
+    name: "browser_request_rule_clear",
+    ...toolContractMetadata("browser_request_rule_clear"),
+    description:
+      "Release one armed request rule. Every request the rule still holds is continued before the Fetch domain is disabled, so no paused request outlives the rule that owned it, and the result reports the counters and the retained interception decisions with their omission reasons. Clearing a rule this REA process does not own fails instead of guessing at another server's state.",
+    kind: "browser-provider",
+    inputSchema: browserRequestRuleClearInputSchema,
+    outputSchema: ruleClearOutputSchema,
+    examples: [
+      {
+        title: "Release one armed rule",
+        input: {
+          rule_id: exampleRuleId,
+        },
+      },
+    ],
+  },
+  {
+    name: "browser_fetch",
+    ...toolContractMetadata("browser_fetch"),
+    description:
+      "Dispatch one request from the authorized page's own context, so it shares that page's cookies, client hints, and network identity. This is the CDP counterpart of http_replay_send and composes the same send core: one dispatch, no retry, the caller's declared origins narrowed by the operator allowlist, bounded body retention, and a value-free echo. The browser owns the wire bytes, so Host, framing, Cookie, Origin, and Sec-* stay under its control and are reported in browser_managed_header_names instead of being sent. A page-context redirect is opaque, so the send ends as no_response rather than following a hop the core could not gate. Without dump_path at most " +
+      String(BROWSER_MUTATION_LIMITS.maxPageFetchBodyBytes) +
+      " response bytes cross the protocol; a larger body is a partial observation.",
+    kind: "browser-provider",
+    inputSchema: browserFetchInputSchema,
+    outputSchema: pageFetchOutputSchema,
+    examples: [
+      {
+        title: "Re-request one API path as the page",
+        input: {
+          cdp_endpoint: endpoint,
+          target_id: "TARGET_ID_FROM_LIST_BROWSER_TARGETS",
+          method: "GET",
+          url: `${origin}/api/session`,
         },
       },
     ],

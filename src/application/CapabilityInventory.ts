@@ -834,6 +834,13 @@ const browserProviderAvailability = (
           remediation:
             "Start REA with its browser scenario provider available.",
         };
+  if (name === "browser_fetch")
+    return policy.replayEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+        };
   if (kind !== "browser-provider") return null;
   return policy.browserObservationEnabled === true
     ? { reason: "available", remediation: null }

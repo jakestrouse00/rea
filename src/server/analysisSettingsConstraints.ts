@@ -6,6 +6,7 @@ import {
   FRIDA_RPC_DEFAULT_TIMEOUT_MS,
   FRIDA_RPC_MAX_TIMEOUT_MS,
 } from "../domain/fridaRpc.js";
+import { BROWSER_MUTATION_LIMITS } from "../domain/browserMutationLimits.js";
 import { REPLAY_LIMITS } from "../domain/replay/replayLimits.js";
 import {
   REPLAY_ALLOWED_ORIGINS_ENV,
@@ -120,6 +121,38 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "origins",
     observation: "unknown" as const,
     recovery: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+  },
+  {
+    control: "browser.evaluate_result_bytes",
+    authority: "fixed" as const,
+    value: BROWSER_MUTATION_LIMITS.maxEvaluateResultBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `browser_evaluate retains at most ${String(BROWSER_MUTATION_LIMITS.maxEvaluateResultBytes)} UTF-8 bytes of the page's answer and reports value_truncated when it stops. This release has no runtime override, and the result text is page-authored untrusted data.`,
+  },
+  {
+    control: "browser.request_rule_ttl",
+    authority: "fixed" as const,
+    value: BROWSER_MUTATION_LIMITS.maxRuleTtlMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `A browser_request_rule_set rule stays armed for its ttl_ms, default ${String(BROWSER_MUTATION_LIMITS.defaultRuleTtlMs)} ms and at most ${String(BROWSER_MUTATION_LIMITS.maxRuleTtlMs)} ms, then REA releases it. At most ${String(BROWSER_MUTATION_LIMITS.maxArmedRules)} rules stay armed at once and at most ${String(BROWSER_MUTATION_LIMITS.maxHeldRequestsPerRule)} requests stay paused per hold rule, after which the rule fails closed. This release has no runtime override.`,
+  },
+  {
+    control: "browser.request_rule_decisions",
+    authority: "fixed" as const,
+    value: BROWSER_MUTATION_LIMITS.maxRuleDecisions,
+    unit: "decisions",
+    observation: "known" as const,
+    recovery: `One armed rule reports at most ${String(BROWSER_MUTATION_LIMITS.maxRuleDecisions)} retained interception decisions. Rewriting or blocking continues after the ledger is full; only the observation is dropped and reported as an omission, so the counters stay complete.`,
+  },
+  {
+    control: "browser.page_fetch_body_bytes",
+    authority: "fixed" as const,
+    value: BROWSER_MUTATION_LIMITS.maxPageFetchBodyBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `browser_fetch reads at most ${String(BROWSER_MUTATION_LIMITS.maxPageFetchBodyBytes)} response bytes inside the page, because one CDP frame carries the whole answer. A larger body ends as a partial observation instead of a complete capture.`,
   },
   {
     control: "replay.request_timeout",

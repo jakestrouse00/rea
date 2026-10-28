@@ -90,6 +90,10 @@ it.each(operations)(
           compareCaptures: unused,
           captureScreenshot: unused,
           compareScreenshots: unused,
+          evaluatePage: unused,
+          armRequestRule: unused,
+          clearRequestRule: unused,
+          fetchPage: unused,
         },
         browserScenarioCapture: {
           identity,

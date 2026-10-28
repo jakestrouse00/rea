@@ -76,6 +76,10 @@ export const resultFor = (
     case "Runtime.releaseObjectGroup":
     case "DOM.enable":
     case "DOM.disable":
+    case "Fetch.enable":
+    case "Fetch.disable":
+    case "Fetch.continueRequest":
+    case "Fetch.failRequest":
       return {};
     case "Performance.getMetrics":
       return { metrics: [{ name: "Timestamp", value: 0 }] };

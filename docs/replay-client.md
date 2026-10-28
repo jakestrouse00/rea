@@ -122,9 +122,15 @@ reported an unremovable record.
 `http_replay_send` is a thin projection over a reusable send core. Later batches
 **must** compose this core rather than re-implementing it:
 
-- `browser_fetch` (Batch 2.7) — the CDP counterpart sends from the page context
-  but must share the one-shot policy, the origin gate, and the echoed-form
-  redaction rules.
+- `browser_fetch` (Batch 2.7, shipped in
+  [driving and rewriting the page](browser-observation.md#driving-and-rewriting-the-page)) —
+  the CDP counterpart sends from the page context through `CdpPageFetchTransport`
+  and shares this core's one-shot policy, per-hop origin gate, body budget, and
+  echoed-form redaction. Only the transport differs, and the differences stay at
+  that seam: the browser composes `Host`, framing, `Cookie`, and `Sec-*`, the
+  caller's origins are intersected with this plane's operator allowlist before
+  the core sees them, and a redirected page fetch is opaque, so the core is
+  never handed a hop it did not approve.
 - `proxy_replay_send` (Batch 3.4) — re-sends a captured mitmproxy entry through
   the same boundary with the same dump convention.
 - Arjun-style parameter probes (Batch 3.4) — many one-shot sends, each gated and

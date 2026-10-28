@@ -6,7 +6,7 @@ for the capture options, source mappings, and browser/local resolution limits.
 Use [captured module relationships](website-module-trace.md) to resolve one
 exported script's native imports under an explicit URL/import-map context.
 
-REA can attach to a user-owned Chrome-family browser through the Chrome DevTools Protocol (CDP) and produce bounded Evidence about an existing page. This is a passive reverse-engineering capability, not a general browser automation or remote-control surface.
+REA can attach to a user-owned Chrome-family browser through the Chrome DevTools Protocol (CDP) and produce bounded Evidence about an existing page. Observation is passive: no tool navigates, clicks, closes, or evaluates page code. A separate, explicitly named mutation lane lets the caller drive and rewrite traffic in the same authorized session; see [driving and rewriting the page](#driving-and-rewriting-the-page). It is not a general browser automation or remote-control surface.
 
 For request/response bodies and traffic debugging, see
 [Fiddler Everywhere captures and MCP](web-network-captures.md#reading-fiddler-captures-saz).
@@ -27,6 +27,9 @@ authority are validated independently before selection and connection.
 - `observe_web_session` / `rea observe-web-session` arms an observation window of the requested duration for an external user action and records ordered reload, SPA navigation, redirect, failure, lifecycle, and target-termination metadata.
 - `discover_webmcp_tools` / `rea discover-webmcp-tools` uses the experimental CDP WebMCP domain to return observed in-scope registrations and their complete observed `input_schema` declaration and canonical `input_schema_sha256` digest inline. Declarations are untrusted JSON data, including declared types, required fields, enums, examples and reference URLs. REA does not resolve schema references. An omitted optional `inputSchema` is a valid parameterless registration, represented by null schema and digest. These fields replace `input_schema_shape`. Registrations with the same name and URL in distinct observed frames retain separate identities. `tool_key` includes the observed frame ID; it is not a stable identity across navigation or browser sessions. Same-frame registration updates replace that owner only, and removal leaves other owners intact. Declared `readOnly`, `untrustedContent`, `consequential`, and `autosubmit` annotation hints are reported per registration: `true`/`false` are declared values, `null` means the declaration did not provide the hint in that capture, and a missing `consequential` key means the hint was not recorded, either in a historical capture or because the observed annotation was invalid. Consult discovery completeness and exclusions to distinguish these cases. Malformed annotation values or registration stacks retain the registration with incomplete coverage and an `invalid_protocol_value` exclusion. Other malformed protocol payloads can fail discovery explicitly. REA never exposes `WebMCP.invokeTool`.
 
+- `browser_evaluate` evaluates one caller expression in the authorized main frame and reports the page's answer as untrusted text.
+- `browser_request_rule_set` / `browser_request_rule_clear` arm and release one CDP Fetch-domain interception rule that blocks, holds, or rewrites matching page requests while the rule owns its session.
+- `browser_fetch` dispatches one request from the page's own context, sharing its cookies and network identity, through the same one-shot send core as `http_replay_send`.
 - `compare_web_captures` / `rea compare-web-captures` compares passive captures or exact-step-aligned browser scenarios. Scenario results commit reproducible literal normalization and expose alignment failures plus artifact-level action, screenshot, DOM, accessibility, URL, history, storage, and event differences. Missing or truncated evidence is never treated as equivalence.
 
 For a compact route query, select `detail: "summary"` and a
@@ -273,6 +276,60 @@ queries, fragments, implicit ports, and any other path are not valid CDP
 endpoints. Origin filters contain only scheme,
 host, and port; paths, credentials, queries, fragments, and wildcards are not
 valid origins.
+
+## Driving and rewriting the page
+
+Four MCP-only tools extend the same authorized target from observation to
+caller-directed action. Each one accepts an endpoint and a `target_id` that
+discovery returned for a page target REA itself opened or attached, authorizes
+the main frame's current origin against `allowed_origins` (the target's own
+origin when the caller declares none) before sending anything, and refuses a
+foreign tab or a target outside that scope with `target_not_allowed`. None of
+them is reachable from the CLI.
+
+`browser_evaluate` sends one `Runtime.evaluate` into the authorized main frame's
+main world. The answer is page-authored data: `value_text`, `value_type`, and
+`exception_text` are reported with `trust: "evaluated-untrusted"`, truncated at
+262144 UTF-8 bytes, and a page exception is an answer (`outcome: "exception"`)
+rather than a transport failure. Evaluation is a real page-side effect that REA
+cannot undo.
+
+`browser_request_rule_set` arms one interception rule through the Fetch domain.
+The caller supplies the predicates (`url_prefixes`, `methods`,
+`resource_types`) and the action: `block`, `hold`, or `modify` with header,
+query-parameter, and body edits. At least one predicate is required, so a rule
+never matches every request by accident. Arming requires its own attached main
+frame, so the rule keeps that session open until one of three owners releases
+it: `browser_request_rule_clear`, its `ttl_ms` deadline, or server shutdown.
+Interception covers the requests that session is asked to route; cache hits,
+requests that started before arming, and some service-worker paths are not
+observed.
+
+A `hold` rule leaves matched requests paused. Every held request is continued
+before the Fetch domain is disabled, so no paused request outlives the rule that
+owned it, and the release result counts `held` and `held_released` separately. A
+hold rule fails closed with `BlockedByClient` once 32 requests are held at once
+rather than silently letting traffic through. At most eight rules stay armed at
+a time, and a duplicate `rule_id` is refused instead of replaced.
+
+Rule observations are value-free: each retained decision reports the method,
+origin, path, query parameter names, resource type, and the decision REA made,
+never a header value, query value, or rewritten body. Enforcement is never
+budgeted; once the 1000-decision ledger is full a rule keeps blocking, holding,
+or rewriting and reports `dropped` counts plus the omission reasons, so a
+rewritten-traffic flood yields an explicit partial observation.
+
+`browser_fetch` originates one request inside the page, so it shares that page's
+cookies, client hints, and network identity. It composes the same send core as
+`http_replay_send`: one dispatch per hop, no retry, the caller's declared origins
+narrowed by the `REA_REPLAY_ALLOWED_ORIGINS` operator allowlist, bounded body
+retention, and a value-free echo. An unset or non-matching allowlist refuses the
+tool, and the catalog reports it as unavailable. The browser owns the wire
+bytes: `Host`, framing, `Cookie`, `Origin`, `Referer`, and `Sec-*` are set by the
+browser and reported in `browser_managed_header_names` instead of being sent. A
+redirected page fetch is opaque, so the send ends as `no_response` instead of
+following a hop the core could not gate. At most 33554432 response bytes cross
+one CDP frame; a larger body is a partial observation, not a complete capture.
 
 ## CLI workflow
 
@@ -660,7 +717,11 @@ validation.
 
 ## Non-goals and threat model
 
-The browser provider deliberately does not expose generic CDP commands, `Runtime.evaluate`, WebMCP invocation, navigation, input, downloads, page closure, or browser closure. Screenshot capture is the sole pixel surface and returns an image only when requested. REA disables the domains it enabled, detaches the target session, and closes only its own WebSocket.
+The browser provider deliberately does not expose generic CDP commands, WebMCP
+invocation, navigation, input, downloads, page closure, or browser closure. The
+passive observation tools never evaluate page code; `browser_evaluate` is the
+only evaluation surface, it runs only in an authorized main frame, and it is
+reported as an untrusted page answer. Screenshot capture is the sole pixel surface and returns an image only when requested. REA disables the domains it enabled, detaches the target session, and closes only its own WebSocket.
 Discovery and attachment errors remain primary if closing REA's socket also
 fails. The cleanup failure is reported alongside the original command failure;
 it cannot replace the operation diagnostic.

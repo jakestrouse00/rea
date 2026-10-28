@@ -219,6 +219,8 @@ describe("tool effects", () => {
       ({ effects }) => effects.executesForeignCode || effects.mutatesDevice,
     );
     expect(destructive.map(({ name }) => name).sort()).toEqual([
+      "browser_evaluate",
+      "browser_fetch",
       "capture_browser_scenario",
       "capture_electron_scenario",
       "capture_native_ui_scenario",

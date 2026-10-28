@@ -16,7 +16,11 @@ export type BrowserObservationOperation =
   | "list_javascript_runtime_targets"
   | "observe_javascript_runtime"
   | "capture_browser_scenario"
-  | "capture_electron_scenario";
+  | "capture_electron_scenario"
+  | "browser_evaluate"
+  | "browser_request_rule_set"
+  | "browser_request_rule_clear"
+  | "browser_fetch";
 
 /** Stable failure reasons shared by browser-family provider adapters. */
 export type BrowserObservationFailureReason =
