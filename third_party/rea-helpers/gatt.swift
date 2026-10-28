@@ -338,6 +338,36 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         guard let self = self, self.observerCharacteristic === characteristic else { return }
         self.endObserve(id, characteristic: characteristic)
       }
+    case "exchange":
+      guard let writeTarget = characteristic(named: json, id: id) else { return }
+      var notifyJson = json
+      if let notifyCharacteristic = json["notify_characteristic"] as? String {
+        notifyJson["characteristic"] = notifyCharacteristic
+      }
+      guard let notifyTarget = characteristic(named: notifyJson, id: id) else { return }
+      let windowMs = json["window_ms"] as? Int ?? 1000
+      observeId = id
+      observeEnding = false
+      observerCharacteristic = notifyTarget
+      peripheral?.setNotifyValue(true, for: notifyTarget)
+      // Send after the CCCD write settles; iOS orders our writes on this
+      // queue's peripheral connection.
+      ioQueue.asyncAfter(deadline: .now() + .milliseconds(120)) { [weak self] in
+        guard let self = self, self.observerCharacteristic === notifyTarget else { return }
+        let payload = hexToData(json["payload_hex"] as? String ?? "")
+        let withoutResponse = json["without_response"] as? Bool ?? true
+        if withoutResponse {
+          self.peripheral?.writeValue(payload, for: writeTarget, type: .withoutResponse)
+          self.emit("{\"event\":\"written\",\"id\":\"\(id)\"}")
+        } else {
+          self.awaitingWrite = (id, writeTarget)
+          self.peripheral?.writeValue(payload, for: writeTarget, type: .withResponse)
+        }
+      }
+      ioQueue.asyncAfter(deadline: .now() + .milliseconds(120 + windowMs)) { [weak self] in
+        guard let self = self, self.observerCharacteristic === notifyTarget else { return }
+        self.endObserve(id, characteristic: notifyTarget)
+      }
     case "disconnect":
       if let peripheral = peripheral {
         central.cancelPeripheralConnection(peripheral)
