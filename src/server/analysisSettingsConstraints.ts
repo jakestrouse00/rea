@@ -18,6 +18,13 @@ import {
   MITM_LIMITS,
 } from "../domain/mitm/mitmLimits.js";
 import {
+  LIEF_BRIDGE_DIR_ENV,
+  LIEF_BRIDGE_DIR_REMEDIATION,
+  LIEF_COMMAND_ENV,
+  LIEF_COMMAND_REMEDIATION,
+  LIEF_LIMITS,
+} from "../domain/lief/liefLimits.js";
+import {
   REPLAY_ALLOWED_ORIGINS_ENV,
   REPLAY_ALLOWED_ORIGINS_REMEDIATION,
 } from "../domain/replay/replayOrigins.js";
@@ -210,6 +217,40 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "ms",
     observation: "known" as const,
     recovery: `A proxy_rule_set rule stays armed for its ttl_ms, default ${String(MITM_LIMITS.defaultRuleTtlMs)} ms and at most ${String(MITM_LIMITS.maxRuleTtlMs)} ms, then REA releases it and the addon drops it past its expires_at. At most ${String(MITM_LIMITS.maxArmedRules)} rules stay armed on one session. This release has no runtime override.`,
+  },
+  {
+    control: LIEF_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: LIEF_COMMAND_REMEDIATION,
+  },
+  {
+    control: LIEF_BRIDGE_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: LIEF_BRIDGE_DIR_REMEDIATION,
+  },
+  {
+    control: "lief.response_frame",
+    authority: "fixed" as const,
+    value: LIEF_LIMITS.maxResponseBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One LIEF bridge frame is retained up to ${String(LIEF_LIMITS.maxResponseBytes)} bytes and ${String(
+      LIEF_LIMITS.maxRequestBytes,
+    )} bytes are written to it; a longer frame is refused rather than clipped, and stderr is retained up to ${String(LIEF_LIMITS.maxStderrBytes)} bytes. This release has no runtime override.`,
+  },
+  {
+    control: "lief.debug_lookups",
+    authority: "fixed" as const,
+    value: LIEF_LIMITS.maxQueries,
+    unit: "queries",
+    observation: "known" as const,
+    recovery: `extract_pdb_dwarf_info admits at most ${String(LIEF_LIMITS.maxQueries)} lookups per call, retains ${String(LIEF_LIMITS.maxMatchesPerQuery)} matches per lookup and scans at most 200000 DWARF functions through the caller's LIEF release. Beyond a bound the report sets its truncation flag and complete stays false. This release has no runtime override.`,
   },
   {
     control: "mitm.stream_line_bytes",

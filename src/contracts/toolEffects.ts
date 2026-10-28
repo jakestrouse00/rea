@@ -266,6 +266,8 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_windows_minidump: evidence,
   inspect_wer_report: evidence,
   inspect_pdb_symbols: nativeEvidence,
+  inspect_binary_deep: nativeEvidence,
+  extract_pdb_dwarf_info: nativeEvidence,
   inspect_nativeaot_types: evidence,
   inspect_godot_pck: effects({
     mutatesSession: true,

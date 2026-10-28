@@ -161,6 +161,10 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "states this release starts no engine, so counters describe retained records rather than a run outcome",
   list_crash_dedups:
     "states grouping observes stored frames; no engine runs and no target executes",
+  inspect_binary_deep:
+    "runs only the caller-supplied interpreter with the copied bridge script; the selected artifact is parsed, never executed",
+  extract_pdb_dwarf_info:
+    "states REA never installs LIEF; the same caller-supplied interpreter runs the copied bridge script and no target code executes",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

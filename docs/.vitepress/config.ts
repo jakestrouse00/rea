@@ -66,6 +66,10 @@ export default defineConfig({
             link: "/mitm-interception",
           },
           {
+            text: "LIEF deep parse",
+            link: "/lief-deep-parse",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

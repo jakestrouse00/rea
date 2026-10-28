@@ -98,6 +98,19 @@ arming, value-free decisions are counted, and replay goes through the same
 one-shot send core as `http_replay_send`. No trust store, device-wide proxy, or
 pinning bypass is changed. See [mitmproxy interception](./mitm-interception.md).
 
+## LIEF deep parse
+
+MCP registers `inspect_binary_deep` and `extract_pdb_dwarf_info` for a
+caller-supplied LIEF release. Select the interpreter with an absolute
+`REA_LIEF_COMMAND` and the released bridge script with `REA_LIEF_BRIDGE_DIR`
+(copy `bridge/lief/lief_bridge.py` into a directory you own). Both tools run
+one bounded JSON-framed bridge process per call: REA hashes the artifact first,
+the bridge re-hashes it before parsing, and the report carries structure only —
+dynamic tags, load commands, data-directory declarations, CodeView identity,
+DWARF inventory and bounded symbol/address lookups. Section layout, exports,
+imports, notes, certificates and Mach-O detail stay with the tools that own
+them. See [LIEF deep parse](./lief-deep-parse.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,
@@ -231,6 +244,14 @@ V8 disassembly is caller-supplied and fail-closed. `REA_VIEW8_COMMAND` selects a
 ASAR packed-integrity inspection needs no external tool. It reuses the ASAR header admission selected for static JavaScript analysis (`REA_ASAR_MAX_HEADER_BYTES` or `asar.max_header_bytes`) and lists V8 bytecode candidates for the launcher above. See [ASAR integrity](./asar-integrity.md).
 
 Protobuf recovery selects pbtk or protodump through `REA_PBTK_COMMAND` / `REA_PROTODUMP_COMMAND`, and gRPC reflection selects grpcurl through `REA_GRPCURL_COMMAND`; all three require absolute paths. Recovered `.proto` files are published with digests and only their structure reaches Evidence. See [protobuf recovery](./protobuf-recovery.md).
+
+The LIEF lane is caller-supplied and fail-closed: `REA_LIEF_COMMAND` names an
+absolute interpreter that has LIEF >= 0.14 and < 0.17 installed and
+`REA_LIEF_BRIDGE_DIR` names the directory holding an unmodified
+`lief_bridge.py` from this release. Neither falls back to `PATH`, REA installs
+nothing, and a report from a release outside that range is refused typed. The
+declared range is an API-target range; each patch release inside it is not
+separately verified.
 
 The binary-comparison lane selects a BinDiff adapter with `REA_BINDIFF_COMMAND` and a BinExport exporter with `REA_BINEXPORT_COMMAND`, both absolute and fail-closed. `diff_binaries` composes with `find_changed_behavior` as static candidates and remains a provider-backed alternative to `compare_functions`, not a replacement; `export_binexport_protobuf` publishes one `.BinExport` file with a digest. See [binary diffing](./binary-diffing.md).
 

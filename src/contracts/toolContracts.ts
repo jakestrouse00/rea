@@ -43,6 +43,7 @@ import { GDB_TOOL_CONTRACTS } from "./gdbToolContracts.js";
 import { RIZIN_DEBUG_TOOL_CONTRACTS } from "./rizinDebugToolContracts.js";
 import { FRIDA_TOOL_CONTRACTS } from "./fridaToolContracts.js";
 import { WINDOWS_ARTIFACTS_TOOL_CONTRACTS } from "./windowsArtifacts/windowsArtifactsToolContracts.js";
+import { LIEF_TOOL_CONTRACTS } from "./lief/liefToolContracts.js";
 import { NATIVE_AOT_TOOL_CONTRACTS } from "./managed/nativeAotToolContracts.js";
 import { GAME_DATA_TOOL_CONTRACTS } from "./gamedata/gamedataToolContracts.js";
 import { CONTAINER_TOOL_CONTRACTS } from "./containers/containersToolContracts.js";
@@ -83,6 +84,7 @@ export const TOOL_CONTRACTS = [
   ...RUST_TOOL_CONTRACTS,
   ...NATIVE_AOT_TOOL_CONTRACTS,
   ...WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
+  ...LIEF_TOOL_CONTRACTS,
   ...GAME_DATA_TOOL_CONTRACTS,
   ...CONTAINER_TOOL_CONTRACTS,
   ...IDEVICE_TOOL_CONTRACTS,
