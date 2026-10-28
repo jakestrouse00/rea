@@ -95,8 +95,10 @@ MSan, and macOS crash reports, and the crash-state hash covers a bounded window
 of de-symbolized top frames, so addresses, module offsets, build paths, and line
 numbers do not split one defect into many groups. Report bodies stay on disk
 (mode `0600`) inside a private runtime root that the owning server removes when
-it closes; only a 200-character sanitizer summary is inlined. No engine is
-started and no target is executed by these tools.
+it closes; only a 200-character sanitizer summary is inlined, and frame text is
+clipped to 512 characters with a `text_truncated` flag rather than passing
+report bytes through as structure. No engine is started and no target is
+executed by these tools.
 
 The minimizer adapters take caller-supplied binaries and fail closed:
 `REA_LFZ_MINIMIZE_COMMAND` selects the libFuzzer-instrumented target used with

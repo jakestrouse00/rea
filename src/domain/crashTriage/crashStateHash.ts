@@ -124,7 +124,3 @@ export const crashStateFor = (input: {
     frames_omitted: Math.max(normalized.length - used.length, 0),
   };
 };
-
-/** Frames a report carried beyond the state window, for caller-facing detail. */
-export const crashStateTopFrames = (state: CrashState): readonly string[] =>
-  state.frames.slice(0, state.frames_used);

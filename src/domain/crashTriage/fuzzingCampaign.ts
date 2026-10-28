@@ -3,6 +3,7 @@ import { z } from "zod";
 import { digestSchema } from "../digests.js";
 import { absoluteLocalPathStringSchema } from "../localPath.js";
 import {
+  CRASH_REPORT_MAX_LABEL_CHARS,
   crashFrameSchema,
   crashReportFormatSchema,
   sanitizerClassSchema,
@@ -205,9 +206,17 @@ export const crashEvidenceSchema = z.strictObject({
   crash_kind: z.string().min(1),
   sanitizer_class: sanitizerClassSchema,
   access: z.string().min(1).nullable(),
-  signal: z.string().min(1).nullable(),
-  exception_type: z.string().min(1).nullable(),
-  termination_reason: z.string().min(1).nullable(),
+  signal: z.string().min(1).max(CRASH_REPORT_MAX_LABEL_CHARS).nullable(),
+  exception_type: z
+    .string()
+    .min(1)
+    .max(CRASH_REPORT_MAX_LABEL_CHARS)
+    .nullable(),
+  termination_reason: z
+    .string()
+    .min(1)
+    .max(CRASH_REPORT_MAX_LABEL_CHARS)
+    .nullable(),
   summary: z
     .string()
     .min(1)
@@ -216,7 +225,14 @@ export const crashEvidenceSchema = z.strictObject({
       "Bounded sanitizer summary line; the complete report body stays at crash_report.path.",
     ),
   frames: z.array(crashFrameSchema),
-  frames_truncated: z.boolean(),
+  frames_truncated: z
+    .boolean()
+    .describe("The report carried more frames than the retention budget."),
+  text_truncated: z
+    .boolean()
+    .describe(
+      "A retained frame field or short report label was clipped to its text budget; the complete report body stays at crash_report.path.",
+    ),
   frame_count: z.int().min(0),
   state_hash: digestSchema,
   top_frames: z.array(z.string().min(1)),

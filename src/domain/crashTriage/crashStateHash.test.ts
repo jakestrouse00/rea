@@ -17,6 +17,7 @@ const frame = (
   source_file: null,
   source_line: null,
   offset: null,
+  text_truncated: false,
   ...overrides,
 });
 
@@ -125,20 +126,24 @@ describe("crash-state normalization and window", () => {
     },
   );
 
-  it.prop([fc.string({ minLength: 1 }), fc.string({ minLength: 1 })])(
-    "separates frames that differ in their top entry",
-    (left, right) => {
-      const distinct = left === right ? `${right}!` : right;
-      const hashOf = (name: string): string =>
-        crashStateFor({
-          sanitizerClass: "address",
-          crashKind: "heap-buffer-overflow",
-          frames: [frame({ index: 0, function: name })],
-          maxFrames: 1,
-        }).dedup_hash;
-      expect(hashOf(left)).not.toBe(hashOf(distinct));
-    },
-  );
+  it.prop([
+    fc
+      .stringMatching(/^[a-z_][a-z0-9_]{0,14}$/u)
+      .filter((name) => !/\d/u.test(name)),
+    fc
+      .stringMatching(/^[a-z_][a-z0-9_]{0,14}$/u)
+      .filter((name) => !/\d/u.test(name)),
+  ])("separates frames that differ in their top entry", (left, right) => {
+    const distinct = left === right ? `${right}!` : right;
+    const hashOf = (name: string): string =>
+      crashStateFor({
+        sanitizerClass: "address",
+        crashKind: "heap-buffer-overflow",
+        frames: [frame({ index: 0, function: name })],
+        maxFrames: 1,
+      }).dedup_hash;
+    expect(hashOf(left)).not.toBe(hashOf(distinct));
+  });
 
   it("separates sanitizer classes and crash kinds", () => {
     const frames = [frame({ index: 0, function: "parse_header" })];
@@ -162,6 +167,33 @@ describe("crash-state normalization and window", () => {
     });
     expect(thread.dedup_hash).not.toBe(address.dedup_hash);
     expect(otherKind.dedup_hash).not.toBe(address.dedup_hash);
+  });
+
+  it("collapses numeric parts, so a count difference is not a new crash", () => {
+    const normalized = ["GeneratedFuzz_17", "GeneratedFuzz_42", "1", "7"].map(
+      (name) => normalizeCrashFrame(frame({ index: 0, function: name })),
+    );
+    expect(normalized).toEqual([
+      "GeneratedFuzz_N",
+      "GeneratedFuzz_N",
+      "N",
+      "N",
+    ]);
+    expect(
+      crashStateFor({
+        sanitizerClass: "address",
+        crashKind: "heap-buffer-overflow",
+        frames: [frame({ index: 0, function: "GeneratedFuzz_17" })],
+        maxFrames: 1,
+      }).dedup_hash,
+    ).toBe(
+      crashStateFor({
+        sanitizerClass: "address",
+        crashKind: "heap-buffer-overflow",
+        frames: [frame({ index: 0, function: "GeneratedFuzz_42" })],
+        maxFrames: 1,
+      }).dedup_hash,
+    );
   });
 
   it("normalizes argument lists, numeric suffixes, and module paths", () => {

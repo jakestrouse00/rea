@@ -12,6 +12,7 @@ import {
   AnalysisTimeoutError,
 } from "../domain/analysisErrorCore.js";
 import { CRASH_MINIMIZE_LFZ_COMMAND_ENV } from "../domain/crashTriage/crashMinimization.js";
+import { CRASH_REPORT_MAX_FRAME_CHARS } from "../domain/crashTriage/crashReport.js";
 import {
   crashDedupListSchema,
   crashEvidenceSchema,
@@ -387,6 +388,39 @@ describe("crash record evidence", () => {
   });
 });
 
+describe("bounded inline crash text", () => {
+  it("clips a hostile frame symbol instead of inlining report bytes", async () => {
+    const harnessed = await harness();
+    const registration = await register(harnessed);
+    const summary = await record(
+      harnessed,
+      registration.campaign_id,
+      asanReport({
+        address: "0x6020000000f1",
+        source: "/src/parser.c",
+        line: 42,
+        functions: ["a".repeat(400_000), "main"],
+      }),
+    );
+    const crash = crashOf(
+      resultOf(
+        await harnessed.service.fetchCrashEvidence({
+          campaignId: registration.campaign_id,
+          crashId: summary.crashId,
+        }),
+      ),
+    );
+    expect(crash.text_truncated).toBe(true);
+    expect(crash.frames[0]?.text_truncated).toBe(true);
+    expect(crash.frames[0]?.function).toHaveLength(
+      CRASH_REPORT_MAX_FRAME_CHARS,
+    );
+    expect(crash.frames[0]?.function?.endsWith("…")).toBe(true);
+    expect(crash.frames[1]?.function).toBe("main");
+    expect(JSON.stringify(crash).length).toBeLessThan(20_000);
+  });
+});
+
 describe("crash deduplication", () => {
   it("counts a repeated report as one crash and one group", async () => {
     const harnessed = await harness();
@@ -681,6 +715,25 @@ describe("minimization hooks", () => {
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
     expect(outcome.error).toBeInstanceOf(AnalysisInputError);
+  });
+
+  it("names an unreadable minimizer input as a crash input", async () => {
+    const harnessed = await harness();
+    const command = await writeMinimizer(harnessed, "exit 0\n");
+    harnessed.environment[CRASH_MINIMIZE_LFZ_COMMAND_ENV] = command;
+    const outcome = await harnessed.service.minimizeCrash({
+      engine: "libfuzzer",
+      inputPath: join(harnessed.root, "absent-input"),
+      outputPath: join(harnessed.root, "out"),
+      timeoutMs: 5_000,
+      maxTotalSeconds: 5,
+    });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error).toBeInstanceOf(AnalysisInputError);
+    expect(outcome.error).toMatchObject({
+      userMessage: expect.stringContaining("crash input"),
+    });
   });
 
   it("never overwrites an existing output path", async () => {

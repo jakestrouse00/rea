@@ -18,6 +18,9 @@ export interface ObservedFile {
   readonly sha256: string;
 }
 
+const labelText = (label: "target" | "seed" | "crash-input"): string =>
+  label === "crash-input" ? "crash input" : `campaign ${label}`;
+
 const cancelled = (
   operation: string,
   signal: AbortSignal,
@@ -56,7 +59,7 @@ export const digestCampaignArtifact = async (
   path: string,
   operation: string,
   options: {
-    readonly label: "target" | "seed";
+    readonly label: "target" | "seed" | "crash-input";
     readonly signal?: AbortSignal;
   },
 ): Promise<Result<CampaignArtifact, AnalysisError>> => {
@@ -67,7 +70,7 @@ export const digestCampaignArtifact = async (
     if (link.isSymbolicLink() || !link.isFile())
       return err(
         new AnalysisInputError(operation, {
-          userMessage: `The campaign ${options.label} is not a regular file: ${path}`,
+          userMessage: `The ${labelText(options.label)} is not a regular file: ${path}`,
         }),
       );
     if (link.size > CRASH_TRIAGE_MAX_ARTIFACT_BYTES)
@@ -75,7 +78,7 @@ export const digestCampaignArtifact = async (
         new AnalysisResourceConstraintError(
           operation,
           "memory",
-          `The campaign ${options.label} is ${String(link.size)} bytes, above the ${String(CRASH_TRIAGE_MAX_ARTIFACT_BYTES)}-byte digest budget`,
+          `The ${labelText(options.label)} is ${String(link.size)} bytes, above the ${String(CRASH_TRIAGE_MAX_ARTIFACT_BYTES)}-byte digest budget`,
           {
             max_artifact_bytes: CRASH_TRIAGE_MAX_ARTIFACT_BYTES,
             artifact_bytes: link.size,
@@ -95,7 +98,7 @@ export const digestCampaignArtifact = async (
     return err(
       new AnalysisInputError(operation, {
         cause,
-        userMessage: `The campaign ${options.label} could not be read: ${path}`,
+        userMessage: `The ${labelText(options.label)} could not be read: ${path}`,
       }),
     );
   }

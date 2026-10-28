@@ -147,7 +147,7 @@ export class CrashMinimizer {
       );
     }
     const input = await digestCampaignArtifact(request.inputPath, operation, {
-      label: "seed",
+      label: "crash-input",
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     if (!input.ok) return input;

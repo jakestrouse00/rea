@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { CrashReportParseFailure, parseCrashReport } from "./crashReport.js";
+import {
+  CRASH_REPORT_MAX_FRAME_CHARS,
+  CRASH_REPORT_MAX_LABEL_CHARS,
+  CrashReportParseFailure,
+  parseCrashReport,
+} from "./crashReport.js";
 
 const ASAN_HEAP_OVERFLOW = `=================================================================
 ==1731==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x6020000000f1 at pc 0x000105a2b3c0 bp 0x00016f8d2a10 sp 0x00016f8d2a08
@@ -228,6 +233,64 @@ describe("macOS crash report parsing", () => {
     const facts = parseCrashReport(JSON.stringify(object));
     expect(facts.format).toBe("macos-ips");
     expect(facts.frames).toHaveLength(3);
+  });
+});
+
+describe("report text budget", () => {
+  it("clips an oversized frame symbol and says so", () => {
+    const symbol = "a".repeat(400_000);
+    const facts = parseCrashReport(
+      [
+        "==9==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x0",
+        `    #0 0x1000 in ${symbol} /src/parser.c:42:9`,
+        "    #1 0x2000 in main /src/main.c:9:1",
+        "SUMMARY: AddressSanitizer: heap-buffer-overflow",
+      ].join("\n"),
+    );
+    expect(facts.frames[0]?.function).toHaveLength(
+      CRASH_REPORT_MAX_FRAME_CHARS,
+    );
+    expect(facts.frames[0]?.function?.endsWith("…")).toBe(true);
+    expect(facts.frames[0]?.text_truncated).toBe(true);
+    expect(facts.frames[1]?.text_truncated).toBe(false);
+    expect(facts.text_truncated).toBe(true);
+  });
+
+  it("clips an oversized macOS exception label", () => {
+    const label = "A".repeat(100_000);
+    const facts = parseCrashReport(
+      [
+        `Exception Type:  ${label} (SIGSEGV)`,
+        "Thread 0 Crashed:",
+        "0   fuzz   0x0000000104b2c1a0 parse_header + 64",
+        "",
+      ].join("\n"),
+    );
+    expect(facts.exception_type).toHaveLength(CRASH_REPORT_MAX_LABEL_CHARS);
+    expect(facts.exception_type?.endsWith("…")).toBe(true);
+    expect(facts.text_truncated).toBe(true);
+    expect(facts.crash_kind.length).toBeLessThanOrEqual(64);
+  });
+
+  it("leaves ordinary reports unflagged", () => {
+    const facts = parseCrashReport(ASAN_HEAP_OVERFLOW);
+    expect(facts.text_truncated).toBe(false);
+    expect(facts.frames.every((frame) => !frame.text_truncated)).toBe(true);
+  });
+});
+
+describe("UndefinedBehaviorSanitizer summary-only reports", () => {
+  it("keeps the location out of the crash kind", () => {
+    const facts = parseCrashReport(
+      [
+        "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior fuzz.c:11:7 in",
+        "    #0 0x104c2a123 in compute_checksum /Users/fuzz/src/fuzz.c:11:7",
+        "SUMMARY: UndefinedBehaviorSanitizer: undefined-behavior fuzz.c:11:7 in",
+      ].join("\n"),
+    );
+    expect(facts.format).toBe("ubsan");
+    expect(facts.crash_kind).toBe("undefined-behavior");
+    expect(facts.crash_kind).not.toMatch(/fuzz|src/u);
   });
 });
 

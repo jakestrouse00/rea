@@ -81,9 +81,13 @@ recording plus whether it exists now.
 
 The complete report body stays on disk, mode `0600`, inside a private runtime
 root. Only the sanitizer's own summary line is inlined, bounded to 200
-characters, and it can name a source path from the crashing build. The
-reproducer belongs to the caller: REA records its path and observed size and
-never copies or rewrites it.
+characters, and it can name a source path from the crashing build. Every other
+string is bounded at the parse boundary: a frame's symbol, module, and source
+path to 512 characters, and a short label such as the exception type or signal
+to 128. A clipped value ends in `…`, the frame carries `text_truncated`, and the
+result carries `text_truncated` when any field was clipped, so a reader can tell
+a structural fact from a clipped one. The reproducer belongs to the caller: REA
+records its path and observed size and never copies or rewrites it.
 
 ## Lifetime and bounds
 

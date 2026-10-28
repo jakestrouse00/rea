@@ -345,6 +345,7 @@ export class CrashTriageService implements CrashTriagePort {
         summary: record.facts.summary,
         frames: [...record.facts.frames],
         frames_truncated: record.facts.frames_truncated,
+        text_truncated: record.facts.text_truncated,
         frame_count: record.state.frame_count,
         state_hash: record.state.dedup_hash,
         top_frames: [...record.state.frames],

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -374,15 +374,6 @@ export class CrashTriageStore {
       sha256: createHash("sha256").update(bytes).digest("hex"),
       bytes: bytes.byteLength,
     };
-  }
-
-  /** Read a retained report copy back, or null when it is gone. */
-  async readReport(relativePath: string): Promise<string | null> {
-    try {
-      return await readFile(join(this.path, relativePath), "utf8");
-    } catch {
-      return null;
-    }
   }
 
   /**
