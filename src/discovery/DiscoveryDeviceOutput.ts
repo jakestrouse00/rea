@@ -12,6 +12,7 @@ export interface DiscoveryToolset {
   readonly bleScanner: string | null;
   readonly wifiScanner: string | null;
   readonly bleGatt: string | null;
+  readonly bleakPython: string | null;
   readonly stty: string | null;
   readonly packetCapture: string | null;
 }

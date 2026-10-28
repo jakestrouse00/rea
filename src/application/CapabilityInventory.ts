@@ -83,6 +83,7 @@ export const HOST_RESTRICTED_FEATURES = [
   "firmwareInspection",
   "firmwareExtraction",
   "javascriptRecovery",
+  "bleGatt",
 ] as const;
 export type HostRestrictedFeature = (typeof HOST_RESTRICTED_FEATURES)[number];
 
@@ -134,6 +135,14 @@ export type AvailabilityPolicy = {
   readonly replayEnabled?: boolean;
   /** A mitmdump binary and a generated addon are selected. */
   readonly mitmInterceptionEnabled?: boolean;
+  /** Fresh owner observation of the caller-selected objection launcher. */
+  readonly objectionAvailability?: ProviderAvailability;
+  /** Fresh owner observation of the caller-selected androguard interpreter. */
+  readonly androguardAvailability?: ProviderAvailability;
+  /** Fresh owner observation of the caller-selected iLEAPP/ALEAPP launcher. */
+  readonly ileAppAvailability?: ProviderAvailability;
+  /** A CoreBluetooth GATT helper or the bundled bleak bridge is selected. */
+  readonly bleGattEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -529,6 +538,13 @@ const workflowAvailabilityFor = ({
             },
       ],
     };
+  if (BLE_GATT_TOOL_NAMES.has(name))
+    return hostRestrictedAvailability(
+      policy,
+      "bleGatt",
+      policy.bleGattEnabled,
+      BLE_GATT_REMEDIATION,
+    );
   if (name === "recover_javascript_sources")
     return hostRestrictedAvailability(
       policy,
@@ -722,6 +738,8 @@ const workflowAvailabilityFor = ({
       "Start a JEB client serving MCP (GUI client, or headless via its programmatic launcher) and point REA_JEB_MCP_URL at it (default http://127.0.0.1:8425/mcp). REA does not install or launch JEB.",
     );
   }
+  const mobile = mobileToolchainAvailability(name, kind, policy);
+  if (mobile !== null) return mobile;
   const browser = browserProviderAvailability(name, kind, policy);
   if (browser !== null) return browser;
   if (name === "capture_process_scenario" && !policy.processCaptureEnabled)
@@ -834,6 +852,42 @@ const electronProviderAvailability = (
         remediation:
           "Start REA with its Electron observation provider available.",
       };
+};
+
+/** BLE GATT session operations, gated on a selected helper and this host. */
+const BLE_GATT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "connect_ble_gatt",
+  "read_gatt_characteristic",
+  "write_gatt_characteristic",
+  "observe_gatt_notifications",
+  "enumerate_gatt_services",
+  "subscribe_characteristic",
+  "close_ble_gatt",
+]);
+
+const BLE_GATT_REMEDIATION =
+  "BLE GATT sessions need macOS CoreBluetooth (the peripheral identifiers, delegate callbacks, and permission prompts this lane drives are macOS-only) plus a selected helper: an absolute REA_BLE_GATT_PATH CoreBluetooth helper or an absolute REA_BLEAK_PYTHON interpreter for the bundled bleak bridge. REA never installs, builds, pairs, or retries.";
+
+const mobileToolchainAvailability = (
+  name: string,
+  kind: ToolKind,
+  policy: AvailabilityPolicy,
+): Availability | null => {
+  if (kind !== "mobile-toolchain-provider") return null;
+  if (name === "run_objection_recipe")
+    return ownerProbeAvailability(
+      policy.objectionAvailability,
+      "Set REA_OBJECTION_COMMAND to a caller-installed objection launcher (absolute path). objection is GPL-3.0 and runs as a subprocess only.",
+    );
+  if (name === "run_mobile_forensics_report")
+    return ownerProbeAvailability(
+      policy.ileAppAvailability,
+      "Set REA_ILEAPP_COMMAND to a caller-installed iLEAPP or ALEAPP launcher (absolute path) and pass an existing output directory.",
+    );
+  return ownerProbeAvailability(
+    policy.androguardAvailability,
+    "Set REA_ANDROGUARD_PYTHON to a Python 3 interpreter that imports androguard 5.x, or select another bridge directory with REA_ANDROGUARD_BRIDGE_DIR.",
+  );
 };
 
 const browserProviderAvailability = (

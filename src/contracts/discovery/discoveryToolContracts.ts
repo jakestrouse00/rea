@@ -172,6 +172,45 @@ export const DISCOVERY_TOOL_CONTRACTS = [
     ],
   },
   {
+    name: "enumerate_gatt_services",
+    description:
+      "Ask the open GATT session's helper for the peripheral's current service and characteristic tree, bounded by max_services and max_characteristics_per_service. A peripheral can publish services after the connection handshake (a bonded peer, for example), so this reads the live tree instead of replaying connect_ble_gatt's answer. Read-only once the session exists; the connection itself already changed the peer's state.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.enumerate_gatt_services,
+    outputSchema: evidenceResultOf(
+      discoveryResultSchemas.enumerate_gatt_services,
+    ),
+    ...toolContractMetadata("enumerate_gatt_services"),
+    examples: [
+      {
+        title: "Re-enumerate one session's services",
+        input: { session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4" },
+      },
+    ],
+  },
+  {
+    name: "subscribe_characteristic",
+    description:
+      "Subscribe to one notifiable characteristic over the open GATT session and collect its notifications into a bounded buffer: the window ends at observe_seconds or when max_notifications rows were retained, and a full buffer is reported as buffer_full with the count of rows that arrived after it. Subscribing writes the peer's CCCD descriptor on this session's own connection; the collected window itself only receives notification packets. Values are SHA-256 digests and lengths unless include_payload_hex is true.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.subscribe_characteristic,
+    outputSchema: evidenceResultOf(
+      discoveryResultSchemas.subscribe_characteristic,
+    ),
+    ...toolContractMetadata("subscribe_characteristic"),
+    examples: [
+      {
+        title: "Collect up to 50 notifications over 10 s",
+        input: {
+          session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4",
+          service_uuid: "8E400001-F315-4F60-9FB8-838830DAEA50",
+          characteristic_uuid: "8E400003-F315-4F60-9FB8-838830DAEA50",
+          max_notifications: 50,
+        },
+      },
+    ],
+  },
+  {
     name: "close_ble_gatt",
     description:
       "Disconnect the named GATT session cleanly: the helper disconnects from the peer and exits, and REA reports the disconnection along with any cleanup uncertainty left behind.",

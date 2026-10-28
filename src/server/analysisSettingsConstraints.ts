@@ -18,6 +18,17 @@ import {
   MITM_LIMITS,
 } from "../domain/mitm/mitmLimits.js";
 import {
+  ANDROGUARD_BRIDGE_DIR_ENV,
+  ANDROGUARD_PYTHON_ENV,
+  ANDROGUARD_PYTHON_REMEDIATION,
+  ILEAPP_COMMAND_ENV,
+  ILEAPP_COMMAND_REMEDIATION,
+  MOBILE_LIMITS,
+  OBJECTION_COMMAND_ENV,
+  OBJECTION_COMMAND_REMEDIATION,
+} from "../mobile/MobileToolchainRelease.js";
+import { DISCOVERY_BLEAK_REMEDIATION } from "../discovery/DiscoveryRelease.js";
+import {
   REPLAY_ALLOWED_ORIGINS_ENV,
   REPLAY_ALLOWED_ORIGINS_REMEDIATION,
 } from "../domain/replay/replayOrigins.js";
@@ -210,6 +221,71 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "ms",
     observation: "known" as const,
     recovery: `A proxy_rule_set rule stays armed for its ttl_ms, default ${String(MITM_LIMITS.defaultRuleTtlMs)} ms and at most ${String(MITM_LIMITS.maxRuleTtlMs)} ms, then REA releases it and the addon drops it past its expires_at. At most ${String(MITM_LIMITS.maxArmedRules)} rules stay armed on one session. This release has no runtime override.`,
+  },
+  {
+    control: OBJECTION_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: OBJECTION_COMMAND_REMEDIATION,
+  },
+  {
+    control: ANDROGUARD_PYTHON_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: ANDROGUARD_PYTHON_REMEDIATION,
+  },
+  {
+    control: ANDROGUARD_BRIDGE_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: `Select a directory holding a different copy of androguard_bridge.py by absolute path and restart REA. The bundled bridge at bridge/mobile/androguard_bridge.py is used when this setting is unset. ${ANDROGUARD_PYTHON_REMEDIATION}`,
+  },
+  {
+    control: ILEAPP_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: ILEAPP_COMMAND_REMEDIATION,
+  },
+  {
+    control: "mobile.objection_stdout_bytes",
+    authority: "fixed" as const,
+    value: MOBILE_LIMITS.objectionStdoutBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One objection invocation's stdout is retained up to ${String(MOBILE_LIMITS.objectionStdoutBytes)} bytes; a larger capture is refused rather than parsed, because a partially read listing would look complete. This release has no runtime override; narrow the recipe instead.`,
+  },
+  {
+    control: "mobile.forensic_table_bytes",
+    authority: "fixed" as const,
+    value: MOBILE_LIMITS.forensicTableBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One retained iLEAPP/ALEAPP TSV table is read up to ${String(MOBILE_LIMITS.forensicTableBytes)} bytes, at most ${String(MOBILE_LIMITS.forensicTotalBytes)} bytes across one report, with cells kept up to ${String(MOBILE_LIMITS.forensicCellCharacters)} characters. Larger tables are reported as unparsed rather than truncated silently. This release has no runtime override.`,
+  },
+  {
+    control: "REA_BLEAK_PYTHON",
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: DISCOVERY_BLEAK_REMEDIATION,
+  },
+  {
+    control: "ble.gatt_subscription_notifications",
+    authority: "fixed" as const,
+    value: 500,
+    unit: "notifications",
+    observation: "known" as const,
+    recovery:
+      "One subscribe_characteristic call retains at most 500 notification rows, and the per-call max_notifications input can lower that. A peer that keeps sending past the retained buffer is reported as buffer_full with the count of rows that arrived later; this release has no runtime override for the ceiling.",
   },
   {
     control: "mitm.stream_line_bytes",

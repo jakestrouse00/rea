@@ -18,6 +18,10 @@ import {
 } from "../domain/fridaDiscovery.js";
 import { jsonValueSchema } from "../domain/jsonValue.js";
 import {
+  fridaScriptPresetNameSchema,
+  loadFridaScriptPresetResultSchema,
+} from "../domain/fridaScriptPreset.js";
+import {
   FRIDA_RPC_DEFAULT_TIMEOUT_MS,
   FRIDA_RPC_MAX_ARGUMENTS,
   FRIDA_RPC_MAX_TIMEOUT_MS,
@@ -172,6 +176,27 @@ export const FRIDA_TOOL_CONTRACTS = [
           session_id: "00000000-0000-4000-8000-000000000001",
           source_kind: "inline",
           source: "send(Process.id);",
+        },
+      },
+    ],
+  },
+  {
+    name: "load_frida_script_preset",
+    ...toolContractMetadata("load_frida_script_preset"),
+    kind: "native-provider",
+    description:
+      "Load one named REA Frida preset into a live session: ssl-unpinning (certificate pinning), jail-root-detect-bypass, or keystore-dump-structure. The preset is REA's own minimal reference agent over publicly documented checks, not a vendored upstream script, and it hooks only the surfaces this release documents. The preset can read or change target behavior exactly as any loaded script can. Evidence carries the loaded source's SHA-256 and the preset's declared detection surfaces; the script text and any payload the target emits are never returned or recorded.",
+    inputSchema: z.strictObject({
+      session_id: sessionId,
+      preset: fridaScriptPresetNameSchema,
+    }),
+    outputSchema: evidenceResultOf(loadFridaScriptPresetResultSchema),
+    examples: [
+      {
+        title: "Load the TLS pinning bypass preset",
+        input: {
+          session_id: "00000000-0000-4000-8000-000000000001",
+          preset: "ssl-unpinning",
         },
       },
     ],

@@ -98,6 +98,29 @@ arming, value-free decisions are counted, and replay goes through the same
 one-shot send core as `http_replay_send`. No trust store, device-wide proxy, or
 pinning bypass is changed. See [mitmproxy interception](./mitm-interception.md).
 
+## Frida script presets
+
+MCP registers `load_frida_script_preset` beside the free-form
+`load_frida_script`: one named REA-authored reference agent (`ssl-unpinning`,
+`jail-root-detect-bypass`, `keystore-dump-structure`) loads into an open session
+and reports its source SHA-256 plus the declared pinning/detection surfaces it
+addresses. No script text or target payload reaches Evidence, and no upstream
+project's agent is vendored; the AGPL-3.0 reference project is documented in
+`third_party/frida-presets/README.md`. See
+[Frida script presets](./frida-script-presets.md).
+
+## Mobile runtime and forensics toolchain
+
+MCP registers `run_objection_recipe`, `analyze_apk_structure`,
+`scan_apk_vulnerabilities`, and `run_mobile_forensics_report` for
+caller-supplied objection, androguard 5.x, and iLEAPP/ALEAPP launchers. objection
+runs only whitelisted read-only recipes and its printed text is reduced to
+structural rows; androguard parses an APK statically and reports structure or
+fixed structure-rule findings as ids and locations; the forensics lane parses the
+tool's TSV tables from a caller-owned directory. Each lane is a subprocess and is
+never installed, linked, or upgraded by REA. See
+[mobile runtime and forensic toolchain](./mobile-runtime-toolchain.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

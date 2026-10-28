@@ -58,6 +58,18 @@ inventories above with these boundaries:
   values are reported value-free by default (SHA-256 + length) with
   payload hex only on a per-call `include_payload_hex` opt-in, because
   these payloads carry user data on real devices.
+  `enumerate_gatt_services` asks the live helper for the peripheral's
+  current service tree instead of replaying the handshake's answer (a
+  bonded peer can publish services later), bounded by `max_services` and
+  `max_characteristics_per_service`; omitted characteristics are counted.
+  `subscribe_characteristic` collects one notifiable characteristic's
+  notifications into a bounded buffer: the window ends at
+  `observe_seconds` or when `max_notifications` rows were retained, and a
+  full buffer reports `buffer_full` with the count of rows that arrived
+  after it, so a full buffer is never mistaken for a quiet characteristic.
+  Notification rows carry a SHA-256 digest and length; their `raw` framing
+  keeps the helper's event shape with the payload bytes removed, so a
+  digest-only caller never receives the bytes back through that field.
   `write_gatt_characteristic` is the only data-mutating operation of the
   lane: audited `mutatesDevice`, destructive, requires
   `authorize_write: true` per call, sends the bytes exactly once, never
@@ -66,9 +78,21 @@ inventories above with these boundaries:
   uncertainty from the stop-escalation path (SIGTERM/SIGKILL). The
   observe window's subscription sends the peer's CCCD control write on
   the session's own connection. The helper is never installed, paired,
-  or rebuilt by REA. Real-device verification (a live peripheral
-  connect/read/observe/write/close cycle) has not been run yet: it is an
-  explicit unknown, and the lane's Evidence records no claims about it.
+  or rebuilt by REA.
+- **Bundled bleak bridge (`REA_BLEAK_PYTHON`):** `bridge/ble/bleak_bridge.py`
+  is an REA-authored helper that speaks the same JSON-line protocol over
+  bleak's macOS CoreBluetooth backend. Selecting an absolute interpreter
+  through `REA_BLEAK_PYTHON` uses it when `REA_BLE_GATT_PATH` is unset; a
+  caller-built CoreBluetooth helper always wins, and neither selected is a
+  typed refusal rather than a guessed interpreter. REA never installs Python
+  packages or bleak. The lane is availability-gated to macOS CoreBluetooth:
+  on another host the BLE GATT tools report `unsupported_host`, and the
+  availability policy carries that gate as the `bleGatt` host restriction plus
+  a `bleGattEnabled` feature. Evidence names the transport that ran
+  (`tools.ble_gatt` or `tools.bleak_python`).
+  Real-device verification (a live peripheral
+  connect/enumerate/subscribe/read/write/close cycle) has not been run yet: it
+  is an explicit unknown, and the lane's Evidence records no claims about it.
 - **`scan_wifi_networks`** observes 802.11 beacon frames through a
   caller-compiled CoreWLAN helper (`REA_WIFI_SCANNER_PATH`), falling
   back to the host's `system_profiler` airport scan cache. macOS gates
@@ -138,14 +162,16 @@ override:
 | blueutil (optional)        | caller-installed            | `REA_BLUEUTIL_PATH`          |
 | BLE scanner (optional)     | caller-compiled             | `REA_BLE_SCANNER_PATH`       |
 | GATT helper (optional)     | caller-compiled             | `REA_BLE_GATT_PATH`          |
+| bleak bridge interpreter   | caller-installed Python 3   | `REA_BLEAK_PYTHON`           |
 | Wi-Fi helper (optional)    | caller-compiled             | `REA_WIFI_SCANNER_PATH`      |
 | stty (optional)            | `/bin/stty`                 | `REA_STTY_PATH`              |
 | capture program (optional) | caller-provided             | `REA_PACKET_CAPTURE_COMMAND` |
 
 Relative paths are refused fail-closed. `blueutil` is required only by
 the inquiry source; without it that source is skipped and reported as
-skipped, never silently absent. The GATT helper is required by every
-`*_gatt` operation; without it those operations are refused with the
+skipped, never silently absent. Every GATT operation requires a selected
+helper: a caller-built CoreBluetooth helper, or an interpreter for the bundled
+bleak bridge. Without either, those operations are refused with the
 remediation string rather than returning empty results. Its reference
 source is `third_party/rea-helpers/gatt.swift`; it is caller-compiled,
 and REA never installs, pairs, or retries a GATT write.

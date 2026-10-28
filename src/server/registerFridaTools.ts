@@ -29,6 +29,7 @@ export const registerFridaTools = (
   const listProcesses = toolContract("list_frida_processes");
   const start = toolContract("start_frida_session");
   const load = toolContract("load_frida_script");
+  const loadPreset = toolContract("load_frida_script_preset");
   const resume = toolContract("resume_frida_session");
   const unload = toolContract("unload_frida_script");
   const rpcList = toolContract("frida_rpc_list");
@@ -149,6 +150,30 @@ export const registerFridaTools = (
       return delivery.toEvidenceToolResult(
         result.value,
         load,
+        recordEvidence?.(result.value),
+      );
+    },
+  );
+  server.registerTool(
+    loadPreset.name,
+    toolRegistrationOptions(loadPreset),
+    async (input, context: ServerContext) => {
+      const result = await logToolExecution(logger, loadPreset.name, () =>
+        service.loadScriptPreset(
+          input.session_id,
+          input.preset,
+          context.mcpReq.signal,
+        ),
+      );
+      if (!result.ok)
+        return delivery.toPartialErrorToolResult(
+          result.error,
+          loadPreset.returnsTargetContent,
+          recordEvidence,
+        );
+      return delivery.toEvidenceToolResult(
+        result.value,
+        loadPreset,
         recordEvidence?.(result.value),
       );
     },
