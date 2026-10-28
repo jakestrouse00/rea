@@ -59,6 +59,7 @@ import { ASAR_INTEGRITY_TOOL_CONTRACTS } from "./electron/asarIntegrityToolContr
 import { PROTOBUF_RECOVERY_TOOL_CONTRACTS } from "./protobufrecovery/protobufRecoveryToolContracts.js";
 import { BINDIFF_TOOL_CONTRACTS } from "./bindiff/bindiffToolContracts.js";
 import { CRASH_TRIAGE_TOOL_CONTRACTS } from "./crashTriage/crashTriageToolContracts.js";
+import { FUZZING_TOOL_CONTRACTS } from "./fuzzing/fuzzingToolContracts.js";
 import { REPLAY_TOOL_CONTRACTS } from "./replay/ReplayToolContracts.js";
 import { MITM_TOOL_CONTRACTS } from "./mitm/MitmToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
@@ -98,6 +99,7 @@ export const TOOL_CONTRACTS = [
   ...PROTOBUF_RECOVERY_TOOL_CONTRACTS,
   ...BINDIFF_TOOL_CONTRACTS,
   ...CRASH_TRIAGE_TOOL_CONTRACTS,
+  ...FUZZING_TOOL_CONTRACTS,
   ...REPLAY_TOOL_CONTRACTS,
   ...MITM_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,

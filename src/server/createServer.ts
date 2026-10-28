@@ -273,6 +273,12 @@ import { createLabVmService } from "../composition/vmlab.js";
 import { createCrashTriageService } from "../composition/crashTriage.js";
 import type { CrashTriagePort } from "../application/crashTriage/CrashTriagePort.js";
 import { registerCrashTriageTools } from "./registerCrashTriageTools.js";
+import {
+  createFuzzingCampaignService,
+  fuzzingCampaignLaneEnabled,
+} from "../composition/fuzzing.js";
+import type { FuzzingCampaignPort } from "../application/fuzzing/FuzzingCampaignPort.js";
+import { registerFuzzingTools } from "./registerFuzzingTools.js";
 import type { ReplayPort } from "../application/replay/ReplayPort.js";
 import type { MitmInterceptionPort } from "../application/mitm/MitmInterceptionPort.js";
 import {
@@ -348,6 +354,8 @@ export interface CreateServerOptions {
   /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
   readonly labVm?: LabVmPort;
   readonly crashTriage?: CrashTriagePort;
+  /** Fuzz loop over registered campaigns; omitted means the lane is selected from the environment. */
+  readonly fuzzing?: FuzzingCampaignPort;
   /** Active request plane; omitted means the lane is selected from the environment. */
   readonly replay?: ReplayPort;
   /** mitmproxy interception lane; omitted means the lane is selected from the environment. */
@@ -489,6 +497,10 @@ const installSessionToolAvailability = (
       mitmInterceptionEnabled: mitmInterceptionLaneEnabled(
         environment,
         options.mitm !== undefined,
+      ),
+      fuzzingCampaignEnabled: fuzzingCampaignLaneEnabled(
+        environment,
+        options.fuzzing !== undefined,
       ),
     },
   });
@@ -708,6 +720,14 @@ export const createServer = (
   const labVm = options.labVm ?? createLabVmService(environment);
   const crashTriage =
     options.crashTriage ?? createCrashTriageService(environment);
+  const fuzzing =
+    options.fuzzing ??
+    createFuzzingCampaignService(
+      providerEnvironment,
+      crashTriage,
+      labVm,
+      analysisSettings.read,
+    );
   const replay = options.replay ?? createReplayService(environment);
   const mitm = options.mitm ?? createMitmInterceptionService(environment);
   const discovery =
@@ -748,6 +768,9 @@ export const createServer = (
         if (!closed.ok) throw closed.error;
       }),
       crashTriage.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      fuzzing.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
       replay.closeAll().then((closed) => {
@@ -1136,6 +1159,12 @@ export const createServer = (
   registerCrashTriageTools({
     server,
     crashTriage,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerFuzzingTools({
+    server,
+    fuzzing,
     logger: toolLogger,
     recordEvidence,
   });

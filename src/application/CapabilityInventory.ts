@@ -47,6 +47,7 @@ import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
 import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
 import { MITM_TOOL_REMEDIATION } from "../domain/mitm/mitmLimits.js";
+import { FUZZING_TOOL_REMEDIATION } from "../domain/fuzzing/fuzzingEngine.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
@@ -134,6 +135,8 @@ export type AvailabilityPolicy = {
   readonly replayEnabled?: boolean;
   /** A mitmdump binary and a generated addon are selected. */
   readonly mitmInterceptionEnabled?: boolean;
+  /** At least one caller-supplied fuzzing engine is selected. */
+  readonly fuzzingCampaignEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -772,6 +775,13 @@ const workflowAvailabilityFor = ({
       : {
           reason: "provider_missing",
           remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+        };
+  if (kind === "fuzzing-provider")
+    return policy.fuzzingCampaignEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: FUZZING_TOOL_REMEDIATION,
         };
   if (kind === "session") return { reason: "available", remediation: null };
   return null;

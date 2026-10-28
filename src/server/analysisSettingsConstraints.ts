@@ -21,6 +21,21 @@ import {
   REPLAY_ALLOWED_ORIGINS_ENV,
   REPLAY_ALLOWED_ORIGINS_REMEDIATION,
 } from "../domain/replay/replayOrigins.js";
+import {
+  CRASH_TRIAGE_MAX_CRASHES,
+  CRASH_TRIAGE_MAX_RUNS,
+  CRASH_TRIAGE_MAX_SECONDS,
+} from "../domain/crashTriage/fuzzingCampaign.js";
+import {
+  FUZZING_AFLFRIDA_COMMAND_ENV,
+  FUZZING_AFLFRIDA_REMEDIATION,
+  FUZZING_JACKALOPE_DIR_ENV,
+  FUZZING_JACKALOPE_REMEDIATION,
+  FUZZING_LFZ_COMMAND_ENV,
+  FUZZING_LFZ_REMEDIATION,
+  FUZZING_MAX_OUTPUT_BYTES,
+  FUZZING_MAX_STATS_SAMPLES,
+} from "../domain/fuzzing/fuzzingEngine.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -105,6 +120,70 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     observation: "unknown" as const,
     recovery:
       "Select a caller-supplied afl-tmin binary by absolute path in the launch environment and restart REA. REA never installs or upgrades AFL++ tooling. See docs/crash-triage.md.",
+  },
+  {
+    control: FUZZING_LFZ_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: FUZZING_LFZ_REMEDIATION,
+  },
+  {
+    control: FUZZING_AFLFRIDA_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: FUZZING_AFLFRIDA_REMEDIATION,
+  },
+  {
+    control: FUZZING_JACKALOPE_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: FUZZING_JACKALOPE_REMEDIATION,
+  },
+  {
+    control: "fuzzing.campaign_runs",
+    authority: "fixed" as const,
+    value: CRASH_TRIAGE_MAX_RUNS,
+    unit: "runs",
+    observation: "known" as const,
+    recovery: `One campaign may declare at most ${String(CRASH_TRIAGE_MAX_RUNS)} engine runs in register_fuzzing_campaign. The bound is fixed; a run budget above it is refused rather than clamped, and the campaign's own run budget is enforced by REA stopping the engine.`,
+  },
+  {
+    control: "fuzzing.campaign_seconds",
+    authority: "fixed" as const,
+    value: CRASH_TRIAGE_MAX_SECONDS,
+    unit: "seconds",
+    observation: "known" as const,
+    recovery: `One campaign may declare at most ${String(CRASH_TRIAGE_MAX_SECONDS)} seconds of wall clock in register_fuzzing_campaign. The registration bound is fixed; the wall clock a launch enforces is the tighter of that value and the agent-editable fuzzing.max_campaign_seconds setting.`,
+  },
+  {
+    control: "fuzzing.campaign_crashes",
+    authority: "fixed" as const,
+    value: CRASH_TRIAGE_MAX_CRASHES,
+    unit: "crashes",
+    observation: "known" as const,
+    recovery: `One campaign may declare at most ${String(CRASH_TRIAGE_MAX_CRASHES)} accepted crashes. The bound is fixed; REA stops the engine once it has observed that many crash artifacts, and POV validation still decides which observations are accepted.`,
+  },
+  {
+    control: "fuzzing.engine_output_bytes",
+    authority: "fixed" as const,
+    value: FUZZING_MAX_OUTPUT_BYTES,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `REA retains at most ${String(FUZZING_MAX_OUTPUT_BYTES)} bytes of each engine stream and stops the engine when that budget is exceeded. This release has no runtime override; a noisier engine is stopped rather than buffered.`,
+  },
+  {
+    control: "fuzzing.stats_samples",
+    authority: "fixed" as const,
+    value: FUZZING_MAX_STATS_SAMPLES,
+    unit: "samples",
+    observation: "known" as const,
+    recovery: `One campaign retains at most ${String(FUZZING_MAX_STATS_SAMPLES)} progress samples. Later samples double the retained interval instead of growing the series, so the reported sample_stride_ms widens. This release has no runtime override.`,
   },
   {
     control: "crash_triage.minimizer_timeout",

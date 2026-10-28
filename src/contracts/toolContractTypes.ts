@@ -46,6 +46,7 @@ export const TOOL_KINDS = [
   "pcap-provider",
   "application",
   "crash-triage",
+  "fuzzing-provider",
   "replay-provider",
   "mitm-provider",
   "session",

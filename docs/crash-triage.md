@@ -3,8 +3,10 @@
 `register_fuzzing_campaign`, `read_campaign_status`, `list_crash_dedups`, and
 `fetch_crash_evidence` record and read the bookkeeping of a fuzzing campaign on
 the MCP server. The module parses sanitizer reports, computes a crash-state
-hash, and groups crashes the way ClusterFuzz does; the fuzzing engine itself is
-owned by a later lane, so these four tools start nothing.
+hash, and groups crashes the way ClusterFuzz does; these four tools start
+nothing. `start_fuzzing_campaign` drives a caller-selected engine over a
+registered campaign and feeds only POV-validated crashes back here; see
+[fuzzing campaigns](fuzzing-campaigns.md).
 
 The tools exist so an analyst can answer, without re-reading raw logs: which
 campaign recorded this crash, which other reports share its state, and what the
@@ -111,10 +113,10 @@ creates nothing.
 
 ## Minimization hooks
 
-The module also owns the minimizer adapters the fuzzing lane will call:
-`libFuzzer -minimize_crash=1` and `afl-tmin`. Both read one caller-owned crash
-input and write one caller-owned output path, and neither is reachable from a
-public tool in this release.
+The module also owns the minimizer adapters the fuzz loop calls:
+`libFuzzer -minimize_crash=1` and `afl-tmin`. Both read one crash input and write
+one output path inside the campaign's private root, and `start_fuzzing_campaign`
+reaches them when the caller sets `minimize_crashes: true`.
 
 | Setting                    | Meaning                                                                                                                                                                                           |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

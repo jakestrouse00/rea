@@ -5,7 +5,10 @@ import type {
   CrashMinimizeEngine,
 } from "../../domain/crashTriage/crashMinimization.js";
 import type { SanitizerClass } from "../../domain/crashTriage/crashReport.js";
-import type { FuzzingCampaignBudget } from "../../domain/crashTriage/fuzzingCampaign.js";
+import type {
+  FuzzingCampaignBudget,
+  FuzzingCampaignStatus,
+} from "../../domain/crashTriage/fuzzingCampaign.js";
 import type { Evidence } from "../../domain/evidence.js";
 import type { Result } from "../../domain/result.js";
 
@@ -22,6 +25,19 @@ export interface RecordCrashRequest {
   readonly campaignId: string;
   readonly reportBody: string;
   readonly reproPath: string;
+}
+
+/** One registered campaign as the store retained it, in caller terms. */
+export interface RegisteredFuzzingCampaign {
+  readonly campaignId: string;
+  readonly status: FuzzingCampaignStatus;
+  readonly targetPath: string;
+  readonly targetSha256: string;
+  readonly targetBytes: number;
+  readonly seedPaths: readonly string[];
+  readonly budget: FuzzingCampaignBudget;
+  readonly dedupFrames: number;
+  readonly registeredAt: string;
 }
 
 /** What recording one crash established, without the report body. */
@@ -72,6 +88,11 @@ export interface CrashTriagePort {
     request: { readonly campaignId: string; readonly crashId: string },
     options?: ExecutionOptions,
   ): Promise<Result<Evidence, AnalysisError>>;
+  /** The registered campaign a launch needs: identity, paths, budget, window. */
+  campaignRecord(
+    request: { readonly campaignId: string },
+    options?: ExecutionOptions,
+  ): Promise<Result<RegisteredFuzzingCampaign, AnalysisError>>;
   recordCrash(
     request: RecordCrashRequest,
     options?: ExecutionOptions,

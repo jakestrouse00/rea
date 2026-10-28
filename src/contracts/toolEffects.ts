@@ -192,6 +192,13 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   read_campaign_status: evidence,
   list_crash_dedups: evidence,
   fetch_crash_evidence: evidence,
+  start_fuzzing_campaign: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   inspect_go_binary: evidence,
   inspect_go_procedure_table: evidence,
   inspect_il2cpp_metadata: evidence,

@@ -19,7 +19,7 @@ export const SOURCE_TEST_PROJECTS = [
     group: "source",
     include: [
       "src/*.test.ts",
-      "src/{android,apkSignature,apktool,jeb,adb,artifacts,browser,config,crashTriage,cutter,discovery,dotnet,electron,erlang,evm,firmware,flutter,gamedata,ghidra,go,gpu,hopper,ida,idevice,inspector,javascript,main,mitm,native,pdb,pcap,process,python,reference,replay,rust,server,sqlite,vmlab,wasm,windows}/**/*.test.ts",
+      "src/{android,apkSignature,apktool,jeb,adb,artifacts,browser,config,crashTriage,cutter,discovery,dotnet,electron,erlang,evm,firmware,flutter,fuzzing,gamedata,ghidra,go,gpu,hopper,ida,idevice,inspector,javascript,main,mitm,native,pdb,pcap,process,python,reference,replay,rust,server,sqlite,vmlab,wasm,windows}/**/*.test.ts",
     ],
   },
   {

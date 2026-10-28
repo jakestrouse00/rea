@@ -30,6 +30,7 @@ export interface SessionAvailabilityDefaults {
     | "firmwareExtractionEnabled"
     | "replayEnabled"
     | "mitmInterceptionEnabled"
+    | "fuzzingCampaignEnabled"
   >;
 }
 
@@ -73,6 +74,8 @@ export const sessionAvailabilityPolicy = (
       replayEnabled: defaults.optionalFeatures?.replayEnabled ?? false,
       mitmInterceptionEnabled:
         defaults.optionalFeatures?.mitmInterceptionEnabled ?? false,
+      fuzzingCampaignEnabled:
+        defaults.optionalFeatures?.fuzzingCampaignEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:
