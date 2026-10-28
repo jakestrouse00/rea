@@ -51,6 +51,9 @@ import { IPSW_TOOL_CONTRACTS } from "./iosipsw/IpswToolContracts.js";
 import { CAPA_TOOL_CONTRACTS } from "./capa/capaToolContracts.js";
 import { YARA_TOOL_CONTRACTS } from "./yara/yaraToolContracts.js";
 import { SYMBOL_TOOL_CONTRACTS } from "./symbols/symbolToolContracts.js";
+import { DOTNET_DECOMPILER_TOOL_CONTRACTS } from "./manageddecomp/dotnetDecompilerToolContracts.js";
+import { PYTHON_DECOMPILER_TOOL_CONTRACTS } from "./pysrc/pythonDecompilerToolContracts.js";
+import { JVM_DECOMPILER_TOOL_CONTRACTS } from "./jvmdecomp/jvmDecompilerToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -80,6 +83,9 @@ export const TOOL_CONTRACTS = [
   ...CAPA_TOOL_CONTRACTS,
   ...YARA_TOOL_CONTRACTS,
   ...SYMBOL_TOOL_CONTRACTS,
+  ...DOTNET_DECOMPILER_TOOL_CONTRACTS,
+  ...PYTHON_DECOMPILER_TOOL_CONTRACTS,
+  ...JVM_DECOMPILER_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

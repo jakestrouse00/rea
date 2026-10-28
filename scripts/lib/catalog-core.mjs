@@ -116,6 +116,15 @@ const SOURCE_PATHS = {
   yaraProvider: "dist/yara/YaraProvider.js",
   symbolContracts: "dist/contracts/symbols/symbolToolContracts.js",
   symbolProvider: "dist/symbolrecovery/SymbolRecoveryProvider.js",
+  dotnetDecompilerContracts:
+    "dist/contracts/manageddecomp/dotnetDecompilerToolContracts.js",
+  dotnetDecompilerProvider: "dist/manageddecomp/DotnetDecompilerProvider.js",
+  pythonDecompilerContracts:
+    "dist/contracts/pysrc/pythonDecompilerToolContracts.js",
+  pythonDecompilerProvider: "dist/pysrc/PythonDecompilerProvider.js",
+  jvmDecompilerContracts:
+    "dist/contracts/jvmdecomp/jvmDecompilerToolContracts.js",
+  jvmDecompilerProvider: "dist/jvmdecomp/JvmDecompilerProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

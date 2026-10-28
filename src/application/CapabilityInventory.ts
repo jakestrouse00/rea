@@ -101,6 +101,9 @@ export type AvailabilityPolicy = {
   readonly goresymAnalysisAvailability?: ProviderAvailability;
   readonly rustfiltAnalysisAvailability?: ProviderAvailability;
   readonly dumpSymsAnalysisAvailability?: ProviderAvailability;
+  readonly dotnetDecompilerAvailability?: ProviderAvailability;
+  readonly pythonDecompilerAvailability?: ProviderAvailability;
+  readonly jvmDecompilerAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -634,6 +637,21 @@ const workflowAvailabilityFor = ({
       "Set REA_DUMP_SYMS_COMMAND to a caller-supplied dump_syms binary (absolute path). This checks the selection only; a binary path is still required per request.",
     );
   }
+  if (kind === "managed-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.dotnetDecompilerAvailability,
+      "Set REA_ILSPY_CMD_PATH to a caller-supplied ilspycmd executable (absolute path). This checks the CLI version only; an assembly path is still required per request.",
+    );
+  if (kind === "python-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.pythonDecompilerAvailability,
+      "Set REA_PYLINGUAL_COMMAND or REA_PYCDC_COMMAND to a caller-supplied Python decompiler (absolute path). This checks the selection only; a bytecode path is still required per request.",
+    );
+  if (kind === "jvm-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.jvmDecompilerAvailability,
+      "Set REA_VINEFLOWER_JAR to a caller-supplied Vineflower JAR (absolute path) and provide JDK 11 or newer through JAVA_HOME or PATH. This checks the JAR and Java version only; a container path is still required per request.",
+    );
   if (kind === "apktool-provider")
     return ownerProbeAvailability(
       policy.apktoolAnalysisAvailability,

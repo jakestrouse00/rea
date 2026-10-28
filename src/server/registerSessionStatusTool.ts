@@ -47,6 +47,15 @@ export interface SessionAvailabilityProbes {
   readonly dumpSymsAnalysisAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly dotnetDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly pythonDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly jvmDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -79,6 +88,9 @@ const probeSessionAvailability = (
   readonly goresym: ProviderAvailability | undefined;
   readonly rustfilt: ProviderAvailability | undefined;
   readonly dumpSyms: ProviderAvailability | undefined;
+  readonly dotnetDecompiler: ProviderAvailability | undefined;
+  readonly pythonDecompiler: ProviderAvailability | undefined;
+  readonly jvmDecompiler: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
@@ -92,6 +104,9 @@ const probeSessionAvailability = (
     probes.goresymAnalysisAvailability?.(signal) ?? undefined,
     probes.rustfiltAnalysisAvailability?.(signal) ?? undefined,
     probes.dumpSymsAnalysisAvailability?.(signal) ?? undefined,
+    probes.dotnetDecompilerAvailability?.(signal) ?? undefined,
+    probes.pythonDecompilerAvailability?.(signal) ?? undefined,
+    probes.jvmDecompilerAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
@@ -105,6 +120,9 @@ const probeSessionAvailability = (
       goresym,
       rustfilt,
       dumpSyms,
+      dotnetDecompiler,
+      pythonDecompiler,
+      jvmDecompiler,
       apktool,
       jeb,
       evmLimiter,
@@ -117,6 +135,9 @@ const probeSessionAvailability = (
       goresym,
       rustfilt,
       dumpSyms,
+      dotnetDecompiler,
+      pythonDecompiler,
+      jvmDecompiler,
       apktool,
       jeb,
       evmLimiter,
@@ -177,6 +198,21 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.dumpSyms === undefined
             ? {}
             : { dumpSymsAnalysisAvailability: availabilityResults.dumpSyms }),
+          ...(availabilityResults.dotnetDecompiler === undefined
+            ? {}
+            : {
+                dotnetDecompilerAvailability:
+                  availabilityResults.dotnetDecompiler,
+              }),
+          ...(availabilityResults.pythonDecompiler === undefined
+            ? {}
+            : {
+                pythonDecompilerAvailability:
+                  availabilityResults.pythonDecompiler,
+              }),
+          ...(availabilityResults.jvmDecompiler === undefined
+            ? {}
+            : { jvmDecompilerAvailability: availabilityResults.jvmDecompiler }),
           ...(availabilityResults.apktool === undefined
             ? {}
             : { apktoolAnalysisAvailability: availabilityResults.apktool }),

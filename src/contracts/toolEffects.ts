@@ -334,6 +334,24 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
   }),
+  decompile_dotnet_assembly: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  decompile_python_bytecode: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  decompile_jar_class: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  decompile_jar_archive: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
   inspect_apple_ips: evidence,
   inspect_devicetree: evidence,
   inspect_kernel_module: evidence,

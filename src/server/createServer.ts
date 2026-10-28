@@ -208,6 +208,18 @@ import type { SymbolRecoveryPort } from "../application/symbols/SymbolRecoveryPo
 import { SymbolRecoveryService } from "../application/symbols/SymbolRecoveryService.js";
 import { createSymbolRecoveryProvider } from "../composition/symbols.js";
 import { registerSymbolTools } from "./registerSymbolTools.js";
+import type { DotnetDecompilerPort } from "../application/manageddecomp/DotnetDecompilerPort.js";
+import { DotnetDecompilerService } from "../application/manageddecomp/DotnetDecompilerService.js";
+import { createDotnetDecompilerProvider } from "../composition/manageddecomp.js";
+import { registerDotnetDecompilerTool } from "./registerDotnetDecompilerTool.js";
+import type { PythonDecompilerPort } from "../application/pysrc/PythonDecompilerPort.js";
+import { PythonDecompilerService } from "../application/pysrc/PythonDecompilerService.js";
+import { createPythonDecompilerProvider } from "../composition/pysrc.js";
+import { registerPythonDecompilerTool } from "./registerPythonDecompilerTool.js";
+import type { JvmDecompilerPort } from "../application/jvmdecomp/JvmDecompilerPort.js";
+import { JvmDecompilerService } from "../application/jvmdecomp/JvmDecompilerService.js";
+import { createJvmDecompilerProvider } from "../composition/jvmdecomp.js";
+import { registerJvmDecompilerTools } from "./registerJvmDecompilerTools.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -294,6 +306,9 @@ export interface CreateServerOptions {
   readonly capaAnalysis?: CapaAnalysisPort;
   readonly yaraAnalysis?: YaraAnalysisPort;
   readonly symbolRecovery?: SymbolRecoveryPort;
+  readonly dotnetDecompiler?: DotnetDecompilerPort;
+  readonly pythonDecompiler?: PythonDecompilerPort;
+  readonly jvmDecompiler?: JvmDecompilerPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -628,6 +643,12 @@ export const createServer = (
   const yara = options.yaraAnalysis ?? createYaraAnalysisProvider(environment);
   const symbolRecovery =
     options.symbolRecovery ?? createSymbolRecoveryProvider(environment);
+  const dotnetDecompiler =
+    options.dotnetDecompiler ?? createDotnetDecompilerProvider(environment);
+  const pythonDecompiler =
+    options.pythonDecompiler ?? createPythonDecompilerProvider(environment);
+  const jvmDecompiler =
+    options.jvmDecompiler ?? createJvmDecompilerProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -657,6 +678,9 @@ export const createServer = (
       capa.close(),
       yara.close(),
       symbolRecovery.close(),
+      dotnetDecompiler.close(),
+      pythonDecompiler.close(),
+      jvmDecompiler.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -936,6 +960,27 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerDotnetDecompilerTool(
+    server,
+    new DotnetDecompilerService(dotnetDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerPythonDecompilerTool(
+    server,
+    new PythonDecompilerService(pythonDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerJvmDecompilerTools(
+    server,
+    new JvmDecompilerService(jvmDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -1028,6 +1073,12 @@ export const createServer = (
           "generate_symbol_table",
           signal,
         ) ?? symbolRecovery.inspectAvailability(signal),
+      dotnetDecompilerAvailability: (signal) =>
+        dotnetDecompiler.inspectAvailability(signal),
+      pythonDecompilerAvailability: (signal) =>
+        pythonDecompiler.inspectAvailability(signal),
+      jvmDecompilerAvailability: (signal) =>
+        jvmDecompiler.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),

@@ -94,6 +94,17 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "unload_frida_script",
   "frida_session_status",
   "close_frida_session",
+  // Caller-supplied signature and decompiler lanes are MCP-only in this batch.
+  "analyze_binary_capabilities",
+  "scan_artifact_with_rules",
+  "scan_for_crypto_constants",
+  "recover_go_symbols",
+  "demangle_rust_name",
+  "generate_symbol_table",
+  "decompile_dotnet_assembly",
+  "decompile_python_bytecode",
+  "decompile_jar_class",
+  "decompile_jar_archive",
 ]);
 
 describe("CLI canonical tool coverage", () => {

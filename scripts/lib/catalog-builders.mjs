@@ -138,6 +138,23 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
     },
     {
+      id: "dotnet-decompiler",
+      surface: "managed-decompiler-provider",
+      contracts:
+        sources.dotnetDecompilerContracts.DOTNET_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      id: "python-decompiler",
+      surface: "python-decompiler-provider",
+      contracts:
+        sources.pythonDecompilerContracts.PYTHON_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      id: "jvm-decompiler",
+      surface: "jvm-decompiler-provider",
+      contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
       id: "discovery",
       surface: "discovery-provider",
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
@@ -529,6 +546,22 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.symbolProvider.SYMBOL_PROVIDER_IDENTITY,
       contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.dotnetDecompilerProvider.DOTNET_DECOMPILER_PROVIDER_IDENTITY,
+      contracts:
+        sources.dotnetDecompilerContracts.DOTNET_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.pythonDecompilerProvider.PYTHON_DECOMPILER_PROVIDER_IDENTITY,
+      contracts:
+        sources.pythonDecompilerContracts.PYTHON_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.jvmDecompilerProvider.JVM_DECOMPILER_PROVIDER_IDENTITY,
+      contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

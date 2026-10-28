@@ -62,6 +62,14 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   demangle_rust_name: "runs a caller-selected rustfilt binary, not a target",
   generate_symbol_table:
     "runs a caller-selected dump_syms binary, not the target",
+  decompile_dotnet_assembly:
+    "runs a caller-selected ilspycmd binary over the assembly, not its code",
+  decompile_python_bytecode:
+    "runs a caller-selected decompiler over bytecode, not the recovered module",
+  decompile_jar_class:
+    "runs a caller-selected Vineflower JAR over one class, not the class code",
+  decompile_jar_archive:
+    "runs a caller-selected Vineflower JAR over a container, not its classes",
   inspect_erlang_beam: "states that it does not execute bytecode",
   inspect_sqlite_database:
     "uses a trusted inspector worker without executing application code or caller SQL",
