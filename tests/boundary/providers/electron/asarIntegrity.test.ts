@@ -162,6 +162,66 @@ test("refuses a non-archive file instead of inventing members", async () => {
   );
 });
 
+test("keeps cancellation identity when a member stream is aborted mid-flight", async () => {
+  const { Readable } = await import("node:stream");
+  const { verifyAsarMemberIntegrity } =
+    await import("../../../../src/electron/AsarPackedIntegrity.js");
+  const { ArtifactReaderFailure } =
+    await import("../../../../src/artifacts/ArtifactReader.js");
+  const controller = new AbortController();
+  const reason = new Error("caller cancelled mid-stream");
+  const chunks = [Buffer.alloc(4 * 1024, 1), Buffer.alloc(4 * 1024, 2)];
+  const stream = Readable.from(
+    (async function* () {
+      yield chunks[0];
+      controller.abort(reason);
+      yield chunks[1];
+    })(),
+  );
+  const failure = await verifyAsarMemberIntegrity(
+    { algorithm: "SHA256", hash: "a".repeat(64), blockSize: 4, blocks: [] },
+    stream,
+    controller.signal,
+  ).catch((cause: unknown) => cause);
+  expect(failure).toBeInstanceOf(ArtifactReaderFailure);
+  expect(failure).toMatchObject({ reason: "cancelled" });
+  expect(
+    (failure as { cancellation?: { reason?: unknown } }).cancellation?.reason,
+  ).toBe(reason);
+});
+
+test("reports a cancelled streaming pass as cancellation, not an input error", async () => {
+  const root = await createTestTempDirectory("rea-asar-midcancel-");
+  const source = join(root, "many");
+  await mkdir(source, { recursive: true });
+  for (let index = 0; index < 150; index += 1)
+    await writeFile(
+      join(source, `file-${index}.js`),
+      `module.exports=${index};
+`,
+    );
+  const archive = join(root, "many.asar");
+  await createPackage(source, archive);
+  const provider = new AsarIntegrityProvider({});
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort(new Error("caller cancelled"));
+  }, 0);
+  try {
+    const result = await provider.inspect(
+      inspectAsarIntegrityInputSchema.parse({ path: archive }),
+      { signal: controller.signal },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { _tag: "AnalysisCancelledError" },
+    });
+  } finally {
+    clearTimeout(timer);
+    await provider.close();
+  }
+});
+
 test("cancels before reading members", async () => {
   const root = await createTestTempDirectory("rea-asar-cancel-");
   const { archive } = await buildArchive(root);

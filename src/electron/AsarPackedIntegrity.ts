@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
 
+import { ArtifactReaderFailure } from "../artifacts/ArtifactReader.js";
+
 /** Integrity declaration one ASAR member carries in the archive header. */
 export interface AsarDeclaredIntegrity {
   readonly algorithm: "SHA256";
@@ -167,7 +169,14 @@ export const verifyAsarMemberIntegrity = async (
   let filled = 0;
   let bytes = 0;
   for await (const chunk of stream) {
-    if (signal?.aborted === true) throw signal.reason;
+    // Cancellation keeps its artifact identity: the provider translates this
+    // exact reason into AnalysisCancelledError, never an input failure.
+    if (signal?.aborted === true)
+      throw new ArtifactReaderFailure(
+        "cancelled",
+        "ASAR member verification cancelled",
+        { cause: signal.reason },
+      );
     const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string);
     bytes += data.byteLength;
     whole.update(data);

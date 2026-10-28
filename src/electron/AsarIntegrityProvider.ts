@@ -96,7 +96,7 @@ export class AsarIntegrityProvider implements AsarIntegrityPort {
         this.#inspectArchive(input, options),
       );
     } catch (cause: unknown) {
-      return err(translateFailure(cause, input.path));
+      return err(translateFailure(cause, input.path, options?.signal));
     }
   }
 
@@ -376,8 +376,16 @@ const candidateState = (
   states.get(member.path) ??
   (member.integrity.state === "declared" ? "unverified" : "not_declared");
 
-const translateFailure = (cause: unknown, path: string): AnalysisError => {
+const translateFailure = (
+  cause: unknown,
+  path: string,
+  signal: AbortSignal | undefined,
+): AnalysisError => {
   if (cause instanceof AnalysisError) return cause;
+  // A throw observed after the caller aborted is that cancellation, whatever
+  // the streaming layer surfaced.
+  if (signal?.aborted === true)
+    return new AnalysisCancelledError(OPERATION, { cause: signal.reason });
   if (cause instanceof ArtifactReaderFailure) {
     if (cause.reason === "cancelled")
       return new AnalysisCancelledError(OPERATION, {
