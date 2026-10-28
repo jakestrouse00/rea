@@ -135,6 +135,9 @@ const SOURCE_PATHS = {
   protobufProvider: "dist/protobufrecovery/ProtobufRecoveryProvider.js",
   bindiffContracts: "dist/contracts/bindiff/bindiffToolContracts.js",
   bindiffProvider: "dist/bindiff/BindiffProvider.js",
+  crashTriageContracts:
+    "dist/contracts/crashTriage/crashTriageToolContracts.js",
+  crashTriageProvider: "dist/domain/crashTriage/crashReport.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

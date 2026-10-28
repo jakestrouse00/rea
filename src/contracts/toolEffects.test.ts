@@ -155,6 +155,12 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   inspect_apk_signature: "states that no Android code executes",
   start_lab_vm:
     "launches a caller-selected limactl that boots an isolated guest; no target code runs on this host",
+  register_fuzzing_campaign:
+    "states it starts no engine and executes no target; it records caller-supplied identity only",
+  read_campaign_status:
+    "states this release starts no engine, so counters describe retained records rather than a run outcome",
+  list_crash_dedups:
+    "states grouping observes stored frames; no engine runs and no target executes",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

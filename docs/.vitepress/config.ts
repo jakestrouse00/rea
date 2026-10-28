@@ -59,6 +59,7 @@ export default defineConfig({
           { text: "ASAR integrity", link: "/asar-integrity" },
           { text: "Process capture", link: "/process-capture" },
           { text: "Lab VMs", link: "/lab-vms" },
+          { text: "Crash triage", link: "/crash-triage" },
           {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",

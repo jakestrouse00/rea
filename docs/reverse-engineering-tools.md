@@ -83,6 +83,27 @@ produced, modified, or removed. One REA server owns at most one lab VM. See
 [lab VMs](./lab-vms.md) and the [autonomous execution
 policy](./autonomous-execution.md).
 
+## Crash triage
+
+MCP registers `register_fuzzing_campaign`, `read_campaign_status`,
+`list_crash_dedups`, and `fetch_crash_evidence` for fuzzing-campaign
+bookkeeping. Registration digests an absolute target and up to 32 seed paths,
+records a stop condition and a crash-state window, and issues a server-lifetime
+`campaign_id`; the reads report stored counters, deduplicated crash groups, and
+one crash's structural facts. Reports are parsed for ASan, TSan, UBSan, LSan,
+MSan, and macOS crash reports, and the crash-state hash covers a bounded window
+of de-symbolized top frames, so addresses, module offsets, build paths, and line
+numbers do not split one defect into many groups. Report bodies stay on disk
+(mode `0600`) inside a private runtime root that the owning server removes when
+it closes; only a 200-character sanitizer summary is inlined. No engine is
+started and no target is executed by these tools.
+
+The minimizer adapters take caller-supplied binaries and fail closed:
+`REA_LFZ_MINIMIZE_COMMAND` selects the libFuzzer-instrumented target used with
+`-minimize_crash=1`, and `REA_AFLTMIN_COMMAND` selects `afl-tmin`. Each minimizer
+run has a 600000 ms default deadline and a 4 MiB retained-output budget per
+stream; neither has a runtime override. See [crash triage](./crash-triage.md).
+
 ## Rizin
 
 `start_rizin_debug_session` and `rea debug-with-rizin` require an explicit `inferior_tty` on Linux. Rizin launches the target with stdout and stderr routed to that caller-selected TTY and `dbg.exitkills=false`; the target can therefore continue running and writing to the TTY after REA closes the debugger. This is a visible target output effect, and the caller is responsible for selecting a suitable terminal that remains available. Before closing, REA serializes after the active command, parses the structured `olj` descriptor list, detaches only a unique `ptrace://` descriptor, confirms its absence, reads back `dbg.exitkills=false`, and verifies `/proc/<pid>/fd/1` and `/proc/<pid>/fd/2` still identify the selected TTY by device and inode. If a previously identified inferior exits after Rizin confirms detach, REA verifies that the original process has ended instead of requiring output descriptors from an exited process. Unresolved identity or ambiguous readback keeps the Rizin session owned for retry. After output limits or a failed command interval, cleanup first waits up to 1000 ms for a fresh private NUL-delimited marker, discarding earlier frames before obtaining that new inferior readback. Synchronization never reopens user command admission. A missing marker, unavailable transport, or unknown inferior identity retains the cleanup owner. Caller cancellation keeps its exact reason and typed cancellation outcome even when cleanup remains incomplete; a successful retry resolves that retained cleanup state. Cancellation during final cleanup retains the captured observation and cleanup owner. An already observed startup or protocol failure remains primary and retains a later cancellation as a secondary failure; recovering the transport does not erase that original diagnosis. Persistent Rizin debugger sessions are unavailable outside Linux because this verification depends on `/proc`.

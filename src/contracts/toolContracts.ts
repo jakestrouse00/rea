@@ -58,6 +58,7 @@ import { V8_BYTECODE_TOOL_CONTRACTS } from "./javascript/v8BytecodeToolContracts
 import { ASAR_INTEGRITY_TOOL_CONTRACTS } from "./electron/asarIntegrityToolContracts.js";
 import { PROTOBUF_RECOVERY_TOOL_CONTRACTS } from "./protobufrecovery/protobufRecoveryToolContracts.js";
 import { BINDIFF_TOOL_CONTRACTS } from "./bindiff/bindiffToolContracts.js";
+import { CRASH_TRIAGE_TOOL_CONTRACTS } from "./crashTriage/crashTriageToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -94,6 +95,7 @@ export const TOOL_CONTRACTS = [
   ...ASAR_INTEGRITY_TOOL_CONTRACTS,
   ...PROTOBUF_RECOVERY_TOOL_CONTRACTS,
   ...BINDIFF_TOOL_CONTRACTS,
+  ...CRASH_TRIAGE_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

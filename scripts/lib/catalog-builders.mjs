@@ -215,6 +215,11 @@ export const toolFamilyCatalog = (sources) => {
       ],
     },
     {
+      id: "crash-triage",
+      surface: "crash-triage",
+      contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
+    },
+    {
       id: "session",
       surface: "session",
       contracts: sources.sessionContracts.SESSION_TOOL_CONTRACTS,
@@ -600,6 +605,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.crashTriageProvider.CRASH_TRIAGE_PROVIDER,
+      contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

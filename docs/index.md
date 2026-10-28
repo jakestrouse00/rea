@@ -63,6 +63,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Trace captured website source | [Source locations](web-source-location.md), [module traces](website-module-trace.md), [script export](website-script-export.md) |
 | Capture and compare a command | [Process capture](process-capture.md) |
 | Run Linux-only builds and fuzzing | [Lab VMs](lab-vms.md), [autonomous execution policy](autonomous-execution.md) |
+| Triage sanitizer and macOS crash reports | [Crash triage](crash-triage.md) |
 | Use CLI/MCP and retain evidence | [CLI](cli.md), [MCP contracts](mcp-contracts.md), [agent prompts](mcp-prompts.md), [obligation ledgers](reconstruction-obligation-ledgers.md) |
 For development, use [testing](testing.md), [client verification](client-verification.md),
 [tool design](tool-design.md), [admission limits and recovery](design/limits-and-recovery.md),

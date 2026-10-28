@@ -270,6 +270,9 @@ import { CutterBridgeService } from "../cutter/CutterBridgeService.js";
 import { registerCutterTools } from "./registerCutterTools.js";
 import { GdbSessionManager } from "../gdb/GdbSessionManager.js";
 import { createLabVmService } from "../composition/vmlab.js";
+import { createCrashTriageService } from "../composition/crashTriage.js";
+import type { CrashTriagePort } from "../application/crashTriage/CrashTriagePort.js";
+import { registerCrashTriageTools } from "./registerCrashTriageTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -332,6 +335,7 @@ export interface CreateServerOptions {
   readonly bindiff?: BindiffPort;
   /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
   readonly labVm?: LabVmPort;
+  readonly crashTriage?: CrashTriagePort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -681,6 +685,8 @@ export const createServer = (
     options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
   const bindiff = options.bindiff ?? createBindiffProvider(environment);
   const labVm = options.labVm ?? createLabVmService(environment);
+  const crashTriage =
+    options.crashTriage ?? createCrashTriageService(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -716,6 +722,9 @@ export const createServer = (
       protobufRecovery.close(),
       bindiff.close(),
       labVm.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      crashTriage.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
       discovery.close(),
@@ -1095,6 +1104,12 @@ export const createServer = (
     analysisAdmission,
   );
   registerObservationTools(toolContext);
+  registerCrashTriageTools({
+    server,
+    crashTriage,
+    logger: toolLogger,
+    recordEvidence,
+  });
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {
