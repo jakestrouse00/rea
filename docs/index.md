@@ -62,7 +62,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Serve recorded behavior as an agent environment | [Agent environments](agent-environments.md) |
 | Trace captured website source | [Source locations](web-source-location.md), [module traces](website-module-trace.md), [script export](website-script-export.md) |
 | Capture and compare a command | [Process capture](process-capture.md) |
-| Run Linux-only builds and fuzzing | [Lab VMs](lab-vms.md), [autonomous execution policy](autonomous-execution.md) |
+| Run Linux-only builds and fuzzing | [Lab VMs](lab-vms.md), [autonomous execution policy](autonomous-execution.md), [autonomy walkthrough](autonomy-walkthrough.md) |
 | Triage sanitizer and macOS crash reports | [Crash triage](crash-triage.md) |
 | Fuzz a target and validate its crashes | [Fuzzing campaigns](fuzzing-campaigns.md), [libFuzzer](fuzzing-libfuzzer.md), [AFL++ FRIDA](fuzzing-aflpp-frida.md), [Jackalope](fuzzing-jackalope.md) |
 | Inspect and rewrite one application's traffic | [mitmproxy interception](mitm-interception.md) |

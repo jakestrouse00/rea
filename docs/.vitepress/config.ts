@@ -99,6 +99,10 @@ export default defineConfig({
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },
+          {
+            text: "Autonomy walkthrough",
+            link: "/autonomy-walkthrough",
+          },
           { text: ".NET assemblies", link: "/managed-code-analysis" },
           {
             text: "Python packaged applications",
