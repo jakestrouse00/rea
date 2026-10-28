@@ -5,6 +5,7 @@ export interface AnalysisSettingValues {
   readonly "hopper.startup_timeout_ms": number;
   readonly "ghidra.decompile_timeout_seconds": number | null;
   readonly "jadx.operation_timeout_ms": number;
+  readonly "angr.operation_timeout_ms": number;
   readonly "regex.matching_deadline_ms": number;
   readonly "regex.worker_heap_request_mib": number;
   readonly "capture.decoder_old_generation_mib": number;

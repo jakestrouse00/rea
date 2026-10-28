@@ -163,6 +163,12 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "states grouping observes stored frames; no engine runs and no target executes",
   emulate_function_isolated:
     "states the selected bytes run only inside Unicorn's CPU and memory model; no instruction executes natively on the host",
+  find_paths_to_target:
+    "states one angr job runs in REA's own sidecar over angr's memory model; no instruction executes on or is written to the target",
+  run_symbolic_function_exploration:
+    "states one angr job runs in REA's own sidecar over angr's memory model; no instruction executes on or is written to the target",
+  recover_control_flow_angr:
+    "states angr loads the artifact in REA's own sidecar for static recovery; no target instruction runs and no live process is driven",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

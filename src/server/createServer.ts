@@ -291,6 +291,12 @@ import {
   emuLaneEnabled,
 } from "../composition/emu.js";
 import { registerEmuTools } from "./registerEmuTools.js";
+import type { AngrAnalysisPort } from "../application/angr/AngrAnalysisPort.js";
+import {
+  angrLaneEnabled,
+  createAngrAnalysisProvider,
+} from "../composition/angr.js";
+import { registerAngrTools } from "./registerAngrTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -360,6 +366,8 @@ export interface CreateServerOptions {
   readonly mitm?: MitmInterceptionPort;
   /** Bounded Unicorn/Keystone lane; omitted means the lane is selected from the environment. */
   readonly emu?: EmuAnalysisPort;
+  /** Bounded angr symbolic lane; omitted means the lane is selected from the environment. */
+  readonly angr?: AngrAnalysisPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -501,6 +509,10 @@ const installSessionToolAvailability = (
       emuEmulationEnabled: emuLaneEnabled(
         environment,
         options.emu !== undefined,
+      ),
+      angrSymbolicEnabled: angrLaneEnabled(
+        environment,
+        options.angr !== undefined,
       ),
     },
   });
@@ -723,6 +735,9 @@ export const createServer = (
   const replay = options.replay ?? createReplayService(environment);
   const mitm = options.mitm ?? createMitmInterceptionService(environment);
   const emu = options.emu ?? createEmuAnalysisProvider(environment);
+  const angr =
+    options.angr ??
+    createAngrAnalysisProvider(environment, analysisSettings.read);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -770,6 +785,7 @@ export const createServer = (
         if (!closed.ok) throw closed.error;
       }),
       emu.close(),
+      angr.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -1166,6 +1182,13 @@ export const createServer = (
     recordEvidence,
   });
   registerEmuTools(server, emu, toolLogger, recordEvidence, analysisAdmission);
+  registerAngrTools(
+    server,
+    angr,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {

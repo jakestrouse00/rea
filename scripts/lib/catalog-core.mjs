@@ -139,6 +139,8 @@ const SOURCE_PATHS = {
   mitmContracts: "dist/contracts/mitm/MitmToolContracts.js",
   emuContracts: "dist/contracts/emu/emuToolContracts.js",
   emuProvider: "dist/emu/EmuProvider.js",
+  angrContracts: "dist/contracts/angr/angrToolContracts.js",
+  angrProvider: "dist/angr/AngrProvider.js",
   crashTriageContracts:
     "dist/contracts/crashTriage/crashTriageToolContracts.js",
   crashTriageProvider: "dist/domain/crashTriage/crashReport.js",

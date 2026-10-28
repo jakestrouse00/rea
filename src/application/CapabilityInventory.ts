@@ -3,6 +3,11 @@ import {
   EMU_BRIDGE_DIR_REMEDIATION,
   EMU_PYTHON_ENV_REMEDIATION,
 } from "../domain/emu/emuLimits.js";
+import {
+  ANGR_BRIDGE_DIR_REMEDIATION,
+  ANGR_JOBS_ENV,
+  ANGR_PYTHON_ENV_REMEDIATION,
+} from "../domain/angr/angrLimits.js";
 import { DEFAULT_CALL_RELATIONSHIP_DIRECTION } from "../contracts/enhancedInputs.js";
 import { FIRMWARE_TOOL_REQUIREMENTS } from "../contracts/firmware/firmwareToolRequirements.js";
 import { CALL_RELATIONSHIP_TRAVERSALS } from "./CallRelationshipTraversal.js";
@@ -140,6 +145,8 @@ export type AvailabilityPolicy = {
   readonly mitmInterceptionEnabled?: boolean;
   /** A Python interpreter and the Unicorn/Keystone bridge script are selected. */
   readonly emuEmulationEnabled?: boolean;
+  /** A Python interpreter and the angr bridge script are selected. */
+  readonly angrSymbolicEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -785,6 +792,13 @@ const workflowAvailabilityFor = ({
       : {
           reason: "provider_missing",
           remediation: `${EMU_BRIDGE_DIR_REMEDIATION} ${EMU_PYTHON_ENV_REMEDIATION}`,
+        };
+  if (kind === "symbolic-engine")
+    return policy.angrSymbolicEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: `${ANGR_BRIDGE_DIR_REMEDIATION} ${ANGR_PYTHON_ENV_REMEDIATION} ${ANGR_JOBS_ENV} caps concurrent jobs in the same environment.`,
         };
   if (kind === "session") return { reason: "available", remediation: null };
   return null;

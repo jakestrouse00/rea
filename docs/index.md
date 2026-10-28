@@ -66,6 +66,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Triage sanitizer and macOS crash reports | [Crash triage](crash-triage.md) |
 | Inspect and rewrite one application's traffic | [mitmproxy interception](mitm-interception.md) |
 | Emulate one function body and assemble patch bytes | [Isolated emulation](emulation.md) |
+| Ask whether code can reach an address under assumptions | [Symbolic execution](angr-symbolic-execution.md) |
 | Use CLI/MCP and retain evidence | [CLI](cli.md), [MCP contracts](mcp-contracts.md), [agent prompts](mcp-prompts.md), [obligation ledgers](reconstruction-obligation-ledgers.md) |
 For development, use [testing](testing.md), [client verification](client-verification.md),
 [tool design](tool-design.md), [admission limits and recovery](design/limits-and-recovery.md),

@@ -67,6 +67,10 @@ export default defineConfig({
           },
           { text: "Isolated emulation", link: "/emulation" },
           {
+            text: "Symbolic execution",
+            link: "/angr-symbolic-execution",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

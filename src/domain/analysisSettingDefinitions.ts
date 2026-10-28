@@ -26,6 +26,7 @@ import {
   DEFAULT_WASM_COMMAND_TIMEOUT_MS,
   MAX_WASM_COMMAND_TIMEOUT_MS,
 } from "./wasm/wasmArtifact.js";
+import { DEFAULT_ANGR_OPERATION_TIMEOUT_MS } from "./angr/angrLimits.js";
 interface SettingDefinition {
   readonly environment?: string;
   readonly defaultValue: number | null;
@@ -135,6 +136,17 @@ export const ANALYSIS_SETTINGS = {
       "inspect_android_class",
       "inspect_android_method",
       "trace_android_references",
+    ],
+  },
+  "angr.operation_timeout_ms": {
+    ...timer,
+    environment: "REA_ANGR_OPERATION_TIMEOUT_MS",
+    defaultValue: DEFAULT_ANGR_OPERATION_TIMEOUT_MS,
+    provider: "angr",
+    operations: [
+      "find_paths_to_target",
+      "run_symbolic_function_exploration",
+      "recover_control_flow_angr",
     ],
   },
   "regex.matching_deadline_ms": {

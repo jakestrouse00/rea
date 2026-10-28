@@ -49,6 +49,7 @@ export const TOOL_KINDS = [
   "replay-provider",
   "mitm-provider",
   "emulator",
+  "symbolic-engine",
   "session",
 ] as const;
 

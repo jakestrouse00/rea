@@ -111,6 +111,19 @@ pairs, call counts, and the exit reason; code bytes and memory content never
 appear. There is no disassembler here, because rizin and objdump already cover
 it. See [isolated emulation](./emulation.md).
 
+## Symbolic execution
+
+MCP registers `find_paths_to_target`, `run_symbolic_function_exploration`, and
+`recover_control_flow_angr` for one bounded angr job each. Select the interpreter
+that carries angr 9.2.x with an absolute `REA_ANGR_PYTHON` and the bridge
+directory with `REA_ANGR_BRIDGE_DIR`; `REA_ANGR_JOBS` caps concurrent jobs and
+`angr.operation_timeout_ms` (or `REA_ANGR_OPERATION_TIMEOUT_MS`) sets the
+deadline. Callers constrain symbolic registers or a symbolic stdin window, and
+the answer reports path conditions as an operator tree and every model value as
+a SHA-256 digest, so no symbolic solution can be read back out of Evidence. The
+CFG recovery exists to cross-check rizin or Ghidra rather than to replace them.
+See [symbolic execution](./angr-symbolic-execution.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

@@ -403,6 +403,18 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
   }),
+  find_paths_to_target: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  run_symbolic_function_exploration: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  recover_control_flow_angr: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
   recover_go_symbols: effects({
     mutatesSession: true,
     launchesProcess: true,

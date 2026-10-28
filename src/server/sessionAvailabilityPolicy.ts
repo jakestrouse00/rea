@@ -31,6 +31,7 @@ export interface SessionAvailabilityDefaults {
     | "replayEnabled"
     | "mitmInterceptionEnabled"
     | "emuEmulationEnabled"
+    | "angrSymbolicEnabled"
   >;
 }
 
@@ -76,6 +77,8 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.mitmInterceptionEnabled ?? false,
       emuEmulationEnabled:
         defaults.optionalFeatures?.emuEmulationEnabled ?? false,
+      angrSymbolicEnabled:
+        defaults.optionalFeatures?.angrSymbolicEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:
