@@ -24,6 +24,7 @@ const REGISTRATION_SETTINGS = [
   "REA_IFCONFIG_PATH",
   "REA_BLUEUTIL_PATH",
   "REA_BLE_SCANNER_PATH",
+  "REA_BLE_GATT_PATH",
   "REA_WIFI_SCANNER_PATH",
   "REA_STTY_PATH",
   "REA_PACKET_CAPTURE_COMMAND",
@@ -109,6 +110,10 @@ export const inspectDiscoveryProvider = async (
             ? "; BLE scanner not configured, so the BLE advertisement scan source stays skipped"
             : `; BLE scanner at ${tools.bleScanner}`
         }${
+          tools.bleGatt === null
+            ? "; GATT helper not configured, so the BLE GATT session tools stay skipped"
+            : `; GATT helper at ${tools.bleGatt}`
+        }${
           tools.packetCapture === null
             ? "; capture program not configured, so packet capture stays unavailable"
             : `; capture program at ${tools.packetCapture}`
@@ -131,6 +136,7 @@ export const inspectDiscoveryProvider = async (
           ...(tools.bleScanner === null
             ? {}
             : { ble_scanner: tools.bleScanner }),
+          ...(tools.bleGatt === null ? {} : { ble_gatt: tools.bleGatt }),
           ...(tools.packetCapture === null
             ? {}
             : { packet_capture: tools.packetCapture }),

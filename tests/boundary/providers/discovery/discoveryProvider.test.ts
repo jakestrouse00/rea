@@ -651,3 +651,122 @@ test("an out-of-bound CIDR prefix is refused at admission", async () => {
   expect(refusal.ok).toBe(false);
   if (refusal.ok) throw new Error("expected a bound refusal");
 });
+
+test("a GATT connect without a configured helper is refused with remediation", async () => {
+  const { provider } = await providerFor({});
+  const refusal = await provider.execute({
+    operation: "connect_ble_gatt",
+    input: {
+      peripheral_id: "83230DAD-0DE2-0502-E697-45A509C963C0",
+      authorize_gatt: true,
+    },
+  } as unknown as Parameters<DiscoveryProvider["execute"]>[0]);
+  expect(refusal.ok).toBe(false);
+  if (refusal.ok) throw new Error("expected a configuration refusal");
+  const projected = projectAnalysisError(refusal.error);
+  expect(JSON.stringify(projected)).toContain("REA_BLE_GATT_PATH");
+});
+
+test("the GATT connect refuses without the explicit authorization", async () => {
+  const { provider, tools } = await providerFor({
+    gatt: {},
+  });
+  const refusal = await provider.execute({
+    operation: "connect_ble_gatt",
+    input: {
+      peripheral_id: "83230DAD-0DE2-0502-E697-45A509C963C0",
+      authorize_gatt: false,
+    },
+  } as unknown as Parameters<DiscoveryProvider["execute"]>[0]);
+  expect(refusal.ok).toBe(false);
+  if (refusal.ok) throw new Error("expected an authorization refusal");
+  const projected = projectAnalysisError(refusal.error);
+  expect(JSON.stringify(projected)).toContain("authorize_gatt");
+  void tools;
+});
+
+test("a scripted GATT helper carries connect, read and close through the provider", async () => {
+  const { provider, tools } = await providerFor({
+    gatt: { valueHex: "3130" },
+  });
+  const connected = (await resultOf(provider, {
+    operation: "connect_ble_gatt",
+    input: {
+      peripheral_id: "83230DAD-0DE2-0502-E697-45A509C963C0",
+      authorize_gatt: true,
+      connect_timeout_ms: 3000,
+    },
+  })) as {
+    tools: { ble_gatt: string | null };
+    session_id: string;
+    peripheral_id: string;
+    name: string | null;
+    services: {
+      uuid: string;
+      characteristics: { uuid: string; properties: string[] }[];
+    }[];
+  };
+  expect(connected.tools.ble_gatt).toBe(tools.paths.ble_gatt);
+  expect(connected.name).toBe("Fake Peripheral");
+  const discovered = connected.services[0]?.characteristics[0];
+  expect(discovered).toMatchObject({
+    uuid: "2A29",
+    properties: ["read"],
+  });
+  const sessionId = connected.session_id;
+  const read = (await resultOf(provider, {
+    operation: "read_gatt_characteristic",
+    input: {
+      session_id: sessionId,
+      service_uuid: "180A",
+      characteristic_uuid: "2A29",
+      include_payload_hex: false,
+    },
+  })) as { len: number; sha256: string; payload_hex: string | null };
+  expect(read.len).toBe(2);
+  expect(read.sha256).toEqual(expect.stringMatching(/^[0-9a-f]{64}$/u));
+  expect(read.payload_hex).toBeNull();
+  const explicit = (await resultOf(provider, {
+    operation: "read_gatt_characteristic",
+    input: {
+      session_id: sessionId,
+      service_uuid: "180A",
+      characteristic_uuid: "2A29",
+      include_payload_hex: true,
+    },
+  })) as { payload_hex: string | null };
+  expect(explicit.payload_hex).toBe("3130");
+  const observed = (await resultOf(provider, {
+    operation: "observe_gatt_notifications",
+    input: {
+      session_id: sessionId,
+      service_uuid: "180A",
+      characteristic_uuid: "2A29",
+      observe_seconds: 2,
+      include_payload_hex: true,
+    },
+  })) as { notifications: unknown[]; subscribed: boolean };
+  expect(observed.subscribed).toBe(true);
+  expect(observed.notifications).toEqual([]);
+  const closed = (await resultOf(provider, {
+    operation: "close_ble_gatt",
+    input: { session_id: sessionId },
+  })) as { clean: boolean; detail: string | null };
+  expect(closed.clean).toBe(true);
+  expect(closed.detail).toBeNull();
+  const afterClose = await provider.execute({
+    operation: "read_gatt_characteristic",
+    input: {
+      session_id: sessionId,
+      service_uuid: "180A",
+      characteristic_uuid: "2A29",
+      include_payload_hex: false,
+    },
+  } as unknown as Parameters<DiscoveryProvider["execute"]>[0]);
+  expect(afterClose.ok).toBe(false);
+  if (afterClose.ok)
+    throw new Error("expected the session to be gone after close");
+  const projected = projectAnalysisError(afterClose.error);
+  expect(JSON.stringify(projected)).toContain(sessionId);
+  await provider.close();
+});

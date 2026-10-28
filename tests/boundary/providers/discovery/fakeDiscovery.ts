@@ -32,6 +32,15 @@ export interface FakeDiscoveryBehavior {
   readonly inquiryRaw?: string;
   /** stdout for the fake BLE scanner (`ble-scan --seconds <s> ...`). */
   readonly bleRaw?: string;
+  /** Scripted behavior of the fake GATT helper (one persistent process). */
+  readonly gatt?: {
+    /** Connect handshake line; defaults to one read/notify service. */
+    readonly connected?: string;
+    /** Payload hex answered for reads. */
+    readonly valueHex?: string;
+    /** Notification payload hex list answered for observes. */
+    readonly notifications?: readonly string[];
+  };
   /** stdout for the fake CoreWLAN helper (`wifi-scan --seconds <s>`). */
   readonly wifiRaw?: string;
   /** Hex bytes the fake capture program writes to its first argument. */
@@ -96,6 +105,27 @@ else if (ROLE === "ping") {
   process.exit(2);
 } else if (ROLE === "blueutil") process.stdout.write(behavior.inquiryRaw ?? "");
 else if (ROLE === "ble_scan") process.stdout.write(behavior.bleRaw ?? "");
+else if (ROLE === "gatt") {
+  const gatt = behavior.gatt ?? {};
+  const emit = (row) => process.stdout.write(JSON.stringify(row) + "\n");
+  process.stdout.write(gatt.connected ?? JSON.stringify({
+    event: "connected", name: "Fake Peripheral",
+    services: [{ uuid: "180A", characteristics: [{ uuid: "2A29", properties: ["read"] }] }],
+  }) + "\n");
+  const lines = require("node:readline").createInterface({ input: process.stdin });
+  lines.on("line", (text) => {
+    const cmd = JSON.parse(text);
+    if (cmd.op === "read") emit({ event: "value", id: cmd.id, payload_hex: gatt.valueHex ?? "" });
+    else if (cmd.op === "write") emit({ event: "written", id: cmd.id });
+    else if (cmd.op === "observe") {
+      const notifications = gatt.notifications ?? [];
+      for (const payload_hex of notifications)
+        emit({ event: "notification", id: cmd.id, ts: "2026-10-28T05:00:00.000Z", payload_hex });
+      emit({ event: "window_end", id: cmd.id });
+    } else if (cmd.op === "disconnect") { emit({ event: "disconnected", id: cmd.id }); process.exit(0); }
+    else emit({ event: "error", id: cmd.id, message: "unsupported op" });
+  });
+}
 else if (ROLE === "wifi_scan") { process.stdout.write(behavior.wifiRaw ?? ""); process.exit(0); }
 else if (ROLE === "packet_capture") {
   try {
@@ -164,6 +194,20 @@ export const writeFakeDiscovery = async (
     await writeFile(path + ".json", JSON.stringify(behavior));
     paths.ble_scan = path;
     environment.REA_BLE_SCANNER_PATH = path;
+  }
+  if (behavior.gatt !== undefined) {
+    const path = join(root, "fake-gatt");
+    await writeFile(
+      path,
+      SCRIPT.replaceAll("__ROLE__", "gatt").replaceAll(
+        "__NODE__",
+        process.execPath,
+      ),
+    );
+    await chmod(path, 0o755);
+    await writeFile(path + ".json", JSON.stringify(behavior));
+    paths.ble_gatt = path;
+    environment.REA_BLE_GATT_PATH = path;
   }
   if (behavior.wifiRaw !== undefined) {
     const path = join(root, "fake-wifi-scan");

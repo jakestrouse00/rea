@@ -43,11 +43,29 @@ import {
   DISCOVERY_CAPTURE_REMEDIATION,
   DISCOVERY_LANE_NOTE,
   DISCOVERY_PROVIDER_ID,
+  DISCOVERY_BLE_GATT_REMEDIATION,
 } from "./DiscoveryRelease.js";
 import {
   executeBleScan,
   type BleScanNormalizedResult,
 } from "./ble/BleScanExecution.js";
+import {
+  executeGattClose,
+  executeGattConnect,
+  executeGattObserve,
+  executeGattRead,
+  executeGattWrite,
+  gattLimitations,
+  GATT_CLOSE_OPERATION,
+  GATT_CONNECT_OPERATION,
+  GATT_OBSERVE_OPERATION,
+  GATT_READ_OPERATION,
+  GATT_WRITE_OPERATION,
+} from "./ble/GattOperations.js";
+import {
+  GattSessionManager,
+  type GattProcessSpawner,
+} from "./ble/GattSessionManager.js";
 import {
   PACKET_CAPTURE_COMMAND_ENV,
   type CaptureInput,
@@ -77,6 +95,8 @@ export interface DiscoveryProviderOptions {
   readonly platform?: NodeJS.Platform;
   /** Test seam for the owned child launcher; production runs the executable. */
   readonly launcher?: DiscoveryProcessLauncher;
+  /** Test seam for the GATT helper's persistent child process. */
+  readonly gattSpawner?: GattProcessSpawner;
 }
 
 type RunFn = (
@@ -123,6 +143,7 @@ const toolsOf = (tools: DiscoveryToolset) => ({
   blueutil: tools.blueutil,
   ble_scanner: tools.bleScanner,
   wifi_scanner: tools.wifiScanner,
+  ble_gatt: tools.bleGatt,
   stty: tools.stty,
   packet_capture: tools.packetCapture,
 });
@@ -131,6 +152,7 @@ export class DiscoveryProvider {
   readonly #environment: Readonly<NodeJS.ProcessEnv>;
   readonly #platform: NodeJS.Platform;
   readonly #launcher: DiscoveryProcessLauncher | undefined;
+  readonly #gattSessions: GattSessionManager;
   readonly #activeOperations = new Set<Promise<void>>();
   #closing = false;
 
@@ -138,6 +160,10 @@ export class DiscoveryProvider {
     this.#environment = options.environment ?? process.env;
     this.#platform = options.platform ?? process.platform;
     this.#launcher = options.launcher;
+    this.#gattSessions =
+      options.gattSpawner === undefined
+        ? new GattSessionManager()
+        : new GattSessionManager({ spawnChild: options.gattSpawner });
   }
 
   /** Probe tool resolution without reading host tables or devices. */
@@ -176,6 +202,9 @@ export class DiscoveryProvider {
           ...(installation.value.tools.wifiScanner === null
             ? {}
             : { wifi_scanner: installation.value.tools.wifiScanner }),
+          ...(installation.value.tools.bleGatt === null
+            ? {}
+            : { ble_gatt: installation.value.tools.bleGatt }),
           ...(installation.value.tools.packetCapture === null
             ? {}
             : { packet_capture: installation.value.tools.packetCapture }),
@@ -194,10 +223,11 @@ export class DiscoveryProvider {
     }
   }
 
-  /** Stop admission and await active work. */
+  /** Stop admission and await active work, then close any GATT sessions. */
   async close(): Promise<void> {
     this.#closing = true;
     await Promise.all(this.#activeOperations);
+    await this.#gattSessions.closeAll();
   }
 
   async execute(
@@ -238,6 +268,36 @@ export class DiscoveryProvider {
           );
         case "scan_ble_advertisements":
           return await this.#scanBle(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "connect_ble_gatt":
+          return await this.#connectGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "read_gatt_characteristic":
+          return await this.#readGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "write_gatt_characteristic":
+          return await this.#writeGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "observe_gatt_notifications":
+          return await this.#observeGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "close_ble_gatt":
+          return await this.#closeGatt(
             resolvedInstallation,
             request.input,
             signal,
@@ -658,6 +718,246 @@ export class DiscoveryProvider {
         { limitations },
       ),
     );
+  }
+
+  async #requireGattHelper(
+    installation: ResolvedInstallation,
+  ): Promise<Result<string, AnalysisError>> {
+    const helper = installation.tools.bleGatt;
+    if (helper === null) {
+      const refusal = new Error(
+        "The GATT session lane requires a caller-compiled CoreBluetooth helper",
+      );
+      return err(
+        providerConfigurationRefusal(
+          DISCOVERY_PROVIDER_ID,
+          GATT_CONNECT_OPERATION,
+          Object.assign(refusal, {
+            diagnostics: {
+              setting: "REA_BLE_GATT_PATH",
+              remediation: DISCOVERY_BLE_GATT_REMEDIATION,
+            },
+          }) as Error,
+        ),
+      );
+    }
+    return ok(helper);
+  }
+
+  async #connectGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly peripheral_id: string;
+      readonly connect_timeout_ms: number;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const helper = await this.#requireGattHelper(installation);
+    if (!helper.ok) return helper;
+    const operation = GATT_CONNECT_OPERATION;
+    return await this.#runGattOperation(operation, signal, async () => {
+      // The schema types the authorization as literal true; the provider
+      // re-checks it so no execution path skips the gate.
+      if (
+        (input as { readonly authorize_gatt?: unknown }).authorize_gatt !== true
+      )
+        return err(
+          new AnalysisInputError(operation, {
+            userMessage:
+              "Opening the connection requires the caller's explicit authorization: pass authorize_gatt: true to acknowledge the ATT protocol requests this operation sends",
+          }),
+        );
+      const ran = await executeGattConnect(
+        this.#gattSessions,
+        helper.value,
+        input,
+        signal,
+      );
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            session_id: ran.value.session_id,
+            peripheral_id: ran.value.peripheral_id,
+            name: ran.value.name,
+            services: ran.value.services,
+            elapsed_ms: ran.value.elapsed_ms,
+            unparsed_lines: [],
+            coverage: "complete" as const,
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          { limitations: [DISCOVERY_LANE_NOTE, ...gattLimitations()] },
+        ),
+      );
+    });
+  }
+
+  async #readGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly session_id: string;
+      readonly service_uuid: string;
+      readonly characteristic_uuid: string;
+      readonly include_payload_hex: boolean;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const helper = await this.#requireGattHelper(installation);
+    if (!helper.ok) return helper;
+    const operation = GATT_READ_OPERATION;
+    return await this.#runGattOperation(operation, signal, async () => {
+      const ran = await executeGattRead(
+        this.#gattSessions,
+        input,
+        signal,
+        installation.operationTimeoutMs,
+      );
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            ...ran.value,
+            coverage: "complete" as const,
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          { limitations: [DISCOVERY_LANE_NOTE, ...gattLimitations()] },
+        ),
+      );
+    });
+  }
+
+  async #writeGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly session_id: string;
+      readonly service_uuid: string;
+      readonly characteristic_uuid: string;
+      readonly payload_hex: string;
+      readonly without_response: boolean;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const helper = await this.#requireGattHelper(installation);
+    if (!helper.ok) return helper;
+    const operation = GATT_WRITE_OPERATION;
+    return await this.#runGattOperation(operation, signal, async () => {
+      // Writes change device state; the per-call authorization is re-checked
+      // so no execution path skips the gate.
+      if (
+        (input as { readonly authorize_write?: unknown }).authorize_write !==
+        true
+      )
+        return err(
+          new AnalysisInputError(operation, {
+            userMessage:
+              "Writing to the peer requires the caller's explicit authorization: pass authorize_write: true to acknowledge the bytes it sends",
+          }),
+        );
+      const ran = await executeGattWrite(
+        this.#gattSessions,
+        input,
+        signal,
+        installation.operationTimeoutMs,
+      );
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            ...ran.value,
+            coverage: "complete" as const,
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          {
+            limitations: [
+              DISCOVERY_LANE_NOTE,
+              ...gattLimitations(),
+              "The written bytes were sent exactly once and are not echoed into this Evidence; only the byte count and target characteristic are retained",
+            ],
+          },
+        ),
+      );
+    });
+  }
+
+  async #observeGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly session_id: string;
+      readonly service_uuid: string;
+      readonly characteristic_uuid: string;
+      readonly observe_seconds: number;
+      readonly include_payload_hex: boolean;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const helper = await this.#requireGattHelper(installation);
+    if (!helper.ok) return helper;
+    const operation = GATT_OBSERVE_OPERATION;
+    return await this.#runGattOperation(operation, signal, async () => {
+      const ran = await executeGattObserve(this.#gattSessions, input, signal);
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            ...ran.value,
+            coverage: ran.value.window_exhausted
+              ? ("complete" as const)
+              : ("partial" as const),
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          {
+            limitations: [
+              DISCOVERY_LANE_NOTE,
+              ...gattLimitations(),
+              "The subscription's CCCD control write went to the peer on this session's own connection; the collected window itself received only notification packets",
+            ],
+          },
+        ),
+      );
+    });
+  }
+
+  async #closeGatt(
+    installation: ResolvedInstallation,
+    input: { readonly session_id: string },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const helper = await this.#requireGattHelper(installation);
+    if (!helper.ok) return helper;
+    const operation = GATT_CLOSE_OPERATION;
+    return await this.#runGattOperation(operation, signal, async () => {
+      const ran = await executeGattClose(this.#gattSessions, input, signal);
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: toolsOf(installation.tools),
+            ...ran.value,
+            coverage: ran.value.clean
+              ? ("complete" as const)
+              : ("partial" as const),
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          { limitations: [DISCOVERY_LANE_NOTE, ...gattLimitations()] },
+        ),
+      );
+    });
+  }
+
+  async #runGattOperation(
+    operation: string,
+    signal: AbortSignal | undefined,
+    run: () => Promise<Result<AnalysisExecution, AnalysisError>>,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    if (signal?.aborted === true)
+      return err(
+        new AnalysisCancelledError(operation, { cause: signal.reason }),
+      );
+    return await run();
   }
 
   async #scanWifi(

@@ -10,6 +10,15 @@
  * Real-host verification: the macOS commands were executed on the
  * implementing host against its own LAN at lane-addition time (observed,
  * not simulated).
+ *
+ * GATT extension: approved by fork maintainer, 2026-10-28. Adds one
+ * caller-authorized, caller-supplied-helper BLE GATT session lane over
+ * connect_ble_gatt (authorize_gatt), read_gatt_characteristic,
+ * write_gatt_characteristic (authorize_write, the only data-mutating op),
+ * observe_gatt_notifications (CCCD control write within the session) and
+ * close_ble_gatt, as documented in docs/discovery-analysis.md. The helper
+ * process is REA-owned supervision of a caller-built binary; REA never
+ * pairs and never retries a GATT write.
  */
 export const DISCOVERY_PROVIDER_ID = "discovery";
 
@@ -27,6 +36,9 @@ export const DISCOVERY_BLUEUTIL_REMEDIATION =
 /** Remediation when a BLE scan is requested but the scanner is not usable. */
 export const DISCOVERY_BLE_REMEDIATION =
   "Set REA_BLE_SCANNER_PATH to the absolute path of a caller-installed BLE advertisement scanner that prints one JSON object per line (a reference CoreBluetooth helper source ships at third_party/rea-helpers/ble-scan.swift; compile it locally with swiftc). REA never installs the scanner; without it scan_ble_advertisements stays skipped.";
+
+/** Remediation when GATT work is requested but the GATT helper is not usable. */
+export const DISCOVERY_BLE_GATT_REMEDIATION = `Set REA_BLE_GATT_PATH to the absolute path of a caller-compiled CoreBluetooth GATT helper (build with: swiftc -framework CoreBluetooth -o ~/.local/share/rea/bin/gatt <rea checkout>/third_party/rea-helpers/gatt.swift; the helper owns one connection and speaks a JSON-line protocol on stdio, reporting macOS Bluetooth authorization denial with a {"event":"authorization_denied"} stderr row and exit 2). REA never installs or builds the helper and never pairs; without it the GATT session tools stay skipped.`;
 
 /** Remediation when a capture is requested but the capture program is not configured. */
 export const DISCOVERY_CAPTURE_REMEDIATION = `Set REA_PACKET_CAPTURE_COMMAND to the absolute path of a caller-provided capture program (for example a tcpdump wrapper script preconfigured with its own interface and flags) that writes its output to the single argument REA appends, the output path. A packet capture originates packets and RxFrames from this host and needs caller-provided privileges: REA never installs a capture binary and never elevates privileges itself.`;

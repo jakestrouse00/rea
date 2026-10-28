@@ -98,6 +98,12 @@ export const CLI_COMMANDS = Object.freeze({
 
   scanBleAdvertisements: "scan-ble-advertisements",
 
+  connectBleGatt: "connect-ble-gatt",
+  readGattCharacteristic: "read-gatt-characteristic",
+  writeGattCharacteristic: "write-gatt-characteristic",
+  observeGattNotifications: "observe-gatt-notifications",
+  closeBleGatt: "close-ble-gatt",
+
   captureRadioPackets: "capture-radio-packets",
 
   scanWifiNetworks: "scan-wifi-networks",

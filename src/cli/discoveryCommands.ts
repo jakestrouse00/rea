@@ -147,6 +147,166 @@ export const registerDiscoveryCommands = (
         },
       ),
   });
+  cli.command(DISCOVERY_CLI_COMMANDS.connectBleGatt, {
+    description:
+      "Open one authorized CoreBluetooth GATT connection via a caller-supplied helper and discover its services (requires --authorize-gatt)",
+    options: z.object({
+      "peripheral-id": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("CoreBluetooth peripheral identifier (uppercase UUID)"),
+      "authorize-gatt": z
+        .boolean()
+        .describe(
+          "Must be true: the connection sends ATT protocol requests to the peer",
+        ),
+      "connect-timeout-ms": z
+        .number()
+        .int()
+        .min(1000)
+        .max(60000)
+        .default(10000)
+        .describe("Deadline for the connection and discovery handshake"),
+    }),
+    run: ({ options }) =>
+      execute(DISCOVERY_CLI_COMMANDS.connectBleGatt, "connect_ble_gatt", {
+        peripheral_id: options["peripheral-id"],
+        authorize_gatt: options["authorize-gatt"] === true,
+        connect_timeout_ms: options["connect-timeout-ms"],
+      }),
+  });
+  cli.command(DISCOVERY_CLI_COMMANDS.readGattCharacteristic, {
+    description:
+      "Read one characteristic value over an open GATT session (digest only unless --include-payload-hex)",
+    options: z.object({
+      "session-id": z.string().uuid().describe("Session from connect-ble-gatt"),
+      "service-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Service UUID as discovery reported it"),
+      "characteristic-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Characteristic UUID as discovery reported it"),
+      "include-payload-hex": z
+        .boolean()
+        .default(false)
+        .describe(
+          "Retain the payload hex in Evidence; the default reports a digest and length only",
+        ),
+    }),
+    run: ({ options }) =>
+      execute(
+        DISCOVERY_CLI_COMMANDS.readGattCharacteristic,
+        "read_gatt_characteristic",
+        {
+          session_id: options["session-id"],
+          service_uuid: options["service-uuid"],
+          characteristic_uuid: options["characteristic-uuid"],
+          include_payload_hex: options["include-payload-hex"],
+        },
+      ),
+  });
+  cli.command(DISCOVERY_CLI_COMMANDS.writeGattCharacteristic, {
+    description:
+      "Send bytes to one characteristic over an open GATT session exactly once; changes device state (requires --authorize-write)",
+    options: z.object({
+      "session-id": z.string().uuid().describe("Session from connect-ble-gatt"),
+      "service-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Service UUID as discovery reported it"),
+      "characteristic-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Characteristic UUID as discovery reported it"),
+      "payload-hex": z
+        .string()
+        .max(1024)
+        .regex(/^(?:[0-9a-fA-F]{2})+$/u)
+        .describe("Even-numbered hex bytes to send"),
+      "without-response": z
+        .boolean()
+        .default(false)
+        .describe("true uses the connectionless ATT write command"),
+      "authorize-write": z
+        .boolean()
+        .describe(
+          "Must be true: the peer can change device state, actuate hardware, or erase data",
+        ),
+    }),
+    run: ({ options }) =>
+      execute(
+        DISCOVERY_CLI_COMMANDS.writeGattCharacteristic,
+        "write_gatt_characteristic",
+        {
+          session_id: options["session-id"],
+          service_uuid: options["service-uuid"],
+          characteristic_uuid: options["characteristic-uuid"],
+          payload_hex: options["payload-hex"],
+          without_response: options["without-response"],
+          authorize_write: options["authorize-write"] === true,
+        },
+      ),
+  });
+  cli.command(DISCOVERY_CLI_COMMANDS.observeGattNotifications, {
+    description:
+      "Collect one bounded notification window over an open GATT session (CCCD control write within the session's own connection)",
+    options: z.object({
+      "session-id": z.string().uuid().describe("Session from connect-ble-gatt"),
+      "service-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Service UUID as discovery reported it"),
+      "characteristic-uuid": z
+        .string()
+        .min(1)
+        .max(64)
+        .describe("Notifiable characteristic UUID as discovery reported it"),
+      "observe-seconds": z
+        .number()
+        .int()
+        .min(2)
+        .max(60)
+        .default(10)
+        .describe("Notification observation window in seconds"),
+      "include-payload-hex": z
+        .boolean()
+        .default(false)
+        .describe(
+          "Retain notification payload hex in Evidence; the default reports digests",
+        ),
+    }),
+    run: ({ options }) =>
+      execute(
+        DISCOVERY_CLI_COMMANDS.observeGattNotifications,
+        "observe_gatt_notifications",
+        {
+          session_id: options["session-id"],
+          service_uuid: options["service-uuid"],
+          characteristic_uuid: options["characteristic-uuid"],
+          observe_seconds: options["observe-seconds"],
+          include_payload_hex: options["include-payload-hex"],
+        },
+      ),
+  });
+  cli.command(DISCOVERY_CLI_COMMANDS.closeBleGatt, {
+    description:
+      "Disconnect one named GATT session cleanly and report any cleanup uncertainty",
+    options: z.object({
+      "session-id": z.string().uuid().describe("Session from connect-ble-gatt"),
+    }),
+    run: ({ options }) =>
+      execute(DISCOVERY_CLI_COMMANDS.closeBleGatt, "close_ble_gatt", {
+        session_id: options["session-id"],
+      }),
+  });
   cli.command(DISCOVERY_CLI_COMMANDS.captureRadioPackets, {
     description:
       "Run a caller-supplied packet-capture program for one bounded window and validate the retained pcap file (requires --authorize)",

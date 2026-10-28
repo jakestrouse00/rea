@@ -16,7 +16,7 @@ export interface ToolEffects {
    * count.
    */
   readonly executesForeignCode: boolean;
-  /** Changes an attached Android device: packages, files, or running apps. */
+  /** Changes an attached device: Android packages, files, running apps, or peer-written GATT data. */
   readonly mutatesDevice: boolean;
   readonly idempotent: boolean;
 }
@@ -541,6 +541,37 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
     accessesNetwork: true,
+  }),
+  // The GATT session opens one caller-authorized CoreBluetooth connection and
+  // holds it across follow-up calls; reads and notification windows receive
+  // ATT payloads, writes are the only data-mutating class and need
+  // authorize_write per call. Fork maintainer scope decision 2026-10-28,
+  // recorded in docs/discovery-analysis.md.
+  connect_ble_gatt: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  read_gatt_characteristic: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+  }),
+  write_gatt_characteristic: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    mutatesDevice: true,
+    idempotent: false,
+  }),
+  // Subscribing writes the peer's CCCD descriptor on this session's own
+  // connection; the window itself is receive-only.
+  observe_gatt_notifications: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  close_ble_gatt: effects({
+    mutatesSession: true,
   }),
   capture_radio_packets: effects({
     mutatesSession: true,

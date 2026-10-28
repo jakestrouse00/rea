@@ -19,6 +19,8 @@ const EXECUTION_WORDING =
 const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   scan_ble_advertisements:
     "runs a caller-supplied CoreBluetooth scanner; no target code executes",
+  connect_ble_gatt:
+    "states it never pairs, installs, or rebuilds the helper; no target code executes",
   capture_radio_packets:
     "runs the caller-provided capture program; no target code executes",
   list_bluetooth_devices:
@@ -212,6 +214,7 @@ describe("tool effects", () => {
       "start_rizin_debug_session",
       "stop_adb_app",
       "uninstall_adb_package",
+      "write_gatt_characteristic",
     ]);
     for (const contract of destructive)
       expect(contract.annotations, contract.name).toMatchObject({

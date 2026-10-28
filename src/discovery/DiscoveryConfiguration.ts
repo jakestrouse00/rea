@@ -3,6 +3,7 @@ import { access, realpath } from "node:fs/promises";
 
 import { err, ok, type Result } from "../domain/result.js";
 import {
+  DISCOVERY_BLE_GATT_REMEDIATION,
   DISCOVERY_BLE_REMEDIATION,
   DISCOVERY_BLUEUTIL_REMEDIATION,
   DISCOVERY_CAPTURE_REMEDIATION,
@@ -31,6 +32,11 @@ export interface DiscoveryConfiguration {
   readonly bleScanner: string | null;
   /** Caller-supplied CoreWLAN helper; absent means the RF lane uses the fallback. */
   readonly wifiScanner: string | null;
+  /**
+   * Caller-supplied CoreBluetooth GATT helper; absent means the GATT session
+   * tools stay skipped.
+   */
+  readonly bleGatt: string | null;
   /** stty, needed only by the serial observe window; absent means it is refused. */
   readonly stty: string | null;
   /** Caller-supplied capture program; absent means capture stays unavailable. */
@@ -176,6 +182,18 @@ export const readDiscoveryConfiguration = (
       "REA_WIFI_SCANNER_PATH",
     );
 
+  const bleGattRaw = environment.REA_BLE_GATT_PATH;
+  if (
+    bleGattRaw !== undefined &&
+    bleGattRaw.length > 0 &&
+    !isAbsolute(bleGattRaw)
+  )
+    return failure(
+      "open_options_invalid",
+      `REA_BLE_GATT_PATH must be an absolute path; received ${bleGattRaw}. ${DISCOVERY_BLE_GATT_REMEDIATION}`,
+      "REA_BLE_GATT_PATH",
+    );
+
   const sttyRaw = environment.REA_STTY_PATH;
   if (sttyRaw !== undefined && sttyRaw.length > 0 && !isAbsolute(sttyRaw))
     return failure(
@@ -207,6 +225,8 @@ export const readDiscoveryConfiguration = (
       wifiScannerRaw === undefined || wifiScannerRaw.length === 0
         ? null
         : wifiScannerRaw,
+    bleGatt:
+      bleGattRaw === undefined || bleGattRaw.length === 0 ? null : bleGattRaw,
     stty: sttyRaw === undefined || sttyRaw.length === 0 ? "/bin/stty" : sttyRaw,
     operationTimeoutMs: DEFAULT_OPERATION_TIMEOUT_MS,
     browseProcessTimeoutMs: DEFAULT_DNS_SD_TIMEOUT_MS,

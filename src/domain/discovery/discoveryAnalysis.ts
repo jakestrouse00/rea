@@ -86,6 +86,108 @@ export const discoveryInputSchemas = {
         "Optional peripheral identifier filter; CoreBluetooth reports peripherals by UUID, not by Bluetooth MAC address",
       ),
   }),
+  connect_ble_gatt: z.strictObject({
+    peripheral_id: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe(
+        "CoreBluetooth peripheral identifier exactly as an advertisement reported it (uppercase UUID); macOS publishes rotating identifiers, not stable MAC addresses",
+      ),
+    authorize_gatt: z
+      .literal(true)
+      .describe(
+        "Must be true: opening the connection sends ATT protocol requests to the peer and changes the peer's connection state; data changes additionally need authorize_write on write_gatt_characteristic",
+      ),
+    connect_timeout_ms: z
+      .number()
+      .int()
+      .min(1000)
+      .max(60000)
+      .default(10000)
+      .describe("Deadline for the peer's connection and discovery handshake"),
+  }),
+  read_gatt_characteristic: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+    service_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Service UUID exactly as discovery reported it"),
+    characteristic_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Characteristic UUID exactly as discovery reported it"),
+    include_payload_hex: z
+      .boolean()
+      .default(false)
+      .describe(
+        "When false the value is reported as a SHA-256 digest and length only; when true the payload hex is retained in Evidence",
+      ),
+  }),
+  write_gatt_characteristic: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+    service_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Service UUID exactly as discovery reported it"),
+    characteristic_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Characteristic UUID exactly as discovery reported it"),
+    payload_hex: z
+      .string()
+      .max(1024)
+      .regex(/^(?:[0-9a-fA-F]{2})+$/u, "Even-numbered hex bytes, e.g. 33101100")
+      .describe(
+        "Bytes to write to the characteristic, as hex; the write is sent exactly once and never retried",
+      ),
+    without_response: z
+      .boolean()
+      .default(false)
+      .describe(
+        "true uses the connectionless ATT write command; false awaits the peer's acknowledgment",
+      ),
+    authorize_write: z
+      .literal(true)
+      .describe(
+        "Must be true: the bytes are sent to the peer and can change device state, actuate hardware, or erase data; REA sends them exactly once with no retry",
+      ),
+  }),
+  observe_gatt_notifications: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+    service_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Service UUID exactly as discovery reported it"),
+    characteristic_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe(
+        "Notifiable characteristic UUID exactly as discovery reported it",
+      ),
+    observe_seconds: z
+      .number()
+      .int()
+      .min(2)
+      .max(60)
+      .default(10)
+      .describe("Notification observation window in seconds"),
+    include_payload_hex: z
+      .boolean()
+      .default(false)
+      .describe(
+        "When false notifications are reported as SHA-256 digests and lengths only; when true the payload hex is retained in Evidence",
+      ),
+  }),
+  close_ble_gatt: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+  }),
   scan_wifi_networks: z.strictObject({
     include_ssid: z
       .boolean()
@@ -272,6 +374,26 @@ export const discoveryRequestSchema = z.discriminatedUnion("operation", [
     input: discoveryInputSchemas.scan_ble_advertisements,
   }),
   z.strictObject({
+    operation: z.literal("connect_ble_gatt"),
+    input: discoveryInputSchemas.connect_ble_gatt,
+  }),
+  z.strictObject({
+    operation: z.literal("read_gatt_characteristic"),
+    input: discoveryInputSchemas.read_gatt_characteristic,
+  }),
+  z.strictObject({
+    operation: z.literal("write_gatt_characteristic"),
+    input: discoveryInputSchemas.write_gatt_characteristic,
+  }),
+  z.strictObject({
+    operation: z.literal("observe_gatt_notifications"),
+    input: discoveryInputSchemas.observe_gatt_notifications,
+  }),
+  z.strictObject({
+    operation: z.literal("close_ble_gatt"),
+    input: discoveryInputSchemas.close_ble_gatt,
+  }),
+  z.strictObject({
     operation: z.literal("capture_radio_packets"),
     input: discoveryInputSchemas.capture_radio_packets,
   }),
@@ -316,6 +438,7 @@ const tools = z.strictObject({
   blueutil: z.string().min(1).nullable(),
   ble_scanner: z.string().min(1).nullable(),
   wifi_scanner: z.string().min(1).nullable(),
+  ble_gatt: z.string().min(1).nullable(),
   stty: z.string().min(1).nullable(),
   packet_capture: z.string().min(1).nullable(),
 });
@@ -386,6 +509,59 @@ const bleAdvertisement = z.strictObject({
   connectable: z.boolean().nullable(),
   manufacturer_hex: z.string().min(1).nullable(),
   service_uuids: z.array(z.string().min(1)),
+  raw: z.string().min(1),
+});
+
+/**
+ * One GATT service as the per-peripheral discovery reported it; 16-bit
+ * assignments keep their four-character spelling, vendor UUIDs stay verbatim.
+ */
+const gattService = z.strictObject({
+  uuid: z.string().min(1),
+  characteristics: z.array(
+    z.strictObject({
+      uuid: z.string().min(1),
+      properties: z.array(
+        z.enum([
+          "broadcast",
+          "read",
+          "write_without_response",
+          "write",
+          "notify",
+          "indicate",
+          "authenticated_signed_writes",
+          "extended_properties",
+        ]),
+      ),
+    }),
+  ),
+});
+
+/**
+ * Value-free payload accounting shared by reads and notifications: length
+ * and digest always; payload hex only when the caller opted in per call.
+ */
+const gattPayload = z.strictObject({
+  len: z.number().int().nonnegative(),
+  sha256: digestSchema,
+  payload_hex: z
+    .string()
+    .max(4096)
+    .regex(/^(?:[0-9a-f]{2})*$/u, "Lowercase hex byte pairs; empty is valid")
+    .nullable(),
+});
+
+/** One notification event as the helper published it. */
+const gattNotification = z.strictObject({
+  ts: z.string().min(1).nullable(),
+  len: z.number().int().nonnegative(),
+  sha256: digestSchema,
+  payload_hex: z.nullable(
+    z
+      .string()
+      .max(4096)
+      .regex(/^(?:[0-9a-f]{2})*$/u),
+  ),
   raw: z.string().min(1),
 });
 
@@ -473,6 +649,69 @@ export const discoveryResultSchemas = {
     elapsed_ms: z.number().int().nonnegative(),
     exit_code: z.number().int().nullable(),
     unparsed_lines: z.array(z.string().min(1)),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  connect_ble_gatt: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    name: z.string().min(1).nullable(),
+    services: z.array(gattService),
+    elapsed_ms: z.number().int().nonnegative(),
+    unparsed_lines: z.array(z.string().min(1)),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  read_gatt_characteristic: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    service_uuid: z.string().min(1),
+    characteristic_uuid: z.string().min(1),
+    len: z.number().int().nonnegative(),
+    sha256: digestSchema,
+    payload_hex: z.nullable(
+      z
+        .string()
+        .max(4096)
+        .regex(/^(?:[0-9a-f]{2})*$/u),
+    ),
+    elapsed_ms: z.number().int().nonnegative(),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  write_gatt_characteristic: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    service_uuid: z.string().min(1),
+    characteristic_uuid: z.string().min(1),
+    bytes_written: z.number().int().nonnegative(),
+    without_response: z.boolean(),
+    elapsed_ms: z.number().int().nonnegative(),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  observe_gatt_notifications: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    service_uuid: z.string().min(1),
+    characteristic_uuid: z.string().min(1),
+    observe_seconds: z.number().int().positive(),
+    subscribed: z.boolean(),
+    notifications: z.array(gattNotification),
+    window_exhausted: z.boolean(),
+    elapsed_ms: z.number().int().nonnegative(),
+    stop_reason: z.enum(["deadline", "cancelled", "peer_disconnect", "error"]),
+    unparsed_lines: z.array(z.string().min(1)),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  close_ble_gatt: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    name: z.string().min(1).nullable(),
+    clean: z.boolean(),
+    detail: z.string().min(1).nullable(),
+    elapsed_ms: z.number().int().nonnegative(),
     coverage: z.enum(["complete", "partial"]),
   }),
   probe_subnet_reachability: z.strictObject({

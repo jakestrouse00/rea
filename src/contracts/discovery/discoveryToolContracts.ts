@@ -89,6 +89,104 @@ export const DISCOVERY_TOOL_CONTRACTS = [
     ],
   },
   {
+    name: "connect_ble_gatt",
+    description:
+      "Open one CoreBluetooth GATT connection to a caller-named peripheral identifier (CoreBluetooth UUID as an advertisement reported it) through a caller-supplied helper (REA_BLE_GATT_PATH; REA never pairs, installs, or rebuilds the helper) and discover its services and characteristics. Requires authorize_gatt: true: the connection sends ATT protocol requests to the peer. One connection is held at a time; subsequent GATT calls name the returned session_id. Writes are a separate authorization (authorize_write). The peer's radio-visible connection state changes while the session is open.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.connect_ble_gatt,
+    outputSchema: evidenceResultOf(discoveryResultSchemas.connect_ble_gatt),
+    ...toolContractMetadata("connect_ble_gatt"),
+    examples: [
+      {
+        title: "Connect and discover one peripheral",
+        input: {
+          peripheral_id: "83230DAD-0DE2-0502-E697-45A509C963C0",
+          authorize_gatt: true,
+        },
+      },
+    ],
+  },
+  {
+    name: "read_gatt_characteristic",
+    description:
+      "Read one characteristic value over the open GATT session named by session_id. The value is reported value-free by default: a length and SHA-256 digest; payload hex only when include_payload_hex is true. The read reaches the peer once and is not retried.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.read_gatt_characteristic,
+    outputSchema: evidenceResultOf(
+      discoveryResultSchemas.read_gatt_characteristic,
+    ),
+    ...toolContractMetadata("read_gatt_characteristic"),
+    examples: [
+      {
+        title: "Read one characteristic, digest only",
+        input: {
+          session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4",
+          service_uuid: "180A",
+          characteristic_uuid: "2A29",
+        },
+      },
+    ],
+  },
+  {
+    name: "write_gatt_characteristic",
+    description:
+      "Send caller-provided bytes to one characteristic over the open GATT session once, with or without awaiting the peer's acknowledgment. Requires authorize_write: true: the peer can change device state, actuate hardware, or erase data, and REA never retries the bytes or reverses their effect.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.write_gatt_characteristic,
+    outputSchema: evidenceResultOf(
+      discoveryResultSchemas.write_gatt_characteristic,
+    ),
+    ...toolContractMetadata("write_gatt_characteristic"),
+    examples: [
+      {
+        title: "Write two bytes with response",
+        input: {
+          session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4",
+          service_uuid: "8E400001-F315-4F60-9FB8-838830DAEA50",
+          characteristic_uuid: "8E400002-F315-4F60-9FB8-838830DAEA50",
+          payload_hex: "33101100",
+          authorize_write: true,
+        },
+      },
+    ],
+  },
+  {
+    name: "observe_gatt_notifications",
+    description:
+      "Subscribe to one notifiable characteristic over the open GATT session and collect the peer's notifications for one bounded window. Subscribing sends the CCCD descriptor control write to the peer on this session's own connection; the collected window itself is receive-only. Values are digests by default, hex when include_payload_hex is true.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.observe_gatt_notifications,
+    outputSchema: evidenceResultOf(
+      discoveryResultSchemas.observe_gatt_notifications,
+    ),
+    ...toolContractMetadata("observe_gatt_notifications"),
+    examples: [
+      {
+        title: "Watch notifications for 10 s",
+        input: {
+          session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4",
+          service_uuid: "8E400001-F315-4F60-9FB8-838830DAEA50",
+          characteristic_uuid: "8E400003-F315-4F60-9FB8-838830DAEA50",
+        },
+      },
+    ],
+  },
+  {
+    name: "close_ble_gatt",
+    description:
+      "Disconnect the named GATT session cleanly: the helper disconnects from the peer and exits, and REA reports the disconnection along with any cleanup uncertainty left behind.",
+    kind: "runtime-provider",
+    inputSchema: discoveryInputSchemas.close_ble_gatt,
+    outputSchema: evidenceResultOf(discoveryResultSchemas.close_ble_gatt),
+    ...toolContractMetadata("close_ble_gatt"),
+    examples: [
+      {
+        title: "Disconnect one session",
+        input: { session_id: "8f3a5c9e-1d2b-4a3c-8d4e-5f60718293a4" },
+      },
+    ],
+  },
+  {
     name: "probe_subnet_reachability",
     description:
       "Send exactly one ICMP echo request to every candidate host of a caller-selected IPv4 CIDR (/22../32) at bounded concurrency, with optional TCP connect probes to caller-selected ports against responsive hosts. Requires `authorize_probe: true`: the packets originate from this host and are visible to network monitoring. No sweeping beyond the selected CIDR; no exploitation.",

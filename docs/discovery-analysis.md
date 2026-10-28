@@ -46,6 +46,29 @@ inventories above with these boundaries:
   `third_party/rea-helpers/`). It is receive-only — no connection
   requests to peers — and macOS reports peripherals by CoreBluetooth
   UUID, never by MAC address.
+- **BLE GATT sessions (approved by the fork maintainer, 2026-10-28):**
+  `connect_ble_gatt` opens ONE connection to a caller-named peripheral
+  identifier through the caller-supplied GATT helper
+  (`REA_BLE_GATT_PATH`; reference source `third_party/rea-helpers/gatt.swift`),
+  and requires `authorize_gatt: true` because the connection sends ATT
+  protocol requests and changes the peer's connection state. The session
+  is held by the REA process (`session_id`), one command in flight at a
+  time, never auto-reconnected. `read_gatt_characteristic` and
+  `observe_gatt_notifications` receive ATT payloads within that session;
+  values are reported value-free by default (SHA-256 + length) with
+  payload hex only on a per-call `include_payload_hex` opt-in, because
+  these payloads carry user data on real devices.
+  `write_gatt_characteristic` is the only data-mutating operation of the
+  lane: audited `mutatesDevice`, destructive, requires
+  `authorize_write: true` per call, sends the bytes exactly once, never
+  retries, and never echoes the payload into Evidence (byte count and
+  target only). `close_ble_gatt` disconnects and reports cleanup
+  uncertainty from the stop-escalation path (SIGTERM/SIGKILL). The
+  observe window's subscription sends the peer's CCCD control write on
+  the session's own connection. The helper is never installed, paired,
+  or rebuilt by REA. Real-device verification (a live peripheral
+  connect/read/observe/write/close cycle) has not been run yet: it is an
+  explicit unknown, and the lane's Evidence records no claims about it.
 - **`scan_wifi_networks`** observes 802.11 beacon frames through a
   caller-compiled CoreWLAN helper (`REA_WIFI_SCANNER_PATH`), falling
   back to the host's `system_profiler` airport scan cache. macOS gates
@@ -114,13 +137,18 @@ override:
 | ifconfig                   | `/sbin/ifconfig`            | `REA_IFCONFIG_PATH`          |
 | blueutil (optional)        | caller-installed            | `REA_BLUEUTIL_PATH`          |
 | BLE scanner (optional)     | caller-compiled             | `REA_BLE_SCANNER_PATH`       |
+| GATT helper (optional)     | caller-compiled             | `REA_BLE_GATT_PATH`          |
 | Wi-Fi helper (optional)    | caller-compiled             | `REA_WIFI_SCANNER_PATH`      |
 | stty (optional)            | `/bin/stty`                 | `REA_STTY_PATH`              |
 | capture program (optional) | caller-provided             | `REA_PACKET_CAPTURE_COMMAND` |
 
 Relative paths are refused fail-closed. `blueutil` is required only by
 the inquiry source; without it that source is skipped and reported as
-skipped, never silently absent.
+skipped, never silently absent. The GATT helper is required by every
+`*_gatt` operation; without it those operations are refused with the
+remediation string rather than returning empty results. Its reference
+source is `third_party/rea-helpers/gatt.swift`; it is caller-compiled,
+and REA never installs, pairs, or retries a GATT write.
 
 ## Real-provider verification
 

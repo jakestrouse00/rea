@@ -25,6 +25,7 @@ export interface DiscoveryInstallation {
     readonly blueutil: string | null;
     readonly bleScanner: string | null;
     readonly wifiScanner: string | null;
+    readonly bleGatt: string | null;
     readonly stty: string | null;
     readonly packetCapture: string | null;
   };
@@ -105,6 +106,11 @@ export const inspectDiscoveryInstallation = async (
       wifiScanner = value.wifiScanner;
   }
 
+  let bleGatt: string | null = null;
+  if (value.bleGatt !== null) {
+    if (await probeExecutable(value.bleGatt)) bleGatt = value.bleGatt;
+  }
+
   let stty: string | null = null;
   if (value.stty !== null) {
     if (await probeExecutable(value.stty)) stty = value.stty;
@@ -128,6 +134,7 @@ export const inspectDiscoveryInstallation = async (
       blueutil,
       bleScanner,
       wifiScanner,
+      bleGatt,
       stty,
       packetCapture,
     },

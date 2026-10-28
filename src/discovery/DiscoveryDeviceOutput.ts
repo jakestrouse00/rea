@@ -11,6 +11,7 @@ export interface DiscoveryToolset {
   readonly blueutil: string | null;
   readonly bleScanner: string | null;
   readonly wifiScanner: string | null;
+  readonly bleGatt: string | null;
   readonly stty: string | null;
   readonly packetCapture: string | null;
 }
