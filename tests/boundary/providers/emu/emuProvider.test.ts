@@ -238,6 +238,50 @@ test("marks coverage partial when a job stops at max_steps", async () => {
   await provider.close();
 });
 
+test("reports a terminal memory fault without assuming a return", async () => {
+  const { provider } = await providerFor({
+    emulate: {
+      result: {
+        exit: "invalid_memory_access",
+        exit_detail: { code: "read_unmapped", address: null },
+        coverage: "partial",
+      },
+    },
+  });
+  const result = await provider.execute({
+    operation: "emulate_function_isolated",
+    input: { arch: "x86_64", source: { kind: "hex", hex: CODE } },
+  });
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  const value = result.value.result as Record<string, unknown>;
+  expect(value.exit).toBe("invalid_memory_access");
+  expect(value.exit_detail).toEqual({
+    code: "read_unmapped",
+    address: null,
+  });
+  expect(value.coverage).toBe("partial");
+  await provider.close();
+});
+
+test("assembles on an interpreter that carries Keystone but not Unicorn", async () => {
+  const { provider } = await providerFor({ unicornVersion: null });
+  const result = await provider.execute({
+    operation: "assemble_bytes",
+    input: { arch: "x86_64", assembly: "ret" },
+  });
+  expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
+  if (!result.ok) return;
+  expect(result.value.provider).toMatchObject({
+    id: "unicorn",
+    version: null,
+  });
+  expect((result.value.result as Record<string, unknown>).bridge).toMatchObject(
+    { unicorn_version: null, keystone_version: "0.9.2" },
+  );
+  await provider.close();
+});
+
 test("reports a missing Unicorn import as an unavailable capability", async () => {
   const { provider } = await providerFor({
     emulate: {

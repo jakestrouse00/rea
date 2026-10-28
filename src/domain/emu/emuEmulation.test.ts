@@ -178,12 +178,26 @@ test("requires the pinned protocol in the bridge identity", () => {
     }).success,
   ).toBe(false);
   expect(
+    emuBridgeIdentitySchema.safeParse({
+      protocol: 1,
+      unicorn_version: null,
+      keystone_version: "0.9.2",
+    }).success,
+  ).toBe(true);
+  expect(
     emuBridgeResponseSchema.safeParse({
       protocol: 1,
       job_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7",
       kind: "emulate",
       ok: false,
       error: { code: "missing_dependency", message: "no unicorn" },
+    }).success,
+  ).toBe(true);
+  expect(
+    emuBridgeIdentitySchema.safeParse({
+      protocol: 1,
+      unicorn_version: null,
+      keystone_version: "0.9.2",
     }).success,
   ).toBe(true);
   expect(

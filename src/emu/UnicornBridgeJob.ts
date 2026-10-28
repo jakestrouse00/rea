@@ -90,10 +90,6 @@ export const runUnicornBridgeJob = async (
     expectedCommand: null,
     stdin: "pipe",
     hostEnvironment: input.hostEnvironment as NodeJS.ProcessEnv,
-    env: {
-      REA_UNICORN_PROTOCOL: String(EMU_PROTOCOL_VERSION),
-      REA_UNICORN_JOB_ID: jobId,
-    },
     ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   const supervisor = new ProviderProcessSupervisor(

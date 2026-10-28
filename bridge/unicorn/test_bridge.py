@@ -32,15 +32,81 @@ class FakeUcError(Exception):
         self.errno = errno
 
 
+# The stand-in decodes (uc_arch, uc_mode) back to a name and then applies its
+# own return model, so the bridge cannot make a return "true" by assertion: a
+# missing return address shows up as a program counter that never reaches the
+# stop address.
+ARCH_MODES = {
+    (4, 2): "x86_16",
+    (4, 4): "x86_32",
+    (4, 8): "x86_64",
+    (1, 0): "arm",
+    (1, 16): "thumb",
+    (2, 0): "arm64",
+    (3, 4): "mips32",
+    (3, 8): "mips64",
+    (5, 4): "ppc32",
+}
+
+CONST_MODULES = {
+    "x86_16": "x86_const",
+    "x86_32": "x86_const",
+    "x86_64": "x86_const",
+    "arm": "arm_const",
+    "thumb": "arm_const",
+    "arm64": "arm64_const",
+    "mips32": "mips_const",
+    "mips64": "mips_const",
+    "ppc32": "ppc_const",
+}
+
+# How each architecture class returns: a popped stack word or a link register.
+RETURN_MODELS = {
+    "x86_16": {"kind": "stack", "stack": "sp", "pc": "ip", "word": 2},
+    "x86_32": {"kind": "stack", "stack": "esp", "pc": "eip", "word": 4},
+    "x86_64": {"kind": "stack", "stack": "rsp", "pc": "rip", "word": 8},
+    "arm": {"kind": "link", "link": "lr", "pc": "pc", "word": 4},
+    "thumb": {"kind": "link", "link": "lr", "pc": "pc", "word": 4},
+    "arm64": {"kind": "link", "link": "x30", "pc": "pc", "word": 8},
+    "mips32": {"kind": "link", "link": "ra", "pc": "pc", "word": 4},
+    "mips64": {"kind": "link", "link": "ra", "pc": "pc", "word": 8},
+    "ppc32": {"kind": "link", "link": "lr", "pc": "pc", "word": 4},
+}
+
+
+def register_ids(constants, arch: str) -> dict:
+    """Map register names to the stand-in's identifiers for one architecture."""
+    prefix = {
+        "x86_16": "X86",
+        "x86_32": "X86",
+        "x86_64": "X86",
+        "arm": "ARM",
+        "thumb": "ARM",
+        "arm64": "ARM64",
+        "mips32": "MIPS",
+        "mips64": "MIPS",
+        "ppc32": "PPC",
+    }[arch]
+    module = getattr(constants, CONST_MODULES[arch])
+    marker = f"UC_{prefix}_REG_"
+    return {
+        name[len(marker) :].lower(): getattr(module, name)
+        for name in dir(module)
+        if name.startswith(marker) and name[len(marker) :].lower() != "ending"
+    }
+
+
 class FakeUc:
+    constants = None
+
     def __init__(self, arch, mode) -> None:
-        self.arch = arch
+        self.arch = ARCH_MODES[(arch, mode & ~(1 << 30))]
         self.mode = mode
+        self.ids = register_ids(self.constants, self.arch)
         self.registers = {}
         self.memory = {}
         self.mapped = []
         self.hooked = []
-        self.last_written = None
         self.on_start = None
 
     def mem_map(self, address, size, prot) -> None:
@@ -58,7 +124,6 @@ class FakeUc:
 
     def reg_write(self, register, value) -> None:
         self.registers[register] = value
-        self.last_written = register
 
     def reg_read(self, register):
         return self.registers.get(register, 0)
@@ -66,15 +131,29 @@ class FakeUc:
     def hook_add(self, kind, callback) -> None:
         self.hooked.append(callback)
 
+    def word_at(self, address, size):
+        try:
+            payload = self.mem_read(address, size)
+        except FakeUcError:
+            return None
+        return int.from_bytes(payload, "big" if self.mode & (1 << 30) else "little")
+
     def emu_start(self, begin, until, timeout, count) -> None:
         if self.on_start is not None:
             self.on_start(self)
             return
         for callback in self.hooked:
             callback(self, begin, 1, None)
-        # The bridge writes the program counter last, so the stand-in reads the
-        # same register the engine would.
-        self.registers[self.last_written] = until
+        model = RETURN_MODELS[self.arch]
+        program_counter = self.ids[model["pc"]]
+        if model["kind"] == "stack":
+            stack_pointer = self.ids[model["stack"]]
+            pointer = self.reg_read(stack_pointer)
+            popped = self.word_at(pointer, model["word"])
+            self.reg_write(stack_pointer, pointer + model["word"])
+            self.registers[program_counter] = 0 if popped is None else popped
+            return
+        self.registers[program_counter] = self.reg_read(self.ids[model["link"]])
 
     def emu_stop(self) -> None:
         return None
@@ -121,12 +200,28 @@ def unicorn_stub(version: str = "2.1.4"):
         return constants
 
     module.x86_const = const_module(
-        "X86", ["rax", "rcx", "rdx", "rdi", "rsi", "r8", "r9", "rsp", "rip"]
+        "X86",
+        [
+            "rax",
+            "rcx",
+            "rdx",
+            "rdi",
+            "rsi",
+            "r8",
+            "r9",
+            "rsp",
+            "rip",
+            "esp",
+            "eip",
+            "sp",
+            "ip",
+        ],
     )
     module.arm_const = const_module("ARM", ["r0", "r1", "r2", "r3", "sp", "pc", "lr"])
     module.arm64_const = const_module("ARM64", ["x0", "x1", "sp", "pc", "x30"])
     module.mips_const = const_module("MIPS", ["a0", "sp", "pc", "ra"])
     module.ppc_const = const_module("PPC", ["r1", "r3", "pc", "lr"])
+    FakeUc.constants = module
     return module
 
 
@@ -238,6 +333,12 @@ class ProtocolTests(BridgeTestCase):
         refusal = self.refuse(self.request(endianness="big"))
         self.assertEqual(refusal.code, "unsupported_mode")
 
+    def test_refuses_a_layout_larger_than_the_mode_address_space(self):
+        sys.modules["unicorn"] = unicorn_stub()
+        refusal = self.refuse(self.request(arch="x86_16"))
+        self.assertEqual(refusal.code, "invalid_request")
+        self.assertIn("address space", refusal.message)
+
     def test_refuses_an_entry_outside_the_code(self):
         sys.modules["unicorn"] = unicorn_stub()
         refusal = self.refuse(self.request(entry="0x500000"))
@@ -297,6 +398,80 @@ class EmulationTests(BridgeTestCase):
         self.assertEqual(mapped[1], (0x402000, 0x1000))
         self.assertEqual(mapped[2], (0x403000, 0x1000))
 
+    def test_pushes_the_return_address_below_the_spilled_arguments(self):
+        captured = {}
+
+        def capture(uc):
+            captured["uc"] = uc
+
+        original = self.unicorn.Uc
+
+        def factory(arch, mode):
+            instance = original(arch, mode)
+            instance.on_start = capture
+            return instance
+
+        self.unicorn.Uc = factory
+        self.bridge.handle(
+            self.request(
+                args=[
+                    "0x1",
+                    "0x2",
+                    "0x3",
+                    "0x4",
+                    "0x5",
+                    "0x6",
+                    "0x7a7a",
+                    "0x8b8b",
+                ]
+            )
+        )
+        uc = captured["uc"]
+        sentinel = uc.mapped[2][0]
+        stack_pointer = uc.reg_read(uc.ids["rsp"])
+        self.assertEqual(uc.word_at(stack_pointer, 8), sentinel)
+        self.assertEqual(uc.word_at(stack_pointer + 8, 8), 0x7A7A)
+        self.assertEqual(uc.word_at(stack_pointer + 16, 8), 0x8B8B)
+        self.assertEqual(uc.reg_read(uc.ids["rdi"]), 0x1)
+        self.assertEqual(uc.reg_read(uc.ids["r9"]), 0x6)
+
+    def test_reports_a_return_on_a_32_bit_stack_architecture(self):
+        captured = {}
+
+        def capture(uc):
+            captured["uc"] = uc
+
+        original = self.unicorn.Uc
+
+        def factory(arch, mode):
+            instance = original(arch, mode)
+            instance.on_start = capture
+            return instance
+
+        self.unicorn.Uc = factory
+        self.bridge.handle(
+            self.request(
+                arch="x86_32",
+                args=["0x11"],
+            )
+        )
+        uc = captured["uc"]
+        sentinel = uc.mapped[2][0]
+        stack_pointer = uc.reg_read(uc.ids["esp"])
+        self.assertEqual(uc.word_at(stack_pointer, 4), sentinel)
+        self.assertEqual(uc.word_at(stack_pointer + 4, 4), 0x11)
+
+    def test_reports_a_return_on_a_link_register_architecture(self):
+        result = self.bridge.handle(
+            self.request(
+                arch="arm64",
+                code_hex="c0035fd6",
+                code_sha256=self.bridge.digest_hex(bytes.fromhex("c0035fd6")),
+            )
+        )
+        self.assertEqual(result["exit"], "returned")
+        self.assertEqual(result["exit_detail"]["code"], "sentinel_return")
+
     def test_reports_invalid_memory_access_as_a_terminal_reason(self):
         original = self.unicorn.Uc
 
@@ -330,6 +505,18 @@ class EmulationTests(BridgeTestCase):
         self.assertEqual(result["exit"], "max_steps")
         self.assertEqual(result["executed_steps"], 1)
         self.assertEqual(result["coverage"], "partial")
+
+
+class StandInModelTests(BridgeTestCase):
+    def test_stand_in_does_not_claim_a_return_without_a_return_address(self):
+        self.unicorn = unicorn_stub()
+        sys.modules["unicorn"] = self.unicorn
+        uc = self.unicorn.Uc(self.unicorn.UC_ARCH_X86, self.unicorn.UC_MODE_64)
+        uc.emu_start(0x401000, 0x403000, 1000, 8)
+        # Nothing was pushed, so the popped program counter is 0, not the stop
+        # address: the stand-in models the pop, it does not assert the outcome.
+        self.assertEqual(uc.reg_read(uc.ids["rip"]), 0)
+        self.assertEqual(uc.reg_read(uc.ids["rsp"]), 8)
 
 
 class CallDetectionTests(BridgeTestCase):
@@ -371,6 +558,24 @@ class AssemblyTests(BridgeTestCase):
         self.assertEqual(result["assembly"], "nop")
         self.assertEqual(result["base_address"], "0x401000")
         self.assertEqual(FakeKs.last_request[3], 0x401000)
+
+    def test_assembles_without_unicorn_and_reports_no_unicorn_version(self):
+        del sys.modules["unicorn"]
+        result = self.bridge.handle(
+            {
+                "protocol": 1,
+                "job_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+                "kind": "assemble",
+                "arch": "x86_64",
+                "endianness": "little",
+                "base_address": "0x401000",
+                "assembly": "nop",
+                "max_bytes": 16,
+            }
+        )
+        self.assertIsNone(result["bridge"]["unicorn_version"])
+        self.assertEqual(result["bridge"]["keystone_version"], "0.9.2")
+        self.assertEqual(result["bytes_hex"], "90")
 
     def test_refuses_without_keystone(self):
         del sys.modules["keystone"]

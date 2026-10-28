@@ -7,7 +7,6 @@ import { createAnalysisExecution } from "../application/AnalysisProvider.js";
 import { AnalysisError } from "../domain/analysisErrorBase.js";
 import {
   AnalysisCancelledError,
-  AnalysisCapabilityUnavailableError,
   AnalysisInputError,
   AnalysisProtocolError,
 } from "../domain/analysisErrorCore.js";
@@ -44,10 +43,7 @@ import {
   type CodeBytes,
 } from "./CodeSlice.js";
 import { bridgeJobFailure } from "./EmuRefusal.js";
-import {
-  runUnicornBridgeJob,
-  UnicornBridgeProtocolFailure,
-} from "./UnicornBridgeJob.js";
+import { runUnicornBridgeJob } from "./UnicornBridgeJob.js";
 
 export const EMU_PROVIDER_IDENTITY = {
   id: EMU_PROVIDER_ID,
@@ -80,7 +76,7 @@ const requireEndianness = (
       ])
     : null;
 
-const providerOf = (unicornVersion: string) => ({
+const providerOf = (unicornVersion: string | null) => ({
   ...EMU_PROVIDER_IDENTITY,
   version: unicornVersion,
 });
@@ -398,25 +394,13 @@ export class EmuProvider {
         );
       return ok(envelope.data.result);
     } catch (cause: unknown) {
+      // runUnicornBridgeJob owns cause projection: it throws only AnalysisError,
+      // with protocol, cancellation, deadline, and cleanup failures already
+      // classified. A non-AnalysisError here is outside that contract.
       if (cause instanceof AnalysisError) return err(cause);
-      if (cause instanceof UnicornBridgeProtocolFailure)
-        return err(
-          new AnalysisProtocolError(`${cause.message} for ${operation}`, {
-            cause,
-            diagnostics: cause.diagnostics,
-          }),
-        );
-      if (signal?.aborted === true)
-        return err(
-          new AnalysisCancelledError(operation, { cause: signal.reason }),
-        );
       return err(
-        new AnalysisCapabilityUnavailableError(
-          EMU_PROVIDER_ID,
-          operation,
-          cause instanceof Error
-            ? cause.message
-            : "The Unicorn bridge failed without a reason",
+        new AnalysisProtocolError(
+          `The Unicorn bridge failed outside its own contract for ${operation}`,
           { cause },
         ),
       );

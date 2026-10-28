@@ -71,6 +71,11 @@ LINK_REGISTERS = {
     "ppc32": "lr",
 }
 
+# Architectures whose return address is popped from the stack. The sentinel is
+# pushed as the top word of the private stack, so a `ret` at the end of the
+# caller's code lands on it; every stack argument sits above that word.
+STACK_RETURN_ARCHITECTURES = frozenset(("x86_16", "x86_32", "x86_64"))
+
 ARCH_CONSTANT_NAMES = {
     "x86_16": "x86",
     "x86_32": "x86",
@@ -281,6 +286,11 @@ def errno_name(unicorn, errno: int) -> str:
 def push_word(uc, table, register_name, pointer_bytes, big_endian, value) -> int:
     if register_name not in table:
         raise BridgeRefusal("unsupported_mode", f"{register_name} is unavailable in this mode")
+    if value < 0 or value >= 1 << (pointer_bytes * 8):
+        raise BridgeRefusal(
+            "invalid_request",
+            f"a stub value does not fit this mode's {pointer_bytes * 8}-bit word",
+        )
     stack_pointer = uc.reg_read(table[register_name]) - pointer_bytes
     endianness = "big" if big_endian else "little"
     uc.mem_write(stack_pointer, value.to_bytes(pointer_bytes, endianness))
@@ -289,6 +299,16 @@ def push_word(uc, table, register_name, pointer_bytes, big_endian, value) -> int
 
 
 def setup_arguments(uc, table, arch, pointer_bytes, big_endian, args, sentinel) -> None:
+    """Place stub arguments and the return address at the function's entry state.
+
+    Register arguments go to the architecture's argument registers. Arguments
+    beyond those registers are pushed first, right to left, so that after the
+    return-address word is pushed the stack reads `[sp] = return address`,
+    `[sp + word] = first stack argument`, and so on, which is the layout the
+    caller's `call` would have produced. Architectures in
+    STACK_RETURN_ARCHITECTURES therefore get the sentinel pushed last; the rest
+    put it in their link register.
+    """
     names = ARGUMENT_REGISTERS.get(arch, ())
     stack_spilled = []
     for index, value in enumerate(args):
@@ -303,7 +323,7 @@ def setup_arguments(uc, table, arch, pointer_bytes, big_endian, args, sentinel) 
         return
     for value in reversed(stack_spilled):
         push_word(uc, table, stack_register, pointer_bytes, big_endian, value)
-    if arch in ("x86_16", "x86_32"):
+    if arch in STACK_RETURN_ARCHITECTURES:
         push_word(uc, table, stack_register, pointer_bytes, big_endian, sentinel)
     link = LINK_REGISTERS.get(arch)
     if link is not None:
@@ -612,6 +632,18 @@ def assemble(request: dict, bridge: dict) -> dict:
     }
 
 
+def optional_unicorn_version():
+    """Report the loaded Unicorn release without requiring it.
+
+    An assembly job needs Keystone only, so a Keystone-only environment answers
+    with `unicorn_version: null` instead of failing the identity lookup.
+    """
+    try:
+        return unicorn_version()
+    except ImportError:
+        return None
+
+
 def handle(request: dict) -> dict:
     if not isinstance(request, dict):
         raise BridgeRefusal("invalid_request", "a request must be a JSON object")
@@ -634,7 +666,7 @@ def handle(request: dict) -> dict:
         request,
         {
             "protocol": PROTOCOL,
-            "unicorn_version": unicorn_version(),
+            "unicorn_version": optional_unicorn_version(),
             "keystone_version": keystone_version(),
         },
     )

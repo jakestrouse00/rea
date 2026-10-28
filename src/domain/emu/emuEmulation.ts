@@ -135,7 +135,7 @@ export const assembleBytesInputSchema = z.strictObject({
 
 export const emuBridgeIdentitySchema = z.strictObject({
   protocol: z.literal(EMU_PROTOCOL_VERSION),
-  unicorn_version: z.string().min(1),
+  unicorn_version: z.string().min(1).nullable(),
   keystone_version: z.string().min(1).nullable(),
 });
 

@@ -128,12 +128,17 @@ const bridgeFailure = (directory: string): EmuConfigurationFailure | null => {
     accessSync(script, constants.R_OK);
     return null;
   } catch (cause: unknown) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    const denied = code === "EACCES" || code === "EPERM";
     return failure(
       "bridge_script_missing",
-      `The bridge script ${EMU_BRIDGE_FILE_NAME} was not found in ${directory}`,
+      denied
+        ? `The bridge script ${EMU_BRIDGE_FILE_NAME} is not readable in ${directory}`
+        : `The bridge script ${EMU_BRIDGE_FILE_NAME} was not found in ${directory}`,
       {
         setting: EMU_BRIDGE_DIR_ENV,
         bridge_script: script,
+        ...(code === undefined ? {} : { filesystem_error: code }),
         remediation: EMU_BRIDGE_DIR_REMEDIATION,
       },
       cause,

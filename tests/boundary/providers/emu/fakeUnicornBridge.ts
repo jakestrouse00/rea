@@ -20,7 +20,8 @@ export interface FakeEmuJobBehavior {
 export interface FakeEmuBridgeBehavior {
   readonly emulate?: FakeEmuJobBehavior;
   readonly assemble?: FakeEmuJobBehavior;
-  readonly unicornVersion?: string;
+  /** `null` models an interpreter that carries Keystone but not Unicorn. */
+  readonly unicornVersion?: string | null;
   readonly keystoneVersion?: string | null;
   /** Protocol number the fake puts in its answer envelope. */
   readonly protocol?: number;
@@ -73,8 +74,12 @@ const answer = (request, spec) => {
       ? {
           bridge: {
             protocol: 1,
-            unicorn_version: behavior.unicornVersion ?? "2.1.4",
-            keystone_version: behavior.keystoneVersion ?? "0.9.2",
+            unicorn_version:
+              "unicornVersion" in behavior
+                ? behavior.unicornVersion
+                : "2.1.4",
+            keystone_version:
+              "keystoneVersion" in behavior ? behavior.keystoneVersion : "0.9.2",
           },
           arch: request.arch,
           endianness: request.endianness,
@@ -112,8 +117,12 @@ const answer = (request, spec) => {
       : {
           bridge: {
             protocol: 1,
-            unicorn_version: behavior.unicornVersion ?? "2.1.4",
-            keystone_version: behavior.keystoneVersion ?? "0.9.2",
+            unicorn_version:
+              "unicornVersion" in behavior
+                ? behavior.unicornVersion
+                : "2.1.4",
+            keystone_version:
+              "keystoneVersion" in behavior ? behavior.keystoneVersion : "0.9.2",
           },
           arch: request.arch,
           endianness: request.endianness,

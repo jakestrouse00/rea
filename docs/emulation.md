@@ -68,7 +68,9 @@ minor release (`version_unsupported`). It reports the exact `unicorn` and
 `keystone` versions it loaded in every result, so a recorded observation always
 names the engine that produced it. Keystone is imported lazily: an
 `emulate_function_isolated` job works without it, and `assemble_bytes` refuses
-with `missing_dependency` when it is absent.
+with `missing_dependency` when it is absent. Assembly needs no Unicorn at all, so
+an environment with Keystone but no Unicorn answers `assemble_bytes` and reports
+`unicorn_version: null` in the job identity.
 
 ### Wire protocol
 
@@ -99,7 +101,9 @@ accepted. The request and answer budgets are fixed at 1 MiB per line.
 | Bridge frame            | 1 MiB per line                                                               | `emu.bridge_frame_bytes` |
 
 Exceeding a step or time bound is a completed job whose `coverage` is `partial`
-and whose `exit` names the bound. Exceeding a storage bound keeps the job and
+and whose `exit` names the bound. Every bound above is a published, fixed
+control: `inspect_analysis_settings` reports the same names and values, and none
+of them has a runtime override. Exceeding a storage bound keeps the job and
 marks `edges_truncated` or `call_targets_truncated`, so an omitted edge is never
 reported as absence of an edge.
 
@@ -134,11 +138,36 @@ the caller supplied, the base address, the size, and the SHA-256.
 and `ppc32`; any other architecture with `endianness: "big"` is refused before a
 process starts.
 
+The code, stack, and sentinel regions all have to fit the mode's address space,
+so a 16-bit mode with the default `code_base` is refused before a process
+starts: select a `code_base` and `stack_size` that fit the mode.
+
 Stub arguments are placed by the architecture calling convention: `rdi`/`rsi`/
 `rdx`/`rcx`/`r8`/`r9` for x86-64, the stack for x86-16/x86-32, `r0`–`r3` for
 ARM and Thumb, `x0`–`x7` for AArch64, `a0`–`a3` for MIPS, and `r3`–`r10` for
-PowerPC. The return address is a REA-owned sentinel page beyond the stack, which
-is how `exit: "returned"` is observed.
+PowerPC. Arguments beyond those registers are pushed first, so the entry stack
+reads `[sp] = return address`, `[sp + word] = first stack argument`, and so on —
+the layout a caller's `call` would have produced.
+
+The return address is a REA-owned sentinel page mapped beyond the stack, and how
+it is delivered depends on the architecture:
+
+- **`x86_16`, `x86_32`, `x86_64`** — the sentinel is pushed as the top word of
+  the private stack at entry, so the function's own `ret` pops it. `rsp`/`esp`/`sp`
+  therefore already point at the return address when the first instruction runs,
+  and any stack argument sits above it. A function that returns normally ends as
+  `exit: "returned"`.
+- **`arm`, `thumb`, `arm64`, `mips32`, `mips64`, `ppc32`** — the sentinel goes
+  into the link register (`lr`, `x30`, `ra`, `lr`) and the stack pointer stays at
+  the top of the stack region. Here a `return` branches to the link register
+  rather than popping memory, so the stack is untouched by the return.
+
+Both mechanisms end at the same sentinel address, which Unicorn stops on before
+fetching anything there; the mapped page holds no meaningful instructions. The
+difference matters when reading the job's final registers: on x86 the entry stack
+pointer sits one word below the pre-call stack top and `sp` advances past the
+return address as it pops, while on link-register architectures `sp` is unchanged
+by the return.
 
 ## Limitations
 
