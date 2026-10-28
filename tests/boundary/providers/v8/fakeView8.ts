@@ -1,3 +1,4 @@
+import vm from "node:vm";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -31,20 +32,32 @@ export const writeFakeView8 = async (
   return { launcher, callsPath };
 };
 
-/** Build one cached-data file: marker, version, source, flag, checksum, length, payload. */
-export const cachedDataFixture = (
-  payload: Buffer,
-  options: {
-    readonly versionHash?: number;
-    readonly declaredLength?: number;
-  } = {},
-): Buffer => {
+/**
+ * Produce a real V8 cached-data artifact with the Node running this test, so
+ * the decode is checked against bytes V8 wrote rather than bytes the fixture
+ * invented from the same assumption.
+ */
+export const realCachedData = (source: string): Buffer => {
+  const script = new vm.Script(source, { produceCachedData: true });
+  const data = script.cachedData;
+  if (data === undefined || data.byteLength === 0)
+    throw new Error("This Node did not produce cached data");
+  return data;
+};
+
+/**
+ * Build one artifact in the documented bytenode-era V8 10 layout: 24-byte
+ * header with a source hash and a payload checksum instead of a source length
+ * and a read-only snapshot checksum. No such V8 is installed here, so this
+ * fixture only exercises that branch's word map.
+ */
+export const documentedCachedDataFixture = (payload: Buffer): Buffer => {
   const header = Buffer.alloc(24);
   header.writeUInt32LE(0xc0de_0000, 0);
-  header.writeUInt32LE(options.versionHash ?? 0x1234_5678, 4);
-  header.writeUInt32LE(0x8765_4321, 8);
-  header.writeUInt32LE(0x0000_0001, 12);
-  header.writeUInt32LE(0xdead_beef, 16);
-  header.writeUInt32LE(options.declaredLength ?? payload.byteLength, 20);
+  header.writeUInt32LE(0x1122_3344, 4);
+  header.writeUInt32LE(0x5566_7788, 8);
+  header.writeUInt32LE(0x99aa_bbcc, 12);
+  header.writeUInt32LE(payload.byteLength, 16);
+  header.writeUInt32LE(0xdead_beef, 20);
   return Buffer.concat([header, payload]);
 };

@@ -15,11 +15,11 @@ export const VIEW8_OUTPUT_REMEDIATION = `Confirm the selected View8 launcher pri
 
 /**
  * View8's argv shape and disassembly text are documented assumptions. No
- * verified release is pinned; the bytecode header decode is REA's own and is
- * likewise unverified against a specific V8 build.
+ * verified View8 release is pinned; the cached-data header decode is pinned to
+ * the Node 24 and Node 26 V8 lines and to one documented bytenode-era layout.
  */
 export const VIEW8_LANE_UNVERIFIED_NOTE =
-  "View8's command line and disassembly text are documented assumptions and no verified View8 or V8 build is pinned; this lane parses the cached-data header itself and reports disassembly digest and size only.";
+  "View8's command line and disassembly text are documented assumptions and no verified View8 release is pinned; this lane decodes the cached-data header itself against pinned layouts and reports disassembly digest and size only.";
 
 /** Fixed operation deadline for one bounded View8 run. */
 export const DEFAULT_VIEW8_OPERATION_TIMEOUT_MS = 300_000;
@@ -35,6 +35,3 @@ export const VIEW8_MAX_INPUT_BYTES = 64 * 1024 * 1024;
  * their external-reference count, so only the marker bits are compared.
  */
 export const V8_CACHED_DATA_MAGIC = 0xc0de_0000;
-
-/** V8 cached-data header words before the payload. */
-export const V8_CACHED_DATA_HEADER_BYTES = 24;

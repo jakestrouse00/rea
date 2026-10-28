@@ -13,6 +13,7 @@ import { AnalysisError as AnalysisErrorClass } from "../../domain/analysisErrorB
 import {
   AnalysisCancelledError,
   AnalysisInputError,
+  AnalysisOutputError,
   AnalysisProtocolError,
   AnalysisResourceConstraintError,
 } from "../../domain/analysisErrorCore.js";
@@ -24,7 +25,10 @@ import {
 import { providerConfigurationRefusal } from "../../domain/providerConfigurationRefusal.js";
 import { err, ok, type Result } from "../../domain/result.js";
 import { RegularFileOperationCancelled } from "../../filesystem/RegularFile.js";
-import { readV8BytecodeHeader } from "./V8BytecodeHeader.js";
+import {
+  MAX_V8_HEADER_BYTES,
+  readV8BytecodeHeader,
+} from "./V8BytecodeHeader.js";
 import { runView8Command, view8Arguments } from "./View8Command.js";
 import {
   resolveView8Configuration,
@@ -49,8 +53,6 @@ export const VIEW8_PROVIDER_IDENTITY = {
 export interface View8ProviderOptions {
   readonly environment?: Readonly<Record<string, string | undefined>>;
 }
-
-const HEADER_BYTES = 24;
 
 /** Serialized V8 disassembly over a caller-supplied View8 build. */
 export class View8Provider {
@@ -176,7 +178,7 @@ export class View8Provider {
     const snapshot = await this.#read(operation, path, signal);
     if (!snapshot.ok) return snapshot;
     const header = readV8BytecodeHeader(
-      snapshot.value.bytes.subarray(0, HEADER_BYTES),
+      snapshot.value.bytes.subarray(0, MAX_V8_HEADER_BYTES),
       snapshot.value.bytes.byteLength,
     );
     const ran = await runView8Command(
@@ -199,7 +201,7 @@ export class View8Provider {
       path,
       sha256: snapshot.value.sha256,
       bytes: snapshot.value.bytes.byteLength,
-      container: header,
+      container: { ...header, prefix_words: [...header.prefix_words] },
       disassembly: {
         bytes: ran.value.stdoutBytes,
         sha256: ran.value.stdoutSha256,
@@ -207,14 +209,20 @@ export class View8Provider {
         empty: false,
       },
       coverage:
-        header.state === "recognized" && header.payload_length_matches === true
+        header.state === "recognized"
           ? ("complete" as const)
           : ("partial" as const),
     };
-    decompileV8BytecodeResultSchema.parse(result);
+    const parsed = decompileV8BytecodeResultSchema.safeParse(result);
+    if (!parsed.success)
+      throw new AnalysisOutputError(
+        operation,
+        "The View8 lane produced a result outside its schema.",
+        { cause: parsed.error },
+      );
     return ok(
       createAnalysisExecution(
-        result,
+        parsed.data,
         { ...VIEW8_PROVIDER_IDENTITY, version: null },
         {
           limitations: [
@@ -222,14 +230,16 @@ export class View8Provider {
             "Disassembly text stays out of Evidence; only its SHA-256, byte count and line count are reported",
             "A cached-data header does not establish that this V8 build produced the payload, that the embedded source is recoverable, or that the selected View8 patched V8 revision matches it",
             ...(header.state === "recognized"
-              ? header.payload_length_matches === false
+              ? [
+                  `Header words follow the pinned ${header.layout ?? "cached-data"} layout; a matching layout does not establish the V8 build, the embedded source, or View8's own V8 revision`,
+                ]
+              : header.state === "layout_unverifiable"
                 ? [
-                    "The declared payload length disagrees with the observed file, so the disassembly did not examine an intact cached-data container",
+                    "The artifact carries a V8 cached-data marker, but no pinned header layout declares its observed payload size. Prefix words stay uninterpreted: the file may be truncated, appended to, or produced by a V8 line whose layout is not pinned",
                   ]
-                : []
-              : [
-                  "The selected artifact does not carry a recognizable V8 cached-data marker; it is reported as unrecognized rather than repaired or reinterpreted",
-                ]),
+                : [
+                    "The selected artifact does not carry a recognizable V8 cached-data marker; it is reported as unrecognized rather than repaired or reinterpreted",
+                  ]),
           ],
           locations: [{ kind: "artifact-path", path }],
         },

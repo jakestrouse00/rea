@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import type { AnalysisError } from "../../domain/analysisErrorBase.js";
+import type {
+  AnalysisCapturedOutput,
+  AnalysisError,
+} from "../../domain/analysisErrorBase.js";
+import type { ExecFileOutputFailure } from "../../process/ExecFileOutput.js";
 import {
   AnalysisCancelledError,
   AnalysisResourceConstraintError,
@@ -24,6 +28,23 @@ export interface View8DisassemblyRun {
   readonly stdoutSha256: string;
   readonly lines: number;
 }
+
+/**
+ * Keep stderr and exit facts for diagnosis while withholding the launcher's
+ * stdout, which is the disassembly this lane never republishes.
+ */
+const view8CapturedOutput = (
+  failure: ExecFileOutputFailure,
+): AnalysisCapturedOutput => {
+  const captured = execFileFailureCapturedOutput(failure);
+  return {
+    ...captured,
+    stdout: "<view8 disassembly withheld>",
+    ...(captured.stdout_bytes === undefined
+      ? {}
+      : { stdout_bytes: captured.stdout_bytes }),
+  };
+};
 
 /** Run one bounded View8 command and keep its exact failure shape. */
 export const runView8Command = async (
@@ -58,9 +79,7 @@ export const runView8Command = async (
   } catch (cause) {
     const failure = execFileOutputFailure(cause);
     const capturedOutput =
-      failure === undefined
-        ? undefined
-        : execFileFailureCapturedOutput(failure);
+      failure === undefined ? undefined : view8CapturedOutput(failure);
     if (cause instanceof ExecFileOutputCancelledError)
       return err(
         new AnalysisCancelledError(operation, {

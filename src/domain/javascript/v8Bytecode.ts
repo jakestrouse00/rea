@@ -26,18 +26,30 @@ export const view8ClientSchema = z.strictObject({
   version: z.string().min(1).nullable(),
 });
 
-/** Structural cached-data header facts; the payload is never interpreted. */
+/**
+ * Structural cached-data header facts; the payload is never interpreted.
+ *
+ * Interpreted words are present only when exactly one pinned layout declares
+ * the observed payload size. `layout_unverifiable` keeps every word
+ * uninterpreted rather than forcing a foreign header into a pinned map.
+ */
 export const v8BytecodeContainerSchema = z.strictObject({
-  state: z.enum(["recognized", "unrecognized"]),
+  state: z.enum(["recognized", "layout_unverifiable", "unrecognized"]),
+  layout: z
+    .enum(["v8-code-cache-32-byte-header", "v8-code-cache-24-byte-header"])
+    .nullable(),
   magic: z.enum(["v8-cached-data", "unknown"]),
   magic_hex: z.string().regex(/^[0-9a-f]{8}$/u),
+  header_bytes: countSchema.nullable(),
+  prefix_words: z.array(wordSchema).max(8),
   version_hash: wordSchema.nullable(),
-  source_hash: wordSchema.nullable(),
   flag_hash: wordSchema.nullable(),
+  source_length: countSchema.nullable(),
+  source_hash: wordSchema.nullable(),
   snapshot_checksum: wordSchema.nullable(),
+  payload_checksum: wordSchema.nullable(),
   declared_payload_bytes: countSchema.nullable(),
-  observed_payload_bytes: countSchema,
-  payload_length_matches: z.boolean().nullable(),
+  observed_payload_bytes: countSchema.nullable(),
 });
 
 /** Bounded disassembly observation without any recovered text. */

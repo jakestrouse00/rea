@@ -19,17 +19,42 @@ text locally with the same launcher when you need to read it.
 
 ## What the result reports
 
-| Field                                                                     | Meaning                                                                                                                                                                                                                                 |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `client.command`                                                          | The absolute launcher path that ran. `client.version` stays `null` because REA does not probe View8's version.                                                                                                                          |
-| `sha256`, `bytes`                                                         | Digest and size of the selected cached-data file, read once under an owner-only descriptor.                                                                                                                                             |
-| `container.state`                                                         | `recognized` when the first 24 bytes carry V8's cached-data marker, `unrecognized` otherwise. An unrecognized artifact is reported, never repaired.                                                                                     |
-| `container.magic_hex`                                                     | The observed first header word in hexadecimal. Some V8 builds XOR the low bits of the marker with their external-reference count, so only the `0xc0de` marker bits are compared.                                                        |
-| `container.version_hash`, `source_hash`, `flag_hash`, `snapshot_checksum` | The header words V8 writes for cached data. `version_hash` identifies the V8 version that produced the payload; a mismatch between it and the patched V8 inside the selected View8 build is the usual reason a disassembly looks wrong. |
-| `container.declared_payload_bytes`                                        | The payload length the header declares.                                                                                                                                                                                                 |
-| `container.observed_payload_bytes`, `payload_length_matches`              | What the file actually holds after the 24-byte header, and whether the declaration agrees. A `false` value means the file was truncated, appended to, or is not the cached data it claims.                                              |
-| `disassembly.sha256`, `bytes`, `lines`, `empty`                           | Bounded facts about the disassembly stream. Text is not returned.                                                                                                                                                                       |
-| `coverage`                                                                | `complete` only when the cached-data header was recognized and its declared payload length matches the file; `partial` otherwise. View8 declares no coverage of its own.                                                                |
+| Field                                                             | Meaning                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client.command`                                                  | The absolute launcher path that ran. `client.version` stays `null` because REA does not probe View8's version.                                                                                                                                                                          |
+| `sha256`, `bytes`                                                 | Digest and size of the selected cached-data file, read once under an owner-only descriptor.                                                                                                                                                                                             |
+| `container.state`                                                 | `recognized` when exactly one pinned header layout declares the artifact's observed payload size, `layout_unverifiable` when the `0xc0de` marker is present but no pinned layout agrees, `unrecognized` otherwise. No state is repaired or reinterpreted.                               |
+| `container.layout`, `header_bytes`                                | The pinned layout that matched and its header size; see the layout table below.                                                                                                                                                                                                         |
+| `container.magic_hex`, `prefix_words`                             | The observed first word and the artifact's leading eight words; a 24-byte header ends before them, so they are prefix words rather than header words. Some V8 builds XOR the low bits of the marker with their external-reference count, so only the `0xc0de` marker bits are compared. |
+| `container.version_hash`, `flag_hash`                             | Header words every pinned layout shares. `version_hash` identifies the V8 version that produced the payload; a mismatch between it and the patched V8 inside the selected View8 build is the usual reason a disassembly looks wrong. `flag_hash` changes with code-generation flags.    |
+| `container.source_length` **or** `container.source_hash`          | Exactly one is populated, depending on the layout: a source length in the 32-byte layout, a source hash in the 24-byte layout.                                                                                                                                                          |
+| `container.snapshot_checksum` **or** `container.payload_checksum` | Exactly one is populated, depending on the layout.                                                                                                                                                                                                                                      |
+| `container.declared_payload_bytes`, `observed_payload_bytes`      | The payload length the matched layout declares and what the file holds after that header. Both are `null` in `layout_unverifiable`.                                                                                                                                                     |
+| `disassembly.sha256`, `bytes`, `lines`, `empty`                   | Bounded facts about the disassembly stream. Text is not returned.                                                                                                                                                                                                                       |
+| `coverage`                                                        | `complete` only when the header was `recognized`; `partial` for `layout_unverifiable` and `unrecognized`. View8 declares no coverage of its own.                                                                                                                                        |
+
+### Pinned header layouts
+
+| Layout                         | Header   | Interpreted words                                                                                                                                                            |
+| ------------------------------ | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v8-code-cache-32-byte-header` | 32 bytes | `[0]` marker and external-reference count, `[1]` version hash, `[2]` source length, `[3]` flag hash, `[4]` read-only snapshot checksum, `[5]` payload length, `[6..7]` zero. |
+| `v8-code-cache-24-byte-header` | 24 bytes | `[0]` marker, `[1]` version hash, `[2]` source hash, `[3]` flag hash, `[4]` payload length, `[5]` payload checksum.                                                          |
+
+The 32-byte layout is **verified locally** against artifacts produced by Node
+24.22.1 (V8 13.6.233.17) and Node 26.11.1 (V8 14.6.202.34): the marker low bits
+track the external-reference count, word 2 tracks the source length, word 3
+changes with `--jitless` and `--no-opt` while words 1 and 4 stay constant, and
+word 5 equals the payload size. The 24-byte layout is a **documented
+assumption** for the bytenode-era V8 10 lines, whose header keeps a source hash
+and a payload checksum; no such build is installed here, so that branch is
+exercised only with a fixture written to that map.
+
+Layouts diverge again on newer V8 lines, which widen the source hash and move
+the snapshot checksum. An artifact from such a line carries the marker but
+matches no pinned layout: REA then reports `layout_unverifiable`, returns every
+interpreted word as `null`, and keeps the raw `prefix_words` visible. A
+truncated or appended file lands in the same state, because the declared length
+no longer equals the bytes after any pinned header. Unknown stays unknown.
 
 ## Selecting the launcher
 
