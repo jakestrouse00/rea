@@ -140,6 +140,27 @@ describe("mitm inventory endpoint facts", () => {
     expect(post?.method).toBe("POST");
     expect(post?.status_histogram).toEqual([]);
   });
+
+  it("retains a bounded nested shape with its truncation marker", () => {
+    const shape = {
+      kind: "array" as const,
+      items: 1,
+      item: {
+        kind: "array" as const,
+        items: 1,
+        item: { kind: "truncated" as const, deeper: true as const },
+        truncated: true,
+      },
+      truncated: false,
+    };
+    const inventory = new MitmInventory();
+    inventory.applyFlow(
+      flow(1, {
+        response: { ...flow(1).response!, shape },
+      }),
+    );
+    expect(inventory.snapshot().endpoints[0]?.response_shape).toEqual(shape);
+  });
 });
 
 describe("mitm inventory bounds", () => {

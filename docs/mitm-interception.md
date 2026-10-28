@@ -78,7 +78,9 @@ anything else instead of interpreting it:
 - `flow` — origin, method, path template with value segments replaced by
   `{integer}`, `{uuid}`, or `{hex}`, parameter names with their type classes,
   request and response header names, the response status, and a bounded
-  response-shape sketch.
+  response-shape sketch. A sketch has at most four nesting levels and ends at a
+  `truncated` node carrying `deeper: true`, so no frame can advertise an
+  unbounded tree; a deeper sketch is a malformed frame.
 - `rule_match` — the phase, method, origin, path template, statuses, and how many
   header or query fields a rule changed.
 - `notice` / `error` — control-file or capture conditions and hook failures.

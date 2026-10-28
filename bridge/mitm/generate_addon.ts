@@ -227,7 +227,7 @@ def _body_parameters(content, media_type):
 
 def _sketch(value, depth=0):
     if depth >= MAX_SHAPE_DEPTH:
-        return {"kind": "scalar", "type": "truncated"}
+        return {"kind": "truncated", "deeper": True}
     if isinstance(value, dict):
         keys = []
         truncated = False

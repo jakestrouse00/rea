@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 
-import { parseMitmStreamEvent } from "../domain/mitm/mitmStream.js";
+import { MITM_LIMITS } from "../domain/mitm/mitmLimits.js";
+import {
+  mitmShapeSketchSchema,
+  parseMitmStreamEvent,
+} from "../domain/mitm/mitmStream.js";
 
 const flow = {
   type: "flow",
@@ -109,5 +114,41 @@ describe("mitm structure stream parser", () => {
       }),
     );
     expect(parsed.kind).toBe("invalid");
+  });
+
+  it("bounds shape nesting and marks where the sketch stopped descending", () => {
+    const nested = (arrays: number): unknown =>
+      arrays === 0
+        ? { kind: "scalar", type: "string" }
+        : {
+            kind: "array",
+            items: 1,
+            item: nested(arrays - 1),
+            truncated: false,
+          };
+    const marker = { kind: "truncated", deeper: true };
+    expect(
+      mitmShapeSketchSchema.safeParse(nested(MITM_LIMITS.maxShapeDepth - 1))
+        .success,
+    ).toBe(true);
+    expect(
+      mitmShapeSketchSchema.safeParse(nested(MITM_LIMITS.maxShapeDepth))
+        .success,
+    ).toBe(false);
+    expect(mitmShapeSketchSchema.safeParse(marker).success).toBe(true);
+    expect(mitmShapeSketchSchema.safeParse({ kind: "truncated" }).success).toBe(
+      false,
+    );
+  });
+
+  it("advertises an acyclic schema for the bounded sketch", () => {
+    const schema = z.toJSONSchema(mitmShapeSketchSchema) as Readonly<
+      Record<string, unknown>
+    >;
+    const definitions = (schema["$defs"] ?? {}) as Readonly<
+      Record<string, unknown>
+    >;
+    for (const [name, definition] of Object.entries(definitions))
+      expect(JSON.stringify(definition)).not.toContain(`#/$defs/${name}`);
   });
 });

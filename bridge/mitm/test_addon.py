@@ -184,6 +184,12 @@ class AddonTests(unittest.TestCase):
         self.assertEqual([key["name"] for key in sketch["keys"]], ["id", "items"])
         self.assertNotIn("secret", json.dumps(sketch))
         self.assertEqual(self.addon._sketch("x"), {"kind": "scalar", "type": "string"})
+        nested = self.addon._sketch([[[[{"a": 1}]]]])
+        for _ in range(self.addon.MAX_SHAPE_DEPTH):
+            nested = nested["item"]
+        self.assertEqual(
+            nested, {"kind": "truncated", "deeper": True}
+        )
 
     def test_content_type_classes_match_the_closed_vocabulary(self):
         cases = {

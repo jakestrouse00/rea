@@ -49,34 +49,70 @@ export type MitmShapeSketch =
       readonly item: MitmShapeSketch | null;
       readonly truncated: boolean;
     }
-  | { readonly kind: "scalar"; readonly type: string };
+  | { readonly kind: "scalar"; readonly type: string }
+  | {
+      readonly kind: "truncated";
+      readonly deeper: true;
+    };
 
-export const mitmShapeSketchSchema: z.ZodType<MitmShapeSketch> = z.lazy(() =>
+const shapeScalarSchema = z.strictObject({
+  kind: z.literal("scalar"),
+  type: z.string().min(1).max(32),
+});
+
+/** Where the addon stopped descending: names nothing beyond this bound. */
+const shapeTruncationSchema = z.strictObject({
+  kind: z.literal("truncated"),
+  deeper: z.literal(true),
+});
+
+const shapeObjectSchema = z.strictObject({
+  kind: z.literal("object"),
+  keys: z
+    .array(
+      z.strictObject({
+        name: z.string().min(1).max(256),
+        type: z.string().min(1).max(32),
+      }),
+    )
+    .max(MITM_LIMITS.maxShapeKeys),
+  truncated: z.boolean(),
+});
+
+const shapeArraySchema = (item: z.ZodType<MitmShapeSketch>) =>
+  z.strictObject({
+    kind: z.literal("array"),
+    items: z.int().min(0).nullable(),
+    item: item.nullable(),
+    truncated: z.boolean(),
+  });
+
+const shapeSketchLevel = (item: z.ZodType<MitmShapeSketch>) =>
   z.discriminatedUnion("kind", [
-    z.strictObject({
-      kind: z.literal("object"),
-      keys: z
-        .array(
-          z.strictObject({
-            name: z.string().min(1).max(256),
-            type: z.string().min(1).max(32),
-          }),
-        )
-        .max(MITM_LIMITS.maxShapeKeys),
-      truncated: z.boolean(),
-    }),
-    z.strictObject({
-      kind: z.literal("array"),
-      items: z.int().min(0).nullable(),
-      item: z.lazy(() => mitmShapeSketchSchema).nullable(),
-      truncated: z.boolean(),
-    }),
-    z.strictObject({
-      kind: z.literal("scalar"),
-      type: z.string().min(1).max(32),
-    }),
-  ]),
-);
+    shapeScalarSchema,
+    shapeTruncationSchema,
+    shapeObjectSchema,
+    shapeArraySchema(item),
+  ]);
+
+/**
+ * One level per retained nesting depth, ending at the truncation marker.
+ *
+ * The stream model is self-similar, so a lazy schema would export a
+ * self-referential JSON Schema that strict clients refuse and whose size no
+ * bound controls. Building each level once keeps the advertised schema acyclic
+ * and bounded by `MITM_LIMITS.maxShapeDepth`.
+ */
+const shapeSketchAtDepth = (): z.ZodType<MitmShapeSketch> => {
+  let level: z.ZodType<MitmShapeSketch> = shapeSketchLevel(
+    shapeTruncationSchema,
+  );
+  for (let depth = 1; depth < MITM_LIMITS.maxShapeDepth; depth += 1)
+    level = shapeSketchLevel(level);
+  return level;
+};
+
+export const mitmShapeSketchSchema = shapeSketchAtDepth();
 
 /** One parameter name observed in a request, classified but never valued. */
 export const mitmParameterFactSchema = z.strictObject({
