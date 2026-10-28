@@ -13,6 +13,7 @@ import { registerModelCommands } from "./cli/modelCommands.js";
 import { registerIl2cppCommands } from "./cli/il2cppCommands.js";
 import { registerRustCommands } from "./cli/rustCommands.js";
 import { registerWindowsArtifactsCommands } from "./cli/windowsArtifactsCommands.js";
+import { registerLiefCommands } from "./cli/liefCommands.js";
 import { registerNativeAotCommands } from "./cli/nativeAotCommands.js";
 import { registerGamedataCommands } from "./cli/gamedataCommands.js";
 import { registerContainersCommands } from "./cli/containersCommands.js";
@@ -144,6 +145,7 @@ export const createCli = (
   registerGpuCommands(cli, logger);
   registerRustCommands(cli, logger);
   registerWindowsArtifactsCommands(cli, logger);
+  registerLiefCommands(cli, logger);
   registerNativeAotCommands(cli, logger);
   registerGamedataCommands(cli, logger);
   registerContainersCommands(cli, logger);

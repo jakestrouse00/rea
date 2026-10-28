@@ -75,6 +75,8 @@ export const CLI_COMMANDS = Object.freeze({
   inspectWindowsMinidump: "inspect-windows-minidump",
   inspectWerReport: "inspect-wer-report",
   inspectPdbSymbols: "inspect-pdb-symbols",
+  inspectBinaryDeep: "inspect-binary-deep",
+  extractPdbDwarfInfo: "extract-pdb-dwarf-info",
   inspectGodotPck: "inspect-godot-pck",
   inspectVpkArchive: "inspect-vpk-archive",
   inspectGamemakerData: "inspect-gamemaker-data",

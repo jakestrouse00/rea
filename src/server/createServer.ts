@@ -242,6 +242,9 @@ import { createDiscoveryAnalysisProvider } from "../composition/discovery.js";
 import { registerDiscoveryTools } from "./registerDiscoveryTools.js";
 import { createWindowsArtifactsService } from "../composition/windowsArtifacts.js";
 import type { WindowsArtifactsService } from "../application/windowsArtifacts/WindowsArtifactsService.js";
+import { createLiefService } from "../composition/lief.js";
+import type { LiefService } from "../application/lief/LiefService.js";
+import { registerLiefTools } from "./registerLiefTools.js";
 import { createNativeAotArtifactService } from "../composition/nativeAot.js";
 import type { NativeAotArtifactService } from "../application/nativeAot/NativeAotArtifactService.js";
 import { createGameDataService } from "../composition/gamedata.js";
@@ -378,6 +381,8 @@ export interface CreateServerOptions {
   readonly angr?: AngrAnalysisPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
+  /** LIEF deep-parse lane; omitted means the lane is selected from the environment. */
+  readonly lief?: LiefService;
   readonly nativeAot?: NativeAotArtifactService;
   readonly gameData?: GameDataService;
   readonly containerInspection?: ContainerInspectionService;
@@ -762,6 +767,7 @@ export const createServer = (
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
     options.windowsArtifacts ?? createWindowsArtifactsService(environment);
+  const lief = options.lief ?? createLiefService(environment);
   const nativeAot = options.nativeAot ?? createNativeAotArtifactService();
   const gameData = options.gameData ?? createGameDataService();
   const containerInspection =
@@ -811,6 +817,7 @@ export const createServer = (
       angr.close(),
       discovery.close(),
       windowsArtifacts.close(),
+      lief.close(),
       nativeAot.close(),
       gameData.close(),
       containerInspection.close(),
@@ -1137,6 +1144,13 @@ export const createServer = (
   registerWindowsArtifactsTools(
     server,
     windowsArtifacts,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerLiefTools(
+    server,
+    lief,
     toolLogger,
     recordEvidence,
     analysisAdmission,

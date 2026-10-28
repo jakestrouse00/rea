@@ -75,6 +75,10 @@ export default defineConfig({
             link: "/angr-symbolic-execution",
           },
           {
+            text: "LIEF deep parse",
+            link: "/lief-deep-parse",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

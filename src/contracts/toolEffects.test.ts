@@ -169,6 +169,10 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "states one angr job runs in REA's own sidecar over angr's memory model; no instruction executes on or is written to the target",
   recover_control_flow_angr:
     "states angr loads the artifact in REA's own sidecar for static recovery; no target instruction runs and no live process is driven",
+  inspect_binary_deep:
+    "runs only the caller-supplied interpreter with the copied bridge script; the selected artifact is parsed, never executed",
+  extract_pdb_dwarf_info:
+    "states REA never installs LIEF; the same caller-supplied interpreter runs the copied bridge script and no target code executes",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {

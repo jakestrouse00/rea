@@ -103,6 +103,11 @@ export const toolFamilyCatalog = (sources) => {
         sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
     },
     {
+      id: "lief",
+      surface: "lief-provider",
+      contracts: sources.liefContracts.LIEF_TOOL_CONTRACTS,
+    },
+    {
       id: "gamedata",
       surface: "gamedata-provider",
       contracts: sources.gamedataContracts.GAME_DATA_TOOL_CONTRACTS,
@@ -562,6 +567,10 @@ export const providerCatalog = (sources) => {
         sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS.filter(
           ({ name }) => name === "inspect_pdb_symbols",
         ),
+    },
+    {
+      identity: sources.liefProvider.LIEF_PROVIDER_IDENTITY,
+      contracts: sources.liefContracts.LIEF_TOOL_CONTRACTS,
     },
     {
       identity: sources.nativeAotProvider.NATIVE_AOT_PROVIDER_IDENTITY,

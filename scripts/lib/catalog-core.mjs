@@ -150,6 +150,8 @@ const SOURCE_PATHS = {
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:
     "dist/contracts/windowsArtifacts/windowsArtifactsToolContracts.js",
+  liefContracts: "dist/contracts/lief/liefToolContracts.js",
+  liefProvider: "dist/lief/LiefDeepProvider.js",
   windowsMinidumpProvider: "dist/windows/WindowsMinidumpProvider.js",
   windowsWerProvider: "dist/windows/WindowsWerProvider.js",
   pdbProvider: "dist/pdb/PdbSymbolProvider.js",
