@@ -1003,6 +1003,28 @@ it("names the accepted release line when the banner is another line", async () =
   await assertFirmwareCleanup(fixture.launches);
 });
 
+it.each(["Binwalk v2.3.4", "binwalk 2.3.4"])(
+  "refuses the end-of-life Binwalk 2.x banner %j without retrying v2 flags",
+  async (banner) => {
+    const fixture = await firmwareFixture("normal", banner);
+    const result = await fixture.service.execute("inspect_firmware_regions", {
+      path: fixture.path,
+    });
+    expect(result).toMatchObject({
+      ok: false,
+      error: {
+        _tag: "AnalysisCapabilityUnavailableError",
+        reason: expect.stringContaining("Binwalk 3.1.x"),
+      },
+    });
+    // Only the version probe ran: no inspection flags were sent to the 2.x binary.
+    expect(fixture.launches).toHaveLength(1);
+    expect(fixture.launches[0]?.args).toContain("--version");
+    expect(fixture.launches[0]?.args).not.toContain("--search-all");
+    await assertFirmwareCleanup(fixture.launches);
+  },
+);
+
 it("rejects absent or unsupported engines without installing anything", async () => {
   const missing = await new FirmwareAnalysisService(
     new FirmwareProvider({}),
