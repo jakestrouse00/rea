@@ -1480,9 +1480,7 @@ export class HuntingQueueService implements HuntingQueuePort {
     );
   }
 
-  async #releaseWatch(
-    session: WatchSession,
-  ): Promise<{
+  async #releaseWatch(session: WatchSession): Promise<{
     readonly released: boolean;
     readonly stop: HuntingStop | null;
   }> {
