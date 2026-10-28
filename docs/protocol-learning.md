@@ -99,12 +99,20 @@ the model fits and reports `suffix_reduced` and `partial` coverage. At most
 is truncated at the first message whose class the alphabet cannot hold, and that
 truncation also makes coverage partial.
 
+### Exemplars
+
+`exemplar_sha256` is the digest of the first payload observed for a class.
+A qlog class reports `null` there and `template: null`, because qlog records
+packet and frame facts rather than payload bytes: null means *unknown*, never an
+empty message, so two null-exemplar classes make no claim that their payloads
+match. A pcap class always has both.
+
 ### Model store
 
 Pass `model_directory` to keep what the probe and export operations read back.
 The directory receives `model.json` (the model above), one `class-<id>.bin`
-exemplar per class that had payload bytes, and `manifest.json` binding every
-class to its digest. Files are created `0600`. A later read of the store
+exemplar per class that had payload bytes (none for a qlog model), and
+`manifest.json` binding every written exemplar to its digest. Files are created `0600`. A later read of the store
 verifies the manifest contract and every class digest before any probe or seed
 is built.
 
@@ -170,6 +178,9 @@ contract `rea.fuzzing.campaign-seeds/v1`:
   "campaign_handoff": { "tool": "start_fuzzing_campaign", "seed_paths": ["…"], "note": "…" }
 }
 ```
+
+A model with no exemplars — every qlog-derived model — writes no seeds and
+reports each planned seed in `skipped_count`, because a seed must carry bytes.
 
 The fuzz loop (Batch 3.3) is a separate lane. This release publishes the
 contract and the exact seed paths so that lane can pass them unchanged as its

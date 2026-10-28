@@ -13,6 +13,7 @@ import {
   AnalysisCancelledError,
   AnalysisCapabilityUnavailableError,
   AnalysisInputError,
+  AnalysisOutputError,
   AnalysisProtocolError,
   AnalysisResourceConstraintError,
   AnalysisUnsupportedTargetError,
@@ -82,6 +83,17 @@ export const PROTOLEARN_PROVIDER_IDENTITY = {
   name: PROTOLEARN_PROVIDER_NAME,
   version: null,
 } as const;
+
+/** A result this lane assembled that its own declared contract rejects. */
+const outputSchemaFailure = (
+  operation: string,
+  cause: unknown,
+): AnalysisOutputError =>
+  new AnalysisOutputError(
+    operation,
+    "The protocol learning lane assembled a result its declared contract rejects",
+    { cause },
+  );
 
 const PROTOCOL_LEARNING_EXECUTION_LIMITATIONS = [
   "A learned model describes the messages this one capture showed; a state it never observed is absent, not impossible",
@@ -291,7 +303,7 @@ export class ProtocolLearningProvider {
         template: null,
       }));
     }
-    const model = protocolModelSchema.parse({
+    const parsedModel = protocolModelSchema.safeParse({
       source,
       sessions: learned.sessions,
       messages: learned.messages,
@@ -322,6 +334,11 @@ export class ProtocolLearningProvider {
           : []),
       ],
     });
+    if (!parsedModel.success)
+      return err(
+        outputSchemaFailure("learn_protocol_model", parsedModel.error),
+      );
+    const model = parsedModel.data;
     if (modelStore !== null)
       await writeProtocolModelStore({
         operation,
@@ -603,7 +620,7 @@ export class ProtocolLearningProvider {
         counts[step.verdict] += 1;
         counts.steps += 1;
       }
-    const result = protocolProbeResultSchema.parse({
+    const parsedProbe = protocolProbeResultSchema.safeParse({
       endpoint: {
         host: approval.endpoint.host,
         port: approval.endpoint.port,
@@ -629,6 +646,11 @@ export class ProtocolLearningProvider {
         ...confinementLimitations,
       ],
     });
+    if (!parsedProbe.success)
+      return err(
+        outputSchemaFailure("probe_learned_model", parsedProbe.error),
+      );
+    const result = parsedProbe.data;
     return ok(
       createAnalysisExecution(result, PROTOLEARN_PROVIDER_IDENTITY, {
         limitations: result.limitations,
@@ -655,7 +677,15 @@ export class ProtocolLearningProvider {
         outputDirectory: input.output_directory,
         signal,
       });
-      const result = protocolGrammarExportSchema.parse(exported);
+      const parsedExport = protocolGrammarExportSchema.safeParse(exported);
+      if (!parsedExport.success)
+        return err(
+          outputSchemaFailure(
+            "export_protocol_grammar",
+            parsedExport.error,
+          ),
+        );
+      const result = parsedExport.data;
       return ok(
         createAnalysisExecution(result, PROTOLEARN_PROVIDER_IDENTITY, {
           limitations: [...PROTOCOL_GRAMMAR_LIMITATIONS, ...result.limitations],

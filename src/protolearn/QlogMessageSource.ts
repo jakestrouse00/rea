@@ -168,7 +168,7 @@ export const qlogMessageSessions = (
     traces: traces.length,
     eventsIgnored,
     limitations: [
-      "qlog records packet and frame facts, not payload bytes: a model learned from qlog has no message templates and cannot feed export_protocol_grammar",
+      "qlog records packet and frame facts, not payload bytes: a class learned from qlog carries no exemplar digest and no template, so export_protocol_grammar writes no seeds for such a model",
       ...(eventsIgnored > 0
         ? [
             `${String(eventsIgnored)} qlog event(s) are not packet sends or receives, are redacted, or are not part of the selected profile`,

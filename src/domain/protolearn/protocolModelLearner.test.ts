@@ -169,6 +169,37 @@ test("retains one exemplar per class and no payload text in the model", () => {
   expect(serialized).not.toContain("READY");
 });
 
+test("records no exemplar digest for a class whose source reported no bytes", () => {
+  const byteLess: ProtocolMessageFact[] = [
+    {
+      session: "qlog-trace-0",
+      ordinal: 0,
+      direction: "response",
+      byte_length: 64,
+      payload_sha256: null,
+      sketch: {
+        kind: "quic-packet",
+        printable_ratio: "unknown",
+        line_terminated: false,
+        segments: 1,
+        segment_types: ["one_rtt", "stream"],
+        examined_bytes: 0,
+      },
+      payload: null,
+    },
+  ];
+  const model = learnProtocolModel([{ session: "qlog-trace-0", messages: byteLess }], {
+    max_states: 8,
+    suffix_length: 1,
+  });
+  expect(model.classes[0]).toMatchObject({
+    exemplar_sha256: null,
+    template: null,
+    direction: "response",
+  });
+  expect(model.templates.size).toBe(0);
+});
+
 test("returns one initial state for a capture with no admitted messages", () => {
   const model = learnProtocolModel([], { max_states: 8, suffix_length: 2 });
   expect(model.states).toEqual([

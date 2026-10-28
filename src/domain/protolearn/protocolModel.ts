@@ -49,7 +49,13 @@ export const protocolMessageClassSchema = z.strictObject({
   positions: z
     .array(protocolFieldPosition)
     .max(PROTOLEARN_LIMITS.maxFieldPositions),
-  exemplar_sha256: digestSchema,
+  /**
+   * Digest of the first observed payload of this class, or null when the
+   * evidence source reports no payload bytes for it (qlog). Null is unknown,
+   * never an empty message: two classes with null exemplars make no claim that
+   * their payloads are equal.
+   */
+  exemplar_sha256: digestSchema.nullable(),
   template: protocolClassTemplate.nullable(),
 });
 

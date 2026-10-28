@@ -163,6 +163,27 @@ const learntModel = async (
   return (result.value.result as { model: ProtocolModel }).model;
 };
 
+const learntQlogModel = async (
+  harness: Harness,
+  path: string,
+  store: string,
+): Promise<void> => {
+  const provider = new ProtocolLearningProvider({
+    environment: harness.environment,
+  });
+  const result = await provider.execute({
+    operation: "learn_protocol_model",
+    input: {
+      source: { kind: "qlog", path },
+      max_states: 8,
+      suffix_length: 2,
+      model_directory: store,
+    },
+  });
+  if (!result.ok)
+    throw new Error(`${result.error._tag}: ${result.error.message}`);
+};
+
 test("learns a finite-state model from a packet source without retaining payload values", async () => {
   const harness = await providerFor();
   const model = await learntModel(harness, null);
@@ -248,6 +269,138 @@ test("reduces the requested suffix length to fit the state cap", async () => {
   );
 });
 
+const QLOG_FIXTURE = JSON.stringify({
+  qlog_format: "JSON",
+  qlog_version: "0.3",
+  traces: [
+    {
+      common_fields: { ODCID: "odcid-1" },
+      vantage_point: { name: "aioquic", type: "server" },
+      events: [
+        {
+          name: "transport:packet_received",
+          time: 1,
+          data: {
+            header: { packet_type: "initial", packet_number: 0 },
+            raw: { length: 1200 },
+            frames: [{ frame_type: "crypto", offset: 0, length: 300 }],
+          },
+        },
+        {
+          name: "transport:packet_sent",
+          time: 2,
+          data: {
+            header: { packet_type: "handshake", packet_number: 0 },
+            raw: { length: 900 },
+            frames: [{ frame_type: "crypto", offset: 0, length: 400 }],
+          },
+        },
+        {
+          name: "transport:packet_received",
+          time: 3,
+          data: {
+            header: { packet_type: "1RTT", packet_number: 1 },
+            raw: { length: 64 },
+            frames: [{ frame_type: "stream", stream_id: 0, length: 40 }],
+          },
+        },
+        {
+          name: "transport:packet_sent",
+          time: 4,
+          data: {
+            header: { packet_type: "1RTT", packet_number: 1 },
+            raw: { length: 80 },
+            frames: [{ frame_type: "stream", stream_id: 0, length: 50 }],
+          },
+        },
+      ],
+    },
+  ],
+});
+
+test("learns a model from a qlog capture end to end", async () => {
+  const harness = await providerFor();
+  const path = join(harness.root, "lab.qlog");
+  await writeFile(path, QLOG_FIXTURE);
+  const store = join(harness.root, "qlog-store");
+  const result = await harness.provider.execute({
+    operation: "learn_protocol_model",
+    input: {
+      source: { kind: "qlog", path },
+      max_states: 8,
+      suffix_length: 2,
+      model_directory: store,
+    },
+  });
+  expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
+  if (!result.ok) return;
+  const model = protocolModelSchema.parse(
+    (result.value.result as { model: unknown }).model,
+  );
+  expect(model.source).toMatchObject({
+    kind: "qlog",
+    profile: "aioquic-1.5.0-json-0.3",
+    traces: 1,
+  });
+  expect(model.messages).toMatchObject({ total: 4, request: 2, response: 2 });
+  expect(model.alphabet.sketch_kinds).toEqual(["quic-packet"]);
+  expect(
+    model.classes.map(({ direction, sketch }) => [
+      direction,
+      sketch.segment_types.join("+"),
+    ]),
+  ).toEqual([
+    ["request", "initial+crypto"],
+    ["response", "handshake+crypto"],
+    ["request", "one_rtt+stream"],
+    ["response", "one_rtt+stream"],
+  ]);
+  // qlog reports no payload bytes, so a class carries no exemplar; null means
+  // unknown, not an empty message.
+  expect(model.classes.every(({ exemplar_sha256 }) => exemplar_sha256 === null)).toBe(
+    true,
+  );
+  expect(model.classes.every(({ template }) => template === null)).toBe(true);
+  expect(model.model_store).toEqual({
+    directory: store,
+    model_file: PROTOCOL_MODEL_STORE_MODEL_FILE,
+    template_count: 0,
+  });
+  expect(JSON.parse(await readFile(join(store, PROTOCOL_MODEL_STORE_MODEL_FILE), "utf8"))).toMatchObject({
+    source: { kind: "qlog" },
+  });
+  expect(model.transitions.length).toBeGreaterThan(0);
+});
+
+test("writes no seeds for a model whose classes have no exemplar", async () => {
+  const harness = await providerFor();
+  const path = join(harness.root, "lab.qlog");
+  await writeFile(path, QLOG_FIXTURE);
+  const store = join(harness.root, "qlog-store");
+  await learntQlogModel(harness, path, store);
+  const output = join(harness.root, "qlog-seeds");
+  const result = await harness.provider.execute({
+    operation: "export_protocol_grammar",
+    input: {
+      model_path: join(store, PROTOCOL_MODEL_STORE_MODEL_FILE),
+      output_directory: output,
+    },
+  });
+  expect(result.ok, result.ok ? "" : result.error.message).toBe(true);
+  if (!result.ok) return;
+  const value = result.value.result as {
+    seed_count: number;
+    skipped_count: number;
+    transition_count: number;
+    seeds: unknown[];
+    campaign_handoff: { seed_paths: string[] };
+  };
+  expect(value.seed_count).toBe(0);
+  expect(value.seeds).toEqual([]);
+  expect(value.campaign_handoff.seed_paths).toEqual([]);
+  expect(value.skipped_count).toBe(value.transition_count);
+});
+
 test("refuses a qlog capture outside the owned decoder profile", async () => {
   const harness = await providerFor();
   const path = join(harness.root, "lab.qlog");
@@ -259,6 +412,26 @@ test("refuses a qlog capture outside the owned decoder profile", async () => {
   expect(result.ok).toBe(false);
   if (result.ok) return;
   expect(result.error._tag).toBe("AnalysisUnsupportedTargetError");
+});
+
+test("refuses a malformed qlog capture with a typed error, never a schema throw", async () => {
+  const harness = await providerFor();
+  const notJson = join(harness.root, "broken.qlog");
+  await writeFile(notJson, "{not json");
+  const tracesNotArray = join(harness.root, "no-traces.qlog");
+  await writeFile(
+    tracesNotArray,
+    JSON.stringify({ qlog_format: "JSON", qlog_version: "0.3", traces: "none" }),
+  );
+  for (const path of [notJson, tracesNotArray]) {
+    const result = await harness.provider.execute({
+      operation: "learn_protocol_model",
+      input: { source: { kind: "qlog", path } },
+    });
+    expect(result.ok, path).toBe(false);
+    if (result.ok) continue;
+    expect(result.error._tag, path).toBe("AnalysisProtocolError");
+  }
 });
 
 test("cancels before reading a capture when the caller aborts", async () => {

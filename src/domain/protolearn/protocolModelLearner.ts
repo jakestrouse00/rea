@@ -66,7 +66,8 @@ interface ClassAccumulator {
   minSegments: number;
   maxSegments: number;
   readonly positions: Map<number, { types: Set<string>; observed: number }>;
-  exemplarSha256: string;
+  /** First observed payload digest, or null when the source reports no bytes. */
+  exemplarSha256: string | null;
   template: Buffer | null;
 }
 
@@ -152,7 +153,7 @@ export const learnProtocolModel = (
           minSegments: message.sketch.segments,
           maxSegments: message.sketch.segments,
           positions: new Map(),
-          exemplarSha256: message.payload_sha256 ?? "",
+          exemplarSha256: message.payload_sha256,
           template: null,
         });
       }
