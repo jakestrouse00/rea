@@ -108,6 +108,8 @@ const SOURCE_PATHS = {
   gamedataProvider: "dist/gamedata/GameDataProvider.js",
   ideviceContracts: "dist/contracts/idevice/ideviceToolContracts.js",
   ideviceProvider: "dist/idevice/IdeviceProvider.js",
+  ipswContracts: "dist/contracts/iosipsw/IpswToolContracts.js",
+  ipswProvider: "dist/iosipsw/IpswProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

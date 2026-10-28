@@ -118,6 +118,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
     },
     {
+      id: "ipsw",
+      surface: "ipsw-provider",
+      contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
+    },
+    {
       id: "discovery",
       surface: "discovery-provider",
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
@@ -493,6 +498,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.ideviceProvider.IDEVICE_PROVIDER_IDENTITY,
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.ipswProvider.IPSW_PROVIDER_IDENTITY,
+      contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

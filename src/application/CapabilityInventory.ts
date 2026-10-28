@@ -95,6 +95,7 @@ export type AvailabilityPolicy = {
   readonly firmwareExtractionEnabled?: boolean;
   readonly androidAnalysisAvailability?: ProviderAvailability;
   readonly adbAnalysisAvailability?: ProviderAvailability;
+  readonly ipswAnalysisAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -596,6 +597,11 @@ const workflowAvailabilityFor = ({
     return ownerProbeAvailability(
       policy.adbAnalysisAvailability,
       "Set REA_ADB_PATH to a caller-supplied adb executable or make adb available on PATH. This checks the client version only; device and serial availability depend on the request.",
+    );
+  if (kind === "ipsw-provider")
+    return ownerProbeAvailability(
+      policy.ipswAnalysisAvailability,
+      "Set REA_IPSW_COMMAND to a caller-supplied blacktop/ipsw binary (absolute path). This checks the CLI version only; an archive, shared cache, and output directory are still required per request.",
     );
   if (kind === "apktool-provider")
     return ownerProbeAvailability(

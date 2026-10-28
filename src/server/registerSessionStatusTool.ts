@@ -29,6 +29,9 @@ export interface SessionAvailabilityProbes {
   readonly adbAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
+  readonly ipswAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -55,6 +58,7 @@ const probeSessionAvailability = (
 ): Promise<{
   readonly android: ProviderAvailability;
   readonly adb: ProviderAvailability | undefined;
+  readonly ipsw: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
@@ -62,12 +66,14 @@ const probeSessionAvailability = (
   Promise.all([
     probes.androidAnalysisAvailability(signal),
     probes.adbAnalysisAvailability?.(signal) ?? undefined,
+    probes.ipswAnalysisAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
-  ] as const).then(([android, adb, apktool, jeb, evmLimiter]) => ({
+  ] as const).then(([android, adb, ipsw, apktool, jeb, evmLimiter]) => ({
     android,
     adb,
+    ipsw,
     apktool,
     jeb,
     evmLimiter,
@@ -109,6 +115,9 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.adb === undefined
             ? {}
             : { adbAnalysisAvailability: availabilityResults.adb }),
+          ...(availabilityResults.ipsw === undefined
+            ? {}
+            : { ipswAnalysisAvailability: availabilityResults.ipsw }),
           ...(availabilityResults.apktool === undefined
             ? {}
             : { apktoolAnalysisAvailability: availabilityResults.apktool }),

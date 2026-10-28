@@ -46,6 +46,7 @@ import { registerFlutterCommands } from "./cli/flutterCommands.js";
 import { registerJebCommands } from "./cli/jebCommands.js";
 import { registerAdbCommands } from "./cli/adbCommands.js";
 import { registerIdeviceCommands } from "./cli/ideviceCommands.js";
+import { registerIpswCommands } from "./cli/ipswCommands.js";
 import { registerDiscoveryCommands } from "./cli/discoveryCommands.js";
 import { registerEvidenceCommands } from "./cliEvidenceCommands.js";
 import { registerEnvironmentCommands } from "./cli/environmentCommands.js";
@@ -158,6 +159,7 @@ export const createCli = (
   registerJebCommands(cli, logger, environment);
   registerAdbCommands(cli, logger, environment);
   registerIdeviceCommands(cli, logger, environment);
+  registerIpswCommands(cli, logger, environment);
   registerDiscoveryCommands(cli, logger, environment);
   registerFirmwareCommands(cli, logger, environment);
   registerBinaryDiagnosticsCommands(cli, logger, environment);

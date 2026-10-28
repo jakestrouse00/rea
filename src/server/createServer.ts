@@ -192,6 +192,10 @@ import { createAdbDeviceAnalysisProvider } from "../composition/adb.js";
 import type { IdeviceAnalysisPort } from "../application/idevice/IdevicePort.js";
 import { IdeviceAnalysisService } from "../application/idevice/IdeviceAnalysisService.js";
 import { createIdeviceAnalysisProvider } from "../composition/idevice.js";
+import type { IpswAnalysisPort } from "../application/iosipsw/IpswAnalysisPort.js";
+import { IpswAnalysisService } from "../application/iosipsw/IpswAnalysisService.js";
+import { createIpswAnalysisProvider } from "../composition/iosipsw.js";
+import { registerIpswTools } from "./registerIpswTools.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -274,6 +278,7 @@ export interface CreateServerOptions {
   readonly jebAnalysis?: JebAnalysisPort;
   readonly adbDeviceAnalysis?: AdbDeviceAnalysisPort;
   readonly ideviceDeviceAnalysis?: IdeviceAnalysisPort;
+  readonly ipswAnalysis?: IpswAnalysisPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -603,6 +608,7 @@ export const createServer = (
     options.adbDeviceAnalysis ?? createAdbDeviceAnalysisProvider(environment);
   const idevice =
     options.ideviceDeviceAnalysis ?? createIdeviceAnalysisProvider(environment);
+  const ipsw = options.ipswAnalysis ?? createIpswAnalysisProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -628,6 +634,7 @@ export const createServer = (
       jeb.close(),
       adbDevice.close(),
       idevice.close(),
+      ipsw.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -879,6 +886,13 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerIpswTools(
+    server,
+    new IpswAnalysisService(ipsw),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -953,6 +967,7 @@ export const createServer = (
         android.inspectAvailability(signal),
       adbAnalysisAvailability: (signal) =>
         adbDevice.inspectAvailability(signal),
+      ipswAnalysisAvailability: (signal) => ipsw.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),

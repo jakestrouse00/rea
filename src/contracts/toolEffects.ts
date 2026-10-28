@@ -288,6 +288,28 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_pe_imports: evidence,
   inspect_native_exports: evidence,
   inspect_elf_notes: evidence,
+  inspect_ipsw: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  extract_dyld_shared_cache_images: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  dump_ios_class_metadata: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  symbolicate_ios_crash: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  inspect_macho_entitlements: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
   inspect_apple_ips: evidence,
   inspect_devicetree: evidence,
   inspect_kernel_module: evidence,
