@@ -248,12 +248,25 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
   func peripheral(_ peripheral: CBPeripheral,
                   didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-    guard let id = observeId, observerCharacteristic === characteristic else { return }
+    // During an observe window this characteristic's values are notifications;
+    // otherwise this is the reply to a read command.
+    if observerCharacteristic === characteristic {
+      let id = observeId ?? ""
+      if error != nil {
+        emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"\(escape(error?.localizedDescription ?? "read failed"))\"}")
+        return
+      }
+      emit("{\"event\":\"notification\",\"id\":\"\(id)\",\"ts\":\"\(Self.isoNow())\",\"payload_hex\":\"\(dataToHex(characteristic.value ?? Data()))\"}")
+      return
+    }
+    guard let awaiting = awaitingRead, awaiting.characteristic === characteristic else { return }
+    let id = awaiting.id
+    awaitingRead = nil
     if error != nil {
       emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"\(escape(error?.localizedDescription ?? "read failed"))\"}")
       return
     }
-    emit("{\"event\":\"notification\",\"id\":\"\(id)\",\"ts\":\"\(Self.isoNow())\",\"payload_hex\":\"\(dataToHex(characteristic.value ?? Data()))\"}")
+    emit("{\"event\":\"value\",\"id\":\"\(id)\",\"payload_hex\":\"\(dataToHex(characteristic.value ?? Data()))\"}")
   }
 
   static func isoNow() -> String {
@@ -275,6 +288,11 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
   // Command handling, one command at a time on the IO queue.
 
+  func awaitReadReply(_ id: String, characteristic: CBCharacteristic) {
+    awaitingRead = (id, characteristic)
+    peripheral?.readValue(for: characteristic)
+  }
+
   func handle(_ json: [String: Any]) {
     guard let id = json["id"] as? String ?? nil else {
       emit("{\"event\":\"error\",\"message\":\"the command carried no id\"}")
@@ -283,14 +301,8 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     switch json["op"] as? String {
     case "read":
       guard let characteristic = characteristic(named: json, id: id) else { return }
-      if let cached = characteristic.value {
-        emit("{\"event\":\"value\",\"id\":\"\(id)\",\"payload_hex\":\"\(dataToHex(cached))\"}")
-        peripheral?.readValue(for: characteristic)
-        return
-      }
-      readContinuations[id] = id
-      peripheral?.readValue(for: characteristic)
-      emit("{\"event\":\"value\",\"id\":\"\(id)\",\"payload_hex\":\"\(dataToHex(characteristic.value ?? Data()))\"}")
+      // Await the peer's reply; didUpdateValueFor emits the value event.
+      awaitReadReply(id, characteristic: characteristic)
     case "write":
       guard let characteristic = characteristic(named: json, id: id) else { return }
       let payload = hexToData(json["payload_hex"] as? String ?? "")
@@ -308,7 +320,8 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
         emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"characteristic cannot write with response\"}")
         return
       }
-      writeContinuations[id] = id
+      awaitingWrite = (id, characteristic)
+      peripheral?.writeValue(payload, for: characteristic, type: .withResponse)
       peripheral?.writeValue(payload, for: characteristic, type: .withResponse)
     case "observe":
       guard let characteristic = characteristic(named: json, id: id) else { return }
@@ -336,8 +349,33 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     }
   }
 
-  var readContinuations: [String: String] = [:]
-  var writeContinuations: [String: String] = [:]
+  /// REA serializes commands, so the dead id registries are removed; the
+  /// awaited-reply singles above carry the only pending protocol replies.
+
+  func peripheral(_ peripheral: CBPeripheral,
+                  didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
+    guard let awaiting = awaitingWrite, awaiting.characteristic === characteristic else { return }
+    let id = awaiting.id
+    awaitingWrite = nil
+    if error != nil {
+      emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"\(escape(error?.localizedDescription ?? "write failed"))\"}")
+      return
+    }
+    emit("{\"event\":\"written\",\"id\":\"\(id)\"}")
+  }
+
+  func peripheral(_ peripheral: CBPeripheral,
+                  didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+    if let error = error {
+      emit("{\"event\":\"error\",\"message\":\"\(escape(error.localizedDescription))\"}")
+      finishObserve()
+    }
+  }
+
+  /// One in-flight read/write reply REA awaits; CoreBluetooth identifies the
+  /// reply by characteristic, and REA serializes commands.
+  var awaitingRead: (id: String, characteristic: CBCharacteristic)? = nil
+  var awaitingWrite: (id: String, characteristic: CBCharacteristic)? = nil
 }
 
 // Argument parsing; the main thread only waits on the handshake gate, all
