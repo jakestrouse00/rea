@@ -159,13 +159,6 @@ export class BrowserRequestRuleRegistry {
     };
   }
 
-  /** Rule identities currently armed against one endpoint target. */
-  armedFor(targetId: string): readonly string[] {
-    return [...this.#rules.values()]
-      .filter((rule) => rule.target.target_id === targetId)
-      .map((rule) => rule.ruleId);
-  }
-
   /** Release one rule and report everything it observed before releasing. */
   async clear(
     ruleId: string,

@@ -212,6 +212,31 @@ describe("replay wire framing", () => {
     expect(composed.ok && composed.value.body).toBeUndefined();
   });
 
+  it("bounds the request body at the wire seam for every lane", () => {
+    const composed = composeReplayWireRequest({
+      method: "POST",
+      url: "https://api.example.test/",
+      headers: [],
+      body: {
+        kind: "base64",
+        base64: Buffer.alloc(REPLAY_LIMITS.maxRequestBodyBytes + 1).toString(
+          "base64",
+        ),
+      },
+    });
+    expect(issuePaths(composed)).toContain("body.base64");
+  });
+
+  it("refuses a HEAD body at the wire seam for every lane", () => {
+    const composed = composeReplayWireRequest({
+      method: "HEAD",
+      url: "https://api.example.test/",
+      headers: [],
+      body: { kind: "text", text: "payload" },
+    });
+    expect(issuePaths(composed)).toContain("body");
+  });
+
   it("bounds the composed header count", () => {
     const headersList = Array.from(
       { length: REPLAY_LIMITS.maxHeaderCount + 1 },

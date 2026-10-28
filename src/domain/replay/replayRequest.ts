@@ -249,6 +249,11 @@ export const composeReplayRequest = (
  * else, including a caller-provided `Host`, travels unchanged: a replayed
  * request is evidence about a server, so silently rewriting its headers would
  * make the observation describe REA's choices instead.
+ *
+ * The body bound belongs to this seam, not to one caller: a lane that composes
+ * a `ReplayRequest` directly and hands it to the send core never runs
+ * `composeReplayRequest`, so the request-body limit and the HEAD rule are
+ * enforced again here, before any lane can spend a dispatch on oversized bytes.
  */
 export const composeReplayWireRequest = (
   request: ReplayRequest,
@@ -256,6 +261,11 @@ export const composeReplayWireRequest = (
   const method = normalizedMethod(request.method, ["method"]);
   if (!method.ok) return err(method.error);
   const issues: AnalysisInputIssue[] = [...urlIssues(request.url, ["url"])];
+  issues.push(...bodyIssues(request.body, ["body"]));
+  if (method.value === "HEAD" && request.body.kind !== "none")
+    issues.push(
+      issue(["body"], "invalid_value", "A HEAD request cannot carry a body."),
+    );
   const headers: ReplayHeader[] = [];
   let headerBytes = 0;
   for (const [index, header] of request.headers.entries()) {

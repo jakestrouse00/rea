@@ -375,6 +375,46 @@ describe("browser request rule ownership", () => {
     }
   });
 
+  it("disarms without enabling interception when the caller cancels mid-arm", async () => {
+    const cancelled = new AbortController();
+    const browser = await startFakeCdpBrowser({
+      commandEvents: (command) => {
+        if (command.method === "Target.attachToTarget")
+          cancelled.abort(new Error("caller cancelled the arm"));
+        return undefined;
+      },
+    });
+    trackBrowser(browser);
+    const provider = new CdpBrowserProvider();
+    try {
+      const refused = await analyzeBrowserMutation(
+        provider.armRequestRule(
+          parsedRule(browser, {
+            match: { methods: ["POST"] },
+            action: { kind: "hold" },
+          }),
+          { signal: cancelled.signal },
+        ),
+      );
+      expect(refused._tag).toBe("AnalysisCancelledError");
+      expect(
+        browser.commands.some((command) => command.method === "Fetch.enable"),
+      ).toBe(false);
+      await waitFor(
+        () => browser.activeConnectionCount() === 0,
+        "the cancelled arm closed its owned transport",
+      );
+      const leaked = await analyzeBrowserMutation(
+        provider.clearRequestRule({ rule_id: RULE_ID }),
+      );
+      expect(failureText(leaked)).toContain("not armed");
+    } finally {
+      await provider.close();
+    }
+  });
+});
+
+describe("browser request rule release cancellation", () => {
   it("still releases held traffic when the caller cancels the clear", async () => {
     const browser = await startFakeCdpBrowser();
     trackBrowser(browser);

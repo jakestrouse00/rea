@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { CdpBrowserProvider } from "../../../src/browser/CdpBrowserProvider.js";
+import { REPLAY_LIMITS } from "../../../src/domain/replay/replayLimits.js";
 import {
   analyzeBrowserMutation,
   browserEndpoint,
@@ -178,6 +179,40 @@ describe("browser_fetch refusals and retained bytes", () => {
     }
   });
 
+  it("refuses an oversized body before the page dispatch", async () => {
+    const browser = await startFakeCdpBrowser({
+      commandResult: (command) =>
+        command.method === "Runtime.evaluate" ? pageAnswer("{}") : undefined,
+    });
+    trackBrowser(browser);
+    const provider = providerFor(browser);
+    try {
+      const refused = await analyzeBrowserMutation(
+        provider.fetchPage(
+          fetchInput(browser, {
+            method: "POST",
+            body: {
+              kind: "base64",
+              base64: Buffer.alloc(
+                REPLAY_LIMITS.maxRequestBodyBytes + 1,
+              ).toString("base64"),
+            },
+          }),
+        ),
+      );
+      expect(JSON.stringify(refused)).toContain(
+        `One request body is limited to ${String(REPLAY_LIMITS.maxRequestBodyBytes)} bytes.`,
+      );
+      expect(
+        browser.commands.some(
+          (command) => command.method === "Runtime.evaluate",
+        ),
+      ).toBe(false);
+    } finally {
+      await provider.close();
+    }
+  });
+
   it("refuses a foreign tab before dispatch", async () => {
     const browser = await startFakeCdpBrowser({
       commandResult: (command) =>
@@ -229,7 +264,9 @@ describe("browser_fetch refusals and retained bytes", () => {
       await provider.close();
     }
   });
+});
 
+describe("browser_fetch retained response bytes", () => {
   it("writes owner-only response bytes to the caller-selected dump path", async () => {
     const directory = await temporaryDirectory();
     const dumpPath = join(directory, "response.bin");

@@ -59,11 +59,11 @@ export const BROWSER_FETCH_SESSION_LIMITATION =
   "The request originated inside the selected page, so it shares that page's cookies, client hints, and network identity. Server state, nonces, and one-time tokens may have changed, and an armed request rule applies to this fetch like any other page traffic.";
 
 /** Response bytes cross one CDP frame, so the page-context cap is smaller. */
-export const BROWSER_FETCH_BODY_LIMITATION = `Response bytes cross one CDP frame: the page retains at most ${String(BROWSER_MUTATION_LIMITS.maxPageFetchBodyBytes)} bytes, then the body ends as a partial observation. Without a dump_path REA counts at most ${String(REPLAY_LIMITS.maxRetainedBodyBytes)} bytes inline; with a dump_path it writes what it received owner-only.`;
+export const BROWSER_FETCH_BODY_LIMITATION = `Response bytes cross one CDP frame: the page retains at most ${String(BROWSER_MUTATION_LIMITS.maxPageFetchBodyBytes)} bytes. A larger body ends as a partial observation, so without a dump_path REA counts at most ${String(REPLAY_LIMITS.maxRetainedBodyBytes)} bytes inline and reports body_truncated, while with a dump_path the send fails and the partially written file is removed rather than left looking like a complete capture.`;
 
 /** The browser owns framing, credentials, and redirect handling here. */
 export const BROWSER_FETCH_TRANSPORT_LIMITATION =
-  "The browser owns the wire bytes: it composes Host, Content-Length, Accept-* and Sec-* headers, supplies its own Cookie header from the page session, and refuses caller values for those names. A redirected page fetch is an opaque response whose status, location, and headers the page cannot read, so the send ends as no_response instead of following an ungated hop. Cross-origin responses are additionally filtered by the page's CORS policy.";
+  "The browser owns the wire bytes: it composes Host, Content-Length, Connection, Cookie, Origin, Referer, Accept-Charset, Accept-Encoding, and every Sec-* or Proxy-* header, supplies the page session's own Cookie header, and drops caller values for those names, which are reported in browser_managed_header_names. Other Accept-* headers stay caller-settable. A redirected page fetch is an opaque response whose status, location, and headers the page cannot read, so the send ends as no_response instead of following an ungated hop. Cross-origin responses are additionally filtered by the page's CORS policy.";
 
 /** Caller expression and page identity for one main-frame evaluation. */
 export const browserEvaluateInputSchema = z
@@ -376,10 +376,48 @@ const browserFetchHeaderInputSchema = z.strictObject({
   value: z.string().max(REPLAY_LIMITS.maxHeaderBytes),
 });
 
+type BrowserFetchBodyInput =
+  | { readonly kind: "none" }
+  | { readonly kind: "text"; readonly text: string }
+  | { readonly kind: "base64"; readonly base64: string };
+
+/** Byte length a page-context body sends, without materializing it. */
+const fetchBodyByteLength = (value: BrowserFetchBodyInput): number =>
+  value.kind === "none"
+    ? 0
+    : value.kind === "text"
+      ? Buffer.byteLength(value.text, "utf8")
+      : Math.floor((value.base64.length * 3) / 4);
+
+/** Refuse an oversized or non-canonical body before any dispatch is spent. */
+const refineFetchBody = (
+  value: BrowserFetchBodyInput,
+  context: z.RefinementCtx,
+): void => {
+  if (value.kind === "base64" && !isCanonicalBase64(value.base64)) {
+    context.addIssue({
+      code: "custom",
+      path: ["base64"],
+      message: "Request body bytes must be canonical padded base64.",
+    });
+    return;
+  }
+  if (fetchBodyByteLength(value) > REPLAY_LIMITS.maxRequestBodyBytes)
+    context.addIssue({
+      code: "custom",
+      path: [value.kind === "base64" ? "base64" : "text"],
+      message: `One request body is limited to ${String(REPLAY_LIMITS.maxRequestBodyBytes)} bytes.`,
+    });
+};
+
 const browserFetchBodyInputSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("none") }),
-  z.strictObject({ kind: z.literal("text"), text: z.string() }),
-  z.strictObject({ kind: z.literal("base64"), base64: z.string() }),
+  z.strictObject({ kind: z.literal("none") }).superRefine(refineFetchBody),
+  z
+    .strictObject({ kind: z.literal("text"), text: z.string() })
+    .superRefine(refineFetchBody),
+  z
+    .strictObject({ kind: z.literal("base64"), base64: z.string() })
+    .superRefine(refineFetchBody),
 ]);
 
 /** One page-context request through the real browser's own session. */

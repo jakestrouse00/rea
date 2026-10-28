@@ -314,7 +314,10 @@ a time, and a duplicate `rule_id` is refused instead of replaced.
 
 Rule observations are value-free: each retained decision reports the method,
 origin, path, query parameter names, resource type, and the decision REA made,
-never a header value, query value, or rewritten body. Enforcement is never
+never a header value, query value, or rewritten body. That hygiene is
+non-retention, not redaction: a rule ledger has no field that could hold a
+secret value, so `BrowserScenarioSecrets` (the scenario recorder's redaction
+engine) is deliberately not involved. Enforcement is never
 budgeted; once the 1000-decision ledger is full a rule keeps blocking, holding,
 or rewriting and reports `dropped` counts plus the omission reasons, so a
 rewritten-traffic flood yields an explicit partial observation.
@@ -328,8 +331,12 @@ tool, and the catalog reports it as unavailable. The browser owns the wire
 bytes: `Host`, framing, `Cookie`, `Origin`, `Referer`, and `Sec-*` are set by the
 browser and reported in `browser_managed_header_names` instead of being sent. A
 redirected page fetch is opaque, so the send ends as `no_response` instead of
-following a hop the core could not gate. At most 33554432 response bytes cross
-one CDP frame; a larger body is a partial observation, not a complete capture.
+following a hop the core could not gate. The caller's request body is limited to
+8388608 bytes by the input contract and again at the composed-wire seam the send
+core owns, so an oversized body is a typed refusal before the page dispatches
+anything. At most 33554432 response bytes cross one CDP frame; a larger body is a
+partial observation, not a complete capture, and with `dump_path` the partial
+file is removed rather than left looking complete.
 
 ## CLI workflow
 
