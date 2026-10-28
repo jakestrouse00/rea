@@ -61,7 +61,7 @@ export const registerIpswCommands = (
         .min(1)
         .optional()
         .describe(
-          "Absolute shared-cache file or directory; defaults to REA_IPSW_DSC_PATH",
+          "Absolute shared-cache file or directory; defaults to REA_IPSW_DSC_PATH, then to the macOS cryptex directory",
         ),
       image: z
         .array(z.string().min(1))
@@ -124,7 +124,9 @@ export const registerIpswCommands = (
         .string()
         .min(1)
         .optional()
-        .describe("Absolute shared-cache path; defaults to REA_IPSW_DSC_PATH"),
+        .describe(
+          "Absolute shared-cache path; defaults to REA_IPSW_DSC_PATH, then to the macOS cryptex directory",
+        ),
     }),
     run: ({ args, options }) =>
       execute(CLI_COMMANDS.symbolicateIosCrash, "symbolicate_ios_crash", {

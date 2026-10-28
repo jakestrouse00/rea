@@ -218,10 +218,12 @@ export const parseDscManifestOutput = (
 ): IpswDscManifest | null => {
   const root = asObject(value);
   if (root === null) return null;
-  const rows = asArray(root.images).length
-    ? asArray(root.images)
-    : asArray(root.dylibs);
-  if (rows.length === 0) return null;
+  const rows = Array.isArray(root.images)
+    ? root.images
+    : Array.isArray(root.dylibs)
+      ? root.dylibs
+      : null;
+  if (rows === null) return null;
   let unparsedEntries = 0;
   const images: IpswDscManifest["images"][number][] = [];
   for (const row of rows) {
@@ -371,11 +373,13 @@ export const parseClassMetadataOutput = (
   const rows = Array.isArray(value)
     ? value
     : root === null
-      ? []
-      : asArray(root.classes).length > 0
-        ? asArray(root.classes)
-        : asArray(root.types);
-  if (rows.length === 0) return null;
+      ? null
+      : Array.isArray(root.classes)
+        ? root.classes
+        : Array.isArray(root.types)
+          ? root.types
+          : null;
+  if (rows === null) return null;
   let unparsedEntries = 0;
   const classes: IpswClassEntry[] = [];
   for (const row of rows) {
@@ -445,10 +449,13 @@ export const parseCrashSymbolicationOutput = (
 ): IpswCrashSymbolication | null => {
   const root = asObject(value);
   if (root === null) return null;
-  const rows = asArray(root.threads).length
-    ? asArray(root.threads)
-    : asArray(asObject(root.crash)?.threads);
-  if (rows.length === 0) return null;
+  const nested = asObject(root.crash);
+  const rows = Array.isArray(root.threads)
+    ? root.threads
+    : Array.isArray(nested?.threads)
+      ? nested.threads
+      : null;
+  if (rows === null) return null;
   let unparsedEntries = 0;
   const threads: IpswCrashSymbolication["threads"][number][] = [];
   for (const row of rows) {

@@ -42,6 +42,10 @@ Every tool is also available on the CLI with the same name in kebab case
 - **Value-free Evidence.** Entitlement values (including team identifiers),
   property values, and method bodies never enter Evidence. Reports carry
   structure: names, offsets, load addresses, sizes, counts, hashes, and rules.
+  When an `inspect_macho_entitlements` document cannot be read, the failure
+  reports only its byte count: raw stdout/stderr, captured process output, and
+  stderr excerpts are withheld for that operation because the document itself
+  can embed entitlement values.
 - **Bounded child processes.** Every command is a supervised child with a
   32 MiB stdout cap and a stop signal. Inspection waits at most 120 s;
   extraction waits at most 600 s. This release has no runtime override for

@@ -478,6 +478,111 @@ test("retains a staging root whose removal cannot be confirmed", async () => {
   await expect(provider.close()).rejects.toBeDefined();
 });
 
+test("withholds raw entitlement documents on unparseable output", async () => {
+  const secret = "ABCDE12345";
+  const { provider, root } = await providerFor({
+    macho: `<?xml version="1.0"?><plist><dict><key>com.apple.developer.team-identifier</key><string>${secret}</string></dict></plist>`,
+  });
+  const image = join(root, "FixtureApp");
+  await writeFile(image, "MACHO-FIXTURE");
+  const result = await provider.execute({
+    operation: "inspect_macho_entitlements",
+    input: { path: image },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  const projected = projectAnalysisError(result.error);
+  expect(JSON.stringify(projected)).not.toContain(secret);
+  expect(JSON.stringify(projected)).not.toContain("stdout_excerpt");
+  expect(projected.captured_output).toBeUndefined();
+  await provider.close();
+});
+
+test("withholds captured output when the entitlements command fails", async () => {
+  const secret = "ABCDE12345";
+  const { provider, root } = await providerFor({
+    machoFailure: {
+      exit: 1,
+      stdout: `com.apple.developer.team-identifier=${secret}`,
+      stderr: `parse failed near ${secret}`,
+    },
+  });
+  const image = join(root, "FixtureApp");
+  await writeFile(image, "MACHO-FIXTURE");
+  const result = await provider.execute({
+    operation: "inspect_macho_entitlements",
+    input: { path: image },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  const projected = projectAnalysisError(result.error);
+  expect(JSON.stringify(projected)).not.toContain(secret);
+  expect(projected.captured_output).toBeUndefined();
+  await provider.close();
+});
+
+test("reports a recognized empty class table as empty, not unreadable", async () => {
+  const { provider, root } = await providerFor({ classes: { classes: [] } });
+  const image = join(root, "PlainMachO");
+  await writeFile(image, "MACHO-FIXTURE");
+  const result = await resultOf(provider, {
+    operation: "dump_ios_class_metadata",
+    input: { path: image, family: "objc", max_classes: 10 },
+  });
+  expect(result.classes).toEqual([]);
+  expect(result.class_count).toBe(0);
+  expect(result.truncated).toBe(false);
+  expect(result.coverage).toBe("complete");
+  await provider.close();
+});
+
+test("reports a recognized empty thread list as empty, not unreadable", async () => {
+  const { provider, root } = await providerFor({
+    symbolicated: { threads: [] },
+  });
+  const crash = join(root, "fixture-app.ips");
+  await writeFile(crash, "CRASH-FIXTURE");
+  const result = await resultOf(provider, {
+    operation: "symbolicate_ios_crash",
+    input: { crash },
+  });
+  expect(result.threads).toEqual([]);
+  expect(result.frame_count).toBe(0);
+  expect(result.coverage).toBe("complete");
+  await provider.close();
+});
+
+test("reports a recognized empty cache manifest as empty, not unreadable", async () => {
+  const { provider, root } = await providerFor({
+    manifest: { arch: "arm64e", images: [] },
+  });
+  const result = await resultOf(provider, {
+    operation: "extract_dyld_shared_cache_images",
+    input: { output_directory: join(root, "out"), max_images: 4 },
+  });
+  expect(result.image_count).toBe(0);
+  expect(result.manifest).toEqual([]);
+  expect(result.requested).toEqual([]);
+  expect(result.published).toEqual([]);
+  expect(result.coverage).toBe("complete");
+  expect((await stat(result.output_directory as string)).isDirectory()).toBe(
+    true,
+  );
+
+  const requested = await provider.execute({
+    operation: "extract_dyld_shared_cache_images",
+    input: {
+      output_directory: join(root, "out2"),
+      images: ["UIKit"],
+      max_images: 4,
+    },
+  });
+  expect(requested.ok).toBe(false);
+  if (requested.ok) return;
+  expect(requested.error._tag).toBe("AnalysisInputError");
+  await provider.close();
+});
+
 test("reports the ipsw client as available only after a version probe", async () => {
   const { provider } = await providerFor({});
   const available = await provider.inspectAvailability();

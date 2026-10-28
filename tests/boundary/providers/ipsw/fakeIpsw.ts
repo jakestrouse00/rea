@@ -21,6 +21,12 @@ export interface FakeIpswBehavior {
   readonly symbolicated?: unknown;
   /** `ipsw macho info <image> --json --entitlements`. */
   readonly macho?: unknown;
+  /** Fails `ipsw macho info` after printing these bytes. */
+  readonly machoFailure?: {
+    readonly exit: number;
+    readonly stdout?: string;
+    readonly stderr?: string;
+  };
 }
 
 const SCRIPT = String.raw`#!${process.execPath}
@@ -59,6 +65,12 @@ if (args[0] === "version") {
 } else if (args[0] === "symbolicate") {
   out(behavior.symbolicated ?? { threads: [] });
 } else if (args[0] === "macho" && args[1] === "info") {
+  if (behavior.machoFailure !== undefined) {
+    if (behavior.machoFailure.stdout !== undefined)
+      process.stdout.write(behavior.machoFailure.stdout);
+    process.stderr.write(behavior.machoFailure.stderr ?? "macho info failed\n");
+    process.exit(behavior.machoFailure.exit);
+  }
   out(behavior.macho ?? {});
 } else {
   process.stderr.write("unmodeled invocation\n");
@@ -78,5 +90,3 @@ export const writeFakeIpsw = async (
   await writeFile(callsPath, "");
   return { launcher, callsPath };
 };
-
-export const FIXTURE_SHA256 = `${"a".repeat(32)}${"b".repeat(32)}`;

@@ -20,6 +20,7 @@ import {
   IPSW_COMMAND_REMEDIATION,
   IPSW_DSC_PATH_ENV,
   IPSW_DSC_PATH_REMEDIATION,
+  IPSW_VERSION_PROBE_REMEDIATION,
 } from "./IpswRelease.js";
 
 const VERSION_TIMEOUT_MS = 10_000;
@@ -130,6 +131,7 @@ export interface IpswClientIdentity {
 export const inspectIpswClient = async (
   configuration: IpswConfiguration,
   signal?: AbortSignal,
+  operation = "inspect_ipsw",
 ): Promise<IpswClientIdentity> => {
   try {
     const { stdout } = await execFileOutput(
@@ -150,7 +152,7 @@ export const inspectIpswClient = async (
         {
           selected_binary: configuration.command,
           version_probe: "unrecognized_output",
-          remediation: IPSW_COMMAND_REMEDIATION,
+          remediation: IPSW_VERSION_PROBE_REMEDIATION,
         },
       );
     return { version };
@@ -158,7 +160,7 @@ export const inspectIpswClient = async (
     if (cause instanceof IpswConfigurationFailure) throw cause;
     const failure = execFileOutputFailure(cause);
     if (cause instanceof ExecFileOutputCancelledError)
-      throw new AnalysisCancelledError("inspect_ipsw", {
+      throw new AnalysisCancelledError(operation, {
         cause: cause.cause,
         ...(failure === undefined
           ? {}
@@ -177,7 +179,7 @@ export const inspectIpswClient = async (
     };
     if (failure?.outputTruncated === true)
       throw new AnalysisResourceConstraintError(
-        "inspect_ipsw",
+        operation,
         "memory",
         `ipsw version output exceeded the ${String(VERSION_MAX_OUTPUT_BYTES)}-byte capture budget`,
         { max_output_bytes: VERSION_MAX_OUTPUT_BYTES },
@@ -190,7 +192,7 @@ export const inspectIpswClient = async (
         },
       );
     if (failure?.code === "ETIMEDOUT")
-      throw new AnalysisTimeoutError("inspect_ipsw", VERSION_TIMEOUT_MS, {
+      throw new AnalysisTimeoutError(operation, VERSION_TIMEOUT_MS, {
         ...options,
         userMessage: `The ipsw version probe reached its ${String(VERSION_TIMEOUT_MS)} ms deadline (deadlineExpired). This release has no runtime override.`,
         remediationAction: `This ${String(VERSION_TIMEOUT_MS)} ms ipsw version probe has no runtime override. Allow execution, cleanup and delivery headroom in the outer MCP client deadline. Confirm outstanding work and cleanup before retrying.`,
@@ -227,7 +229,7 @@ export const inspectIpswClient = async (
               exit_code: failure.code,
               stderr_excerpt: failure.stderr.slice(0, 512),
             }),
-        remediation: IPSW_COMMAND_REMEDIATION,
+        remediation: IPSW_VERSION_PROBE_REMEDIATION,
       },
       { cause },
     );

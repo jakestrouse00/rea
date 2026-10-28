@@ -229,6 +229,9 @@ export class IpswProvider {
           args,
           { timeoutMs },
           signal,
+          {
+            withholdOutput: operation === "inspect_macho_entitlements",
+          },
         );
       switch (operation) {
         case "inspect_ipsw":
@@ -278,7 +281,11 @@ export class IpswProvider {
   ): Promise<Result<IpswInstallation, AnalysisError>> {
     try {
       const configuration = resolveIpswConfiguration(this.#environment);
-      const identity = await inspectIpswClient(configuration, signal);
+      const identity = await inspectIpswClient(
+        configuration,
+        signal,
+        operation,
+      );
       return ok({ configuration, identity });
     } catch (cause: unknown) {
       if (cause instanceof AnalysisErrorClass) return err(cause);
@@ -397,6 +404,7 @@ export class IpswProvider {
           { diagnostics: { stdout_excerpt: info.value.stdout.slice(0, 256) } },
         ),
       );
+    const emptyManifest = manifest.images.length === 0;
     const manifestTruncated = manifest.images.length > input.max_images;
     const manifestRows = manifest.images.slice(0, input.max_images);
     const requested =
@@ -417,7 +425,7 @@ export class IpswProvider {
       else if (!selected.some(({ name }) => name === match.name))
         selected.push({ name: match.name, path: match.path });
     }
-    if (selected.length === 0)
+    if (selected.length === 0 && (!emptyManifest || input.images !== undefined))
       return err(
         new AnalysisInputError(
           "extract_dyld_shared_cache_images",
@@ -456,17 +464,23 @@ export class IpswProvider {
       "extract_dyld_shared_cache_images",
       async (root) => {
         const stagedDirectory = join(root.path, "images");
-        await mkdir(stagedDirectory, { mode: 0o700 });
-        const extracted = await run(
-          ipswArguments.dyld_extract(
-            cache.value.path,
-            stagedDirectory,
-            selected.map(({ name }) => name),
-          ),
-          installation.configuration.extractionTimeoutMs,
-        );
-        if (!extracted.ok) return extracted;
-        const staged = await listStagedFiles(stagedDirectory, input.max_images);
+        let staged: {
+          readonly files: readonly string[];
+          readonly truncated: boolean;
+        } = { files: [], truncated: false };
+        if (!emptyManifest) {
+          await mkdir(stagedDirectory, { mode: 0o700 });
+          const extracted = await run(
+            ipswArguments.dyld_extract(
+              cache.value.path,
+              stagedDirectory,
+              selected.map(({ name }) => name),
+            ),
+            installation.configuration.extractionTimeoutMs,
+          );
+          if (!extracted.ok) return extracted;
+          staged = await listStagedFiles(stagedDirectory, input.max_images);
+        }
         const destination = join(
           prepared.value,
           `rea-ipsw-${basename(cache.value.path).replaceAll(/[^\w.-]+/gu, "-")}-images`,
@@ -752,8 +766,8 @@ export class IpswProvider {
     if (summary === null)
       return err(
         new AnalysisProtocolError(
-          "ipsw macho info did not return recognizable entitlements or load commands",
-          { diagnostics: { stdout_excerpt: ran.value.stdout.slice(0, 256) } },
+          "ipsw macho info did not return recognizable entitlements or load commands; the raw document is withheld because it can embed entitlement values",
+          { diagnostics: { stdout_bytes: ran.value.stdoutBytes } },
         ),
       );
     return ok(
@@ -1011,6 +1025,20 @@ export class IpswProvider {
       );
     }
     const files: FileDigestEntry[] = [];
+    const partialFailure = (
+      cause: unknown,
+      reason: string,
+    ): AnalysisOutputError =>
+      new AnalysisOutputError(operation, reason, {
+        cause,
+        diagnostics: {
+          published_directory: destinationRoot,
+          published_files: files.map(({ relative_path }) => relative_path),
+          published_count: files.length,
+        },
+        userMessage:
+          "The output directory was created exclusively for this request and already holds the listed images; REA does not replace caller artifacts, so remove it before retrying",
+      });
     for (const relativePath of relativePaths) {
       const source = join(stagingRoot, relativePath);
       const destination = join(destinationRoot, relativePath);
@@ -1019,10 +1047,9 @@ export class IpswProvider {
         await copyFile(source, destination, constants.COPYFILE_EXCL);
       } catch (cause: unknown) {
         return err(
-          new AnalysisOutputError(
-            operation,
+          partialFailure(
+            cause,
             `An extracted image could not be published: ${destination}`,
-            { cause },
           ),
         );
       }
@@ -1032,7 +1059,13 @@ export class IpswProvider {
         relativePath,
         signal,
       );
-      if (!digest.ok) return digest;
+      if (!digest.ok)
+        return err(
+          partialFailure(
+            digest.error,
+            `A published image could not be fully digested after ${String(files.length)} successful publications: ${destination}`,
+          ),
+        );
       files.push({
         relative_path: relativePath,
         bytes: digest.value.bytes,

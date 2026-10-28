@@ -9,8 +9,8 @@ import { err, ok, type Result } from "../domain/result.js";
 import {
   ExecFileOutputCancelledError,
   execFileBytes,
+  execFileFailureCapturedOutput,
   execFileOutputFailure,
-  type ExecFileOutputFailure,
 } from "../process/ExecFileOutput.js";
 import { IPSW_PROVIDER_ID } from "./IpswRelease.js";
 
@@ -65,13 +65,20 @@ export const ipswArguments = {
   ],
 } as const;
 
-/** Run one bounded ipsw command, keeping its exact failure shape. */
+/**
+ * Run one bounded ipsw command, keeping its exact failure shape.
+ *
+ * `withholdOutput` drops raw stdout/stderr from every failure path. The
+ * `macho info` document can embed entitlement values, so its failures report
+ * only an exit code, never the bytes that failed to parse.
+ */
 export const runIpswCommand = async (
   operation: string,
   executable: string,
   args: readonly string[],
   limits: { readonly timeoutMs: number },
   signal: AbortSignal | undefined,
+  options: { readonly withholdOutput?: boolean } = {},
 ): Promise<
   Result<{ stdout: string; stderr: string; stdoutBytes: number }, AnalysisError>
 > => {
@@ -91,13 +98,16 @@ export const runIpswCommand = async (
     });
   } catch (cause) {
     const failure = execFileOutputFailure(cause);
+    const withheld = options.withholdOutput === true;
+    const capturedOutput =
+      withheld || failure === undefined
+        ? undefined
+        : execFileFailureCapturedOutput(failure);
     if (cause instanceof ExecFileOutputCancelledError)
       return err(
         new AnalysisCancelledError(operation, {
           cause: cause.cause,
-          ...(failure === undefined
-            ? {}
-            : { capturedOutput: ipswCapturedOutput(failure) }),
+          ...(capturedOutput === undefined ? {} : { capturedOutput }),
         }),
       );
     if (failure === undefined)
@@ -109,43 +119,41 @@ export const runIpswCommand = async (
           }`,
         }),
       );
+    const outputOptions = {
+      cause,
+      ...(capturedOutput === undefined ? {} : { capturedOutput }),
+    };
     if (failure.outputTruncated)
       return err(
         new AnalysisResourceConstraintError(
           operation,
           "memory",
           `ipsw output exceeded the ${String(IPSW_MAX_OUTPUT_BYTES)}-byte capture budget`,
-          { max_output_bytes: IPSW_MAX_OUTPUT_BYTES },
-          { cause },
+          {
+            max_output_bytes: IPSW_MAX_OUTPUT_BYTES,
+            ...(withheld ? { output_withheld: true } : {}),
+          },
+          outputOptions,
         ),
       );
     if (failure.killed)
       return err(
-        new AnalysisTimeoutError(operation, limits.timeoutMs, { cause }),
+        new AnalysisTimeoutError(operation, limits.timeoutMs, outputOptions),
       );
     return err(
       new ProviderAdapterError(IPSW_PROVIDER_ID, operation, {
-        cause,
-        capturedOutput: ipswCapturedOutput(failure),
-        userMessage: `ipsw ${args.slice(0, 2).join(" ")} failed for ${operation}: ${
-          failure.stderr.trim().split("\n").at(-1) ||
-          `exit code ${String(failure.code)}`
-        }`,
+        ...outputOptions,
+        userMessage: withheld
+          ? `ipsw ${args.slice(0, 2).join(" ")} failed for ${operation}: exit code ${
+              typeof failure.code === "number"
+                ? String(failure.code)
+                : "unknown"
+            }. Raw output is withheld because this document can embed entitlement values`
+          : `ipsw ${args.slice(0, 2).join(" ")} failed for ${operation}: ${
+              failure.stderr.trim().split("\n").at(-1) ||
+              `exit code ${String(failure.code)}`
+            }`,
       }),
     );
   }
 };
-
-const ipswCapturedOutput = (failure: ExecFileOutputFailure) => ({
-  stdout: failure.stdout,
-  stderr: failure.stderr,
-  truncated: failure.outputTruncated,
-  ...(typeof failure.stdoutBytes === "number"
-    ? { stdout_bytes: failure.stdoutBytes }
-    : {}),
-  ...(typeof failure.stderrBytes === "number"
-    ? { stderr_bytes: failure.stderrBytes }
-    : {}),
-  exit_code: typeof failure.code === "number" ? failure.code : null,
-  signal: failure.signal,
-});
