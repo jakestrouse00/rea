@@ -16,6 +16,11 @@ message Request {
   repeated int32 ids = 2;
   map<string, string> labels = 3;
 
+  oneof contact {
+    string email = 4;
+    int64 phone = 5;
+  }
+
   message Nested {
     bool ok = 1;
   }
@@ -74,7 +79,9 @@ test("recovers .proto structure, publishes files with digests, and parses fields
   });
   expect(value.file_count).toBe(1);
   expect(value.message_count).toBe(3);
-  expect(value.field_count).toBe(5);
+  expect(value.field_count).toBe(7);
+  expect(value.unparsed_lines).toBe(0);
+  expect(value.coverage).toBe("complete");
   expect(value.enum_count).toBe(2);
   const files = value.files as Array<Record<string, unknown>>;
   expect(files[0]).toMatchObject({
@@ -100,6 +107,7 @@ test("recovers .proto structure, publishes files with digests, and parses fields
       type: "string",
       label: "singular",
       map: false,
+      oneof: null,
     },
     {
       name: "ids",
@@ -107,6 +115,7 @@ test("recovers .proto structure, publishes files with digests, and parses fields
       type: "int32",
       label: "repeated",
       map: false,
+      oneof: null,
     },
     {
       name: "labels",
@@ -114,6 +123,23 @@ test("recovers .proto structure, publishes files with digests, and parses fields
       type: "map<string,string>",
       label: "map",
       map: true,
+      oneof: null,
+    },
+    {
+      name: "email",
+      number: 4,
+      type: "string",
+      label: "singular",
+      map: false,
+      oneof: "contact",
+    },
+    {
+      name: "phone",
+      number: 5,
+      type: "int64",
+      label: "singular",
+      map: false,
+      oneof: "contact",
     },
   ]);
   expect(request.nested_message_count).toBe(1);

@@ -19,7 +19,7 @@ export const PROTOBUF_RECOVERY_TOOL_CONTRACTS = [
     name: "recover_proto_definitions",
     ...toolContractMetadata("recover_proto_definitions"),
     description:
-      "Recover protobuf definitions from one explicit local binary, APK, JAR, or web bundle through a caller-supplied pbtk or protodump binary. Recovered .proto files are published into one new output subdirectory with SHA-256 digests, and Evidence reports each file's package, messages, fields, enums, and service count. Field options and default values are never read. Select the tool with an absolute REA_PBTK_COMMAND or REA_PROTODUMP_COMMAND; auto prefers pbtk. REA never installs a recovery tool and never runs the analyzed artifact.",
+      "Recover protobuf definitions from one explicit local binary, APK, JAR, or web bundle through a caller-supplied pbtk or protodump binary. Recovered .proto files are published into one new output subdirectory with SHA-256 digests, and Evidence reports each file's package, messages, fields, enums, and service count; a field inside a oneof block is reported in its parent message with the group name. Field options and default values are never read. Select the tool with an absolute REA_PBTK_COMMAND or REA_PROTODUMP_COMMAND; auto prefers pbtk. REA never installs a recovery tool and never runs the analyzed artifact.",
     kind: "protobuf-provider",
     inputSchema: recoverProtoDefinitionsInputSchema,
     outputSchema: evidenceResultOf(recoverProtoDefinitionsResultSchema),

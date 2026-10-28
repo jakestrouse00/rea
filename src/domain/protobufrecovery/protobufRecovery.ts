@@ -99,6 +99,7 @@ export const protoFieldSchema = z.strictObject({
   type: z.string().min(1),
   label: z.enum(["optional", "required", "repeated", "singular", "map"]),
   map: z.boolean(),
+  oneof: z.string().min(1).nullable(),
 });
 
 export const protoMessageSchema = z.strictObject({

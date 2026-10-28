@@ -26,10 +26,12 @@ does not install any of the three tools.
 
 Recovered `.proto` files are written into one new subdirectory of the caller's
 `output_directory`, each with its SHA-256. The Evidence reports each file's
-package, messages, fields (name, number, type, label, map), enums, and service
-count. Field options and default values are never read, so they cannot reach
-Evidence. A tool that writes no recognizable `.proto` file is a protocol error,
-not a partial success.
+package, messages, fields (name, number, type, label, map, and the oneof group
+a member belongs to), enums, and service count. A oneof member is reported in
+its parent message with the group name and no group value, so a recovered
+structure never hides a declared field. Field options and default values are
+never read, so they cannot reach Evidence. A tool that writes no recognizable
+`.proto` file is a protocol error, not a partial success.
 
 The pbtk and protodump argv shapes are documented assumptions; no verified
 release of either is pinned.

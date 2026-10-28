@@ -4,6 +4,8 @@ export interface ProtoField {
   readonly type: string;
   readonly label: "optional" | "required" | "repeated" | "singular" | "map";
   readonly map: boolean;
+  /** Name of the oneof group this member belongs to; null for an ordinary field. */
+  readonly oneof: string | null;
 }
 
 export interface ProtoMessage {
@@ -50,6 +52,7 @@ const FIELD =
 const ENUM_VALUE = /^\s*([A-Za-z_]\w*)\s*=\s*(-?\d+)/u;
 const NON_DECLARATION =
   /^\s*(?:option|reserved|extensions|syntax|import|package|public|weak)\b/u;
+const STRUCTURAL_LINE = /^[{};]+$/u;
 
 const stripComments = (line: string): string => {
   const withoutBlock = line.replaceAll(/\/\*.*?\*\//gu, " ");
@@ -65,6 +68,10 @@ const braceDelta = (line: string): number => {
   }
   return delta;
 };
+
+/** A line no branch recognized; braces carry no field or value of their own. */
+const unrecognized = (trimmed: string): boolean =>
+  !STRUCTURAL_LINE.test(trimmed) && !NON_DECLARATION.test(trimmed);
 
 const fieldLabel = (
   modifier: string | undefined,
@@ -168,8 +175,15 @@ export const parseProtoFile = (source: string): ParsedProto => {
 
     const oneofMatch = ONEOF.exec(line);
     if (oneofMatch !== null) {
-      if (line.includes("{")) open({ kind: "other", name: oneofMatch[1]! });
-      else pending = { kind: "other", name: oneofMatch[1]! };
+      const owner = contexts.at(-1);
+      const message = owner?.message;
+      const context = {
+        kind: "other" as const,
+        name: oneofMatch[1]!,
+        ...(message === undefined ? {} : { message }),
+      };
+      if (line.includes("{")) open(context);
+      else pending = context;
       if (line.includes("{")) depth += braceDelta(line);
       continue;
     }
@@ -182,15 +196,16 @@ export const parseProtoFile = (source: string): ParsedProto => {
           name: value[1]!,
           number: Number.parseInt(value[2]!, 10),
         });
-      } else if (!NON_DECLARATION.test(trimmed)) unparsedLines += 1;
+      } else if (unrecognized(trimmed)) unparsedLines += 1;
     } else if (
-      innermost?.kind === "message" &&
+      innermost?.message !== undefined &&
       depth >= innermost.bodyDepth &&
       depth <= innermost.bodyDepth + 1
     ) {
+      const oneof = innermost.kind === "other" ? innermost.name : null;
       const mapField = MAP_FIELD.exec(line);
       const field = FIELD.exec(line);
-      const fields = messageFields.get(innermost.message!);
+      const fields = messageFields.get(innermost.message);
       if (mapField !== null) {
         fields?.push({
           name: mapField[4]!,
@@ -198,6 +213,7 @@ export const parseProtoFile = (source: string): ParsedProto => {
           type: `map<${mapField[2]!.trim()},${mapField[3]!.trim()}>`,
           label: "map",
           map: true,
+          oneof,
         });
       } else if (field !== null) {
         const type = field[2]!;
@@ -210,11 +226,19 @@ export const parseProtoFile = (source: string): ParsedProto => {
             type,
             label: fieldLabel(field[1], false),
             map: false,
+            oneof,
           });
         }
-      } else if (!NON_DECLARATION.test(trimmed)) unparsedLines += 1;
+      } else if (unrecognized(trimmed)) unparsedLines += 1;
     } else if (contexts.some(({ kind }) => kind === "service") && depth > 0) {
       // RPC declarations are counted through serviceCount only.
+    } else if (
+      innermost?.kind === "other" &&
+      depth >= innermost.bodyDepth &&
+      unrecognized(trimmed)
+    ) {
+      // A oneof outside a message has no owning field list to report into.
+      unparsedLines += 1;
     }
 
     depth += braceDelta(line);
