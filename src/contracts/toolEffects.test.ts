@@ -54,6 +54,14 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "reads an embedded dependency list without executing the target",
   inspect_python_pyc:
     "states that it does not execute bytecode or invoke CPython",
+  analyze_binary_capabilities:
+    "runs a caller-selected capa binary over the file, not target code",
+  scan_artifact_with_rules:
+    "runs a caller-selected YARA-X binary, not the scanned bytes",
+  recover_go_symbols: "runs a caller-selected GoReSym binary, not the target",
+  demangle_rust_name: "runs a caller-selected rustfilt binary, not a target",
+  generate_symbol_table:
+    "runs a caller-selected dump_syms binary, not the target",
   inspect_erlang_beam: "states that it does not execute bytecode",
   inspect_sqlite_database:
     "uses a trusted inspector worker without executing application code or caller SQL",

@@ -196,6 +196,18 @@ import type { IpswAnalysisPort } from "../application/iosipsw/IpswAnalysisPort.j
 import { IpswAnalysisService } from "../application/iosipsw/IpswAnalysisService.js";
 import { createIpswAnalysisProvider } from "../composition/iosipsw.js";
 import { registerIpswTools } from "./registerIpswTools.js";
+import type { CapaAnalysisPort } from "../application/capa/CapaAnalysisPort.js";
+import { CapaAnalysisService } from "../application/capa/CapaAnalysisService.js";
+import { createCapaAnalysisProvider } from "../composition/capa.js";
+import { registerCapaTools } from "./registerCapaTools.js";
+import type { YaraAnalysisPort } from "../application/yara/YaraAnalysisPort.js";
+import { YaraAnalysisService } from "../application/yara/YaraAnalysisService.js";
+import { createYaraAnalysisProvider } from "../composition/yara.js";
+import { registerYaraTools } from "./registerYaraTools.js";
+import type { SymbolRecoveryPort } from "../application/symbols/SymbolRecoveryPort.js";
+import { SymbolRecoveryService } from "../application/symbols/SymbolRecoveryService.js";
+import { createSymbolRecoveryProvider } from "../composition/symbols.js";
+import { registerSymbolTools } from "./registerSymbolTools.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -279,6 +291,9 @@ export interface CreateServerOptions {
   readonly adbDeviceAnalysis?: AdbDeviceAnalysisPort;
   readonly ideviceDeviceAnalysis?: IdeviceAnalysisPort;
   readonly ipswAnalysis?: IpswAnalysisPort;
+  readonly capaAnalysis?: CapaAnalysisPort;
+  readonly yaraAnalysis?: YaraAnalysisPort;
+  readonly symbolRecovery?: SymbolRecoveryPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -609,6 +624,10 @@ export const createServer = (
   const idevice =
     options.ideviceDeviceAnalysis ?? createIdeviceAnalysisProvider(environment);
   const ipsw = options.ipswAnalysis ?? createIpswAnalysisProvider(environment);
+  const capa = options.capaAnalysis ?? createCapaAnalysisProvider(environment);
+  const yara = options.yaraAnalysis ?? createYaraAnalysisProvider(environment);
+  const symbolRecovery =
+    options.symbolRecovery ?? createSymbolRecoveryProvider(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -635,6 +654,9 @@ export const createServer = (
       adbDevice.close(),
       idevice.close(),
       ipsw.close(),
+      capa.close(),
+      yara.close(),
+      symbolRecovery.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -893,6 +915,27 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerCapaTools(
+    server,
+    new CapaAnalysisService(capa),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerYaraTools(
+    server,
+    new YaraAnalysisService(yara),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerSymbolTools(
+    server,
+    new SymbolRecoveryService(symbolRecovery),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -968,6 +1011,23 @@ export const createServer = (
       adbAnalysisAvailability: (signal) =>
         adbDevice.inspectAvailability(signal),
       ipswAnalysisAvailability: (signal) => ipsw.inspectAvailability(signal),
+      capaAnalysisAvailability: (signal) => capa.inspectAvailability(signal),
+      yaraAnalysisAvailability: (signal) => yara.inspectAvailability(signal),
+      goresymAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "recover_go_symbols",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
+      rustfiltAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "demangle_rust_name",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
+      dumpSymsAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "generate_symbol_table",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),

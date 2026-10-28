@@ -32,6 +32,21 @@ export interface SessionAvailabilityProbes {
   readonly ipswAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
+  readonly capaAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly yaraAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly goresymAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly rustfiltAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly dumpSymsAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -59,6 +74,11 @@ const probeSessionAvailability = (
   readonly android: ProviderAvailability;
   readonly adb: ProviderAvailability | undefined;
   readonly ipsw: ProviderAvailability | undefined;
+  readonly capa: ProviderAvailability | undefined;
+  readonly yara: ProviderAvailability | undefined;
+  readonly goresym: ProviderAvailability | undefined;
+  readonly rustfilt: ProviderAvailability | undefined;
+  readonly dumpSyms: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
@@ -67,17 +87,41 @@ const probeSessionAvailability = (
     probes.androidAnalysisAvailability(signal),
     probes.adbAnalysisAvailability?.(signal) ?? undefined,
     probes.ipswAnalysisAvailability?.(signal) ?? undefined,
+    probes.capaAnalysisAvailability?.(signal) ?? undefined,
+    probes.yaraAnalysisAvailability?.(signal) ?? undefined,
+    probes.goresymAnalysisAvailability?.(signal) ?? undefined,
+    probes.rustfiltAnalysisAvailability?.(signal) ?? undefined,
+    probes.dumpSymsAnalysisAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
-  ] as const).then(([android, adb, ipsw, apktool, jeb, evmLimiter]) => ({
-    android,
-    adb,
-    ipsw,
-    apktool,
-    jeb,
-    evmLimiter,
-  }));
+  ] as const).then(
+    ([
+      android,
+      adb,
+      ipsw,
+      capa,
+      yara,
+      goresym,
+      rustfilt,
+      dumpSyms,
+      apktool,
+      jeb,
+      evmLimiter,
+    ]) => ({
+      android,
+      adb,
+      ipsw,
+      capa,
+      yara,
+      goresym,
+      rustfilt,
+      dumpSyms,
+      apktool,
+      jeb,
+      evmLimiter,
+    }),
+  );
 
 /** Register the read-only provider and target status operation. */
 export const registerSessionStatusTool = (
@@ -118,6 +162,21 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.ipsw === undefined
             ? {}
             : { ipswAnalysisAvailability: availabilityResults.ipsw }),
+          ...(availabilityResults.capa === undefined
+            ? {}
+            : { capaAnalysisAvailability: availabilityResults.capa }),
+          ...(availabilityResults.yara === undefined
+            ? {}
+            : { yaraAnalysisAvailability: availabilityResults.yara }),
+          ...(availabilityResults.goresym === undefined
+            ? {}
+            : { goresymAnalysisAvailability: availabilityResults.goresym }),
+          ...(availabilityResults.rustfilt === undefined
+            ? {}
+            : { rustfiltAnalysisAvailability: availabilityResults.rustfilt }),
+          ...(availabilityResults.dumpSyms === undefined
+            ? {}
+            : { dumpSymsAnalysisAvailability: availabilityResults.dumpSyms }),
           ...(availabilityResults.apktool === undefined
             ? {}
             : { apktoolAnalysisAvailability: availabilityResults.apktool }),

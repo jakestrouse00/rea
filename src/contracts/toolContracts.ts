@@ -48,6 +48,9 @@ import { GAME_DATA_TOOL_CONTRACTS } from "./gamedata/gamedataToolContracts.js";
 import { CONTAINER_TOOL_CONTRACTS } from "./containers/containersToolContracts.js";
 import { IDEVICE_TOOL_CONTRACTS } from "./idevice/ideviceToolContracts.js";
 import { IPSW_TOOL_CONTRACTS } from "./iosipsw/IpswToolContracts.js";
+import { CAPA_TOOL_CONTRACTS } from "./capa/capaToolContracts.js";
+import { YARA_TOOL_CONTRACTS } from "./yara/yaraToolContracts.js";
+import { SYMBOL_TOOL_CONTRACTS } from "./symbols/symbolToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -74,6 +77,9 @@ export const TOOL_CONTRACTS = [
   ...CONTAINER_TOOL_CONTRACTS,
   ...IDEVICE_TOOL_CONTRACTS,
   ...IPSW_TOOL_CONTRACTS,
+  ...CAPA_TOOL_CONTRACTS,
+  ...YARA_TOOL_CONTRACTS,
+  ...SYMBOL_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

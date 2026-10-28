@@ -123,6 +123,21 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
     },
     {
+      id: "capa",
+      surface: "capa-provider",
+      contracts: sources.capaContracts.CAPA_TOOL_CONTRACTS,
+    },
+    {
+      id: "yara",
+      surface: "yara-provider",
+      contracts: sources.yaraContracts.YARA_TOOL_CONTRACTS,
+    },
+    {
+      id: "symbols",
+      surface: "symbol-provider",
+      contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
+    },
+    {
       id: "discovery",
       surface: "discovery-provider",
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
@@ -502,6 +517,18 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.ipswProvider.IPSW_PROVIDER_IDENTITY,
       contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.capaProvider.CAPA_PROVIDER_IDENTITY,
+      contracts: sources.capaContracts.CAPA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.yaraProvider.YARA_PROVIDER_IDENTITY,
+      contracts: sources.yaraContracts.YARA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.symbolProvider.SYMBOL_PROVIDER_IDENTITY,
+      contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
     },
     {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,

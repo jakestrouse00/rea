@@ -110,6 +110,12 @@ const SOURCE_PATHS = {
   ideviceProvider: "dist/idevice/IdeviceProvider.js",
   ipswContracts: "dist/contracts/iosipsw/IpswToolContracts.js",
   ipswProvider: "dist/iosipsw/IpswProvider.js",
+  capaContracts: "dist/contracts/capa/capaToolContracts.js",
+  capaProvider: "dist/capa/CapaProvider.js",
+  yaraContracts: "dist/contracts/yara/yaraToolContracts.js",
+  yaraProvider: "dist/yara/YaraProvider.js",
+  symbolContracts: "dist/contracts/symbols/symbolToolContracts.js",
+  symbolProvider: "dist/symbolrecovery/SymbolRecoveryProvider.js",
   discoveryContracts: "dist/contracts/discovery/discoveryToolContracts.js",
   discoveryProvider: "dist/discovery/DiscoveryProvider.js",
   windowsArtifactsContracts:

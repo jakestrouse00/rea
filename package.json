@@ -91,6 +91,7 @@
     "third_party/wabt/README.md",
     "third_party/evmole/README.md",
     "third_party/evmole/LICENSE",
+    "third_party/yara-rules",
     "bridge/pwntools/decoder_runtime.py",
     "bridge/pwntools/recorded_crash.py",
     "bridge/pwntools/recorded_crash_impl.py",

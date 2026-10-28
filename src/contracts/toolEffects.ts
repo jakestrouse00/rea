@@ -310,6 +310,30 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
   }),
+  analyze_binary_capabilities: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_artifact_with_rules: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_for_crypto_constants: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  recover_go_symbols: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  demangle_rust_name: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  generate_symbol_table: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
   inspect_apple_ips: evidence,
   inspect_devicetree: evidence,
   inspect_kernel_module: evidence,

@@ -96,6 +96,11 @@ export type AvailabilityPolicy = {
   readonly androidAnalysisAvailability?: ProviderAvailability;
   readonly adbAnalysisAvailability?: ProviderAvailability;
   readonly ipswAnalysisAvailability?: ProviderAvailability;
+  readonly capaAnalysisAvailability?: ProviderAvailability;
+  readonly yaraAnalysisAvailability?: ProviderAvailability;
+  readonly goresymAnalysisAvailability?: ProviderAvailability;
+  readonly rustfiltAnalysisAvailability?: ProviderAvailability;
+  readonly dumpSymsAnalysisAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -603,6 +608,32 @@ const workflowAvailabilityFor = ({
       policy.ipswAnalysisAvailability,
       "Set REA_IPSW_COMMAND to a caller-supplied blacktop/ipsw binary (absolute path). This checks the CLI version only; an archive, shared cache, and output directory are still required per request.",
     );
+  if (kind === "capa-provider")
+    return ownerProbeAvailability(
+      policy.capaAnalysisAvailability,
+      "Set REA_CAPA_COMMAND to a caller-supplied capa binary (absolute path). This checks the CLI version only; an executable path is still required per request.",
+    );
+  if (kind === "yara-provider")
+    return ownerProbeAvailability(
+      policy.yaraAnalysisAvailability,
+      "Set REA_YARAX_COMMAND to a caller-supplied YARA-X `yr` binary (absolute path). This checks the CLI version only; a target and rule file or directory are still required per request.",
+    );
+  if (kind === "symbol-provider") {
+    if (name === "recover_go_symbols")
+      return ownerProbeAvailability(
+        policy.goresymAnalysisAvailability,
+        "Set REA_GORESYM_COMMAND to a caller-supplied GoReSym binary (absolute path). This checks the selection only; a binary path is still required per request.",
+      );
+    if (name === "demangle_rust_name")
+      return ownerProbeAvailability(
+        policy.rustfiltAnalysisAvailability,
+        "Set REA_RUSTFILT_COMMAND to a caller-supplied rustfilt binary (absolute path) or make rustfilt available on PATH. This checks the selection only.",
+      );
+    return ownerProbeAvailability(
+      policy.dumpSymsAnalysisAvailability,
+      "Set REA_DUMP_SYMS_COMMAND to a caller-supplied dump_syms binary (absolute path). This checks the selection only; a binary path is still required per request.",
+    );
+  }
   if (kind === "apktool-provider")
     return ownerProbeAvailability(
       policy.apktoolAnalysisAvailability,
