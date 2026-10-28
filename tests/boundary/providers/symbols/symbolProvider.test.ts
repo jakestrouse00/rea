@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { projectAnalysisError } from "../../../../src/domain/analysisErrorProjection.js";
 import { createTestTempDirectory } from "../../../fixtures/temporaryDirectory.js";
 import { SymbolRecoveryProvider } from "../../../../src/symbolrecovery/SymbolRecoveryProvider.js";
+import { parseDemangledNames } from "../../../../src/symbolrecovery/SymbolRecoveryOutput.js";
 import { writeFakeSymbolTool } from "./fakeSymbolTool.js";
 
 const GO_FIXTURE = JSON.stringify({
@@ -30,6 +31,19 @@ const BREAKPAD_FIXTURE = [
 
 const providerFor = async (root: string): Promise<SymbolRecoveryProvider> =>
   new SymbolRecoveryProvider({ environment: { PATH: "/nonexistent" } });
+
+test("pairs demangler output with its input and treats an echo as unchanged", () => {
+  expect(
+    parseDemangledNames(
+      ["_RNv3bar", "_RNv3foo", "_RNv3baz"],
+      "_RNv3bar\nmycrate::foo\n\n",
+    ),
+  ).toEqual([
+    { mangled: "_RNv3bar", demangled: null },
+    { mangled: "_RNv3foo", demangled: "mycrate::foo" },
+    { mangled: "_RNv3baz", demangled: null },
+  ]);
+});
 
 test("recovers Go functions, entries, sizes, and module identity", async () => {
   const root = await createTestTempDirectory("rea-symbols-go-");
@@ -88,6 +102,30 @@ test("demangles Rust names and reports unchanged lines as null", async () => {
   await provider.close();
   const calls = await readFile(callsPath, "utf8");
   expect(calls).toContain('["_RNv3foo","_RNv3bar"]');
+});
+
+test("reports an echoed mangled name as null rather than a demangle", async () => {
+  const root = await createTestTempDirectory("rea-symbols-echo-");
+  const { launcher } = await writeFakeSymbolTool(root, "rustfilt", {
+    stdout: "_RNv3bar\nmycrate::foo\n",
+  });
+  const provider = new SymbolRecoveryProvider({
+    environment: { REA_RUSTFILT_COMMAND: launcher },
+  });
+  const result = await provider.execute({
+    operation: "demangle_rust_name",
+    input: { names: ["_RNv3bar", "_RNv3foo"] },
+  });
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  const value = result.value.result as Record<string, unknown>;
+  expect(value.names).toEqual([
+    { mangled: "_RNv3bar", demangled: null },
+    { mangled: "_RNv3foo", demangled: "mycrate::foo" },
+  ]);
+  expect(value.demangled_count).toBe(1);
+  expect(value.coverage).toBe("partial");
+  await provider.close();
 });
 
 test("resolves rustfilt from PATH when no setting is selected", async () => {

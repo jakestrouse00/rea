@@ -210,7 +210,7 @@ export const parseBreakpadSymbols = (
   };
 };
 
-/** Pair each caller-supplied name with its demangled line, if one was produced. */
+/** Pair each caller-supplied name with its demangled line, if the tool changed it. */
 export const parseDemangledNames = (
   names: readonly string[],
   stdout: string,
@@ -221,10 +221,13 @@ export const parseDemangledNames = (
   const lines = stdout.split(/\r?\n/u);
   if (lines.at(-1) === "") lines.pop();
   return names.map((mangled, index) => {
-    const line = lines[index];
+    const echoed = lines[index]?.trim();
     return {
       mangled,
-      demangled: line === undefined || line.trim() === "" ? null : line.trim(),
+      demangled:
+        echoed === undefined || echoed === "" || echoed === mangled.trim()
+          ? null
+          : echoed,
     };
   });
 };
