@@ -32,6 +32,8 @@ import {
   HUNTING_PROVIDER,
   HUNTING_SANDBOX,
   HUNTING_UNKNOWN_NOTE,
+  HUNTING_UNKNOWN_REJECTED_NOTE,
+  HUNTING_UNKNOWN_SKIPPED_NOTE,
 } from "../domain/hunting/huntingLimits.js";
 import type {
   HuntingBatchState,
@@ -83,6 +85,7 @@ import { readHuntingWatchSnapshot } from "./HuntingDirectoryWatch.js";
 import {
   huntingQueueDirectory,
   HuntingQueueStore,
+  HuntingQueueStoreFailure,
   type StoredHuntingBatch,
   type StoredHuntingUnit,
 } from "./HuntingQueueStore.js";
@@ -433,13 +436,21 @@ export class HuntingQueueService implements HuntingQueuePort {
       try {
         return ok(await this.#executeUnit(store, batch, unit, request, signal));
       } catch (cause: unknown) {
+        const taken =
+          cause instanceof HuntingQueueStoreFailure &&
+          cause.diagnostics.state_changed === true;
         return err(
-          new AnalysisOutputError(operation, "queue-unwritable", {
-            cause,
-            userMessage:
-              "REA could not record this unit's outcome in the durable queue, so the unit is not reported as executed.",
-            diagnostics: { unit_id: unit.unitId },
-          }),
+          new AnalysisOutputError(
+            operation,
+            taken ? "queue-conflict" : "queue-unwritable",
+            {
+              cause,
+              userMessage: taken
+                ? "Another REA process admitted this unit first, so this call changed nothing; read the queue before admitting again."
+                : "REA could not record this unit's outcome in the durable queue, so the unit is not reported as executed.",
+              diagnostics: { unit_id: unit.unitId },
+            },
+          ),
         );
       }
     });
@@ -499,7 +510,6 @@ export class HuntingQueueService implements HuntingQueuePort {
           request.batchId === undefined
             ? "This page reports units across every batch in queue order."
             : "This page reports one batch's units in queue order.",
-          HUNTING_UNKNOWN_NOTE,
           ...this.#sandboxLimitations(),
         ],
       });
@@ -832,7 +842,15 @@ export class HuntingQueueService implements HuntingQueuePort {
       requestedMs !== undefined && requestedMs < settingMs
         ? { unitMs: requestedMs, source: "request" }
         : { unitMs: settingMs, source: "setting" };
-    store.beginUnit(unit.unitId, this.#now());
+    try {
+      store.beginUnit(unit.unitId, this.#now());
+    } catch (cause: unknown) {
+      // A failed admission must not leave this process claiming a unit it never
+      // admitted, or every later call would report a false UnitInFlight.
+      if (this.#activeUnit === unit.unitId) this.#activeUnit = null;
+      this.#running.delete(batch.batchId);
+      throw cause;
+    }
     this.#running.add(batch.batchId);
     const startedAt = this.#elapsed();
     const controller = new AbortController();
@@ -1013,27 +1031,41 @@ export class HuntingQueueService implements HuntingQueuePort {
         ? this.#settleBatch(store, batch, "complete")
         : batch.state;
     const stored = store.unit(unit.unitId) ?? unit;
-    const limitations = [
+    const baseLimitations = [
       ...(outcome.limitation === undefined ? [] : [outcome.limitation]),
       ...(observation === null
         ? []
         : [
             `The composed observation is retained as Evidence ${observation.evidence_id}; read it with get_evidence_bundle.`,
           ]),
-      ...(outcome.state === "blocked" ? [HUNTING_UNKNOWN_NOTE] : []),
     ];
-    const evidence = this.#runEvidence({
-      batchId: batch.batchId,
-      batchState,
-      unit: this.#unitFact(stored),
-      state: outcome.state,
-      stop: outcome.stop,
-      observation,
-      budget: this.#unitBudget(outcome.budget, batch),
-      elapsedMs: outcome.elapsedMs,
-      counts,
-      limitations,
-    });
+    const build = (limitations: readonly string[]): Evidence =>
+      this.#runEvidence({
+        batchId: batch.batchId,
+        batchState,
+        unit: this.#unitFact(stored),
+        state: outcome.state,
+        stop: outcome.stop,
+        observation,
+        budget: this.#unitBudget(outcome.budget, batch),
+        elapsedMs: outcome.elapsedMs,
+        counts,
+        limitations: [...baseLimitations, ...limitations],
+      });
+    // The registry is the only owner of undefined-claim bookkeeping, so its
+    // absence is stated on the record instead of being assumed away.
+    const unknownDeclared =
+      outcome.state === "succeeded"
+        ? []
+        : this.#unknowns === undefined
+          ? [HUNTING_UNKNOWN_SKIPPED_NOTE]
+          : [HUNTING_UNKNOWN_NOTE];
+    let evidence = build(unknownDeclared);
+    if (outcome.state !== "succeeded" && this.#unknowns !== undefined)
+      // A rejected append leaves nothing referencing the draft identity, so the
+      // record is rebuilt with the refusal stated on it.
+      if (!this.#recordUnknown(evidence, outcome.state))
+        evidence = build([HUNTING_UNKNOWN_REJECTED_NOTE]);
     if (outcome.observation !== null)
       try {
         this.#writer?.recordEvidence(outcome.observation);
@@ -1045,8 +1077,6 @@ export class HuntingQueueService implements HuntingQueuePort {
     } catch {
       // Same as above: a registry failure must not rewrite the queue.
     }
-    if (outcome.state !== "succeeded")
-      this.#recordUnknown(evidence, outcome.state);
     return evidence;
   }
 
@@ -1084,8 +1114,8 @@ export class HuntingQueueService implements HuntingQueuePort {
     return "open";
   }
 
-  #recordUnknown(evidence: Evidence, state: HuntingUnitState): void {
-    if (this.#unknowns === undefined) return;
+  #recordUnknown(evidence: Evidence, state: HuntingUnitState): boolean {
+    if (this.#unknowns === undefined) return false;
     const input = workflowUnknownInput(evidence.evidence_id, {
       question: `A scheduled hunting unit ended as ${state}; the claim it would have established is still unverified.`,
       severity: state === "failed" ? "medium" : "low",
@@ -1102,11 +1132,11 @@ export class HuntingQueueService implements HuntingQueuePort {
       ],
       relationships: [],
     });
-    if (!input.ok) return;
+    if (!input.ok) return false;
     try {
-      this.#unknowns.record(input.value);
+      return this.#unknowns.record(input.value).ok;
     } catch {
-      // The unit's own Evidence already names the unfinished claim.
+      return false;
     }
   }
 
@@ -1407,8 +1437,10 @@ export class HuntingQueueService implements HuntingQueuePort {
       snapshot,
       HUNTING_LIMITS.maxWatchPathsPerTick,
     );
-    session.previous = snapshot;
-    if (diff.changes.length === 0) return;
+    if (diff.changes.length === 0) {
+      session.previous = snapshot;
+      return;
+    }
     const remaining = session.triggersLimit - session.triggers;
     const taken = Math.min(diff.changes.length, Math.max(0, remaining));
     if (taken === 0) return;
@@ -1416,9 +1448,12 @@ export class HuntingQueueService implements HuntingQueuePort {
       await this.#store.ensure();
       this.#enqueueTriggers(session, taken);
     } catch (cause: unknown) {
+      // The baseline stays where it was, so the next tick observes the same
+      // change again instead of losing it.
       session.lastReadError = errorTag(cause);
       return;
     }
+    session.previous = snapshot;
     session.triggers += taken;
     if (diff.truncated)
       session.limitations.push(
@@ -1434,32 +1469,30 @@ export class HuntingQueueService implements HuntingQueuePort {
       kind: "re-analysis",
       operation: session.operation,
     };
-    for (let index = 0; index < count; index += 1) {
+    const units = Array.from({ length: count }, (_unused, index) => {
       const position = session.queuedUnits + index;
-      const unit = {
+      return {
         unitId: huntingUnitId(session.id, position, session.targetPath, recipe),
         position,
         targetPath: session.targetPath,
         recipe,
         priority: session.priority,
       };
-      if (session.batchId === null) {
-        const batchId = randomUUID();
-        this.#store.createBatch(
-          {
-            batchId,
-            createdAt: at,
-            maxUnits: Math.max(
-              1,
-              Math.min(session.triggersLimit, session.maxUnits),
-            ),
-            maxSeconds: session.maxSeconds,
-          },
-          [unit],
-        );
-        session.batchId = batchId;
-      } else this.#store.insertUnit(session.batchId, unit, at);
-    }
+    });
+    const batch = {
+      batchId: session.batchId ?? randomUUID(),
+      createdAt: at,
+      maxUnits: Math.max(1, Math.min(session.triggersLimit, session.maxUnits)),
+      maxSeconds: session.maxSeconds,
+    };
+    // One transaction: a partially written trigger batch would leave positions
+    // the next tick cannot reuse, so nothing is written unless every unit is.
+    this.#store.appendUnits({
+      batch,
+      newBatch: session.batchId === null,
+      units,
+    });
+    session.batchId = batch.batchId;
     session.queuedUnits += count;
   }
 

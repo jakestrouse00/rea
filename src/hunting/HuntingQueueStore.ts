@@ -298,70 +298,56 @@ export class HuntingQueueStore {
     batch: HuntingBatchWrite,
     units: readonly HuntingUnitWrite[],
   ): void {
+    this.appendUnits({ batch, newBatch: true, units });
+  }
+
+  /**
+   * Append units in one transaction, creating the batch with them when it is
+   * new. A partially written append would leave unit positions the caller
+   * cannot reuse, so either every row is written or none is.
+   */
+  appendUnits(request: {
+    readonly batch: HuntingBatchWrite;
+    readonly newBatch: boolean;
+    readonly units: readonly HuntingUnitWrite[];
+  }): void {
     const database = this.#connection();
     database.exec("BEGIN IMMEDIATE");
     try {
-      database
-        .prepare(
-          "INSERT INTO batch (batch_id, created_at, state, max_units, max_seconds, units_started, spent_ms, cancelled_at) VALUES (?, ?, 'open', ?, ?, 0, 0, NULL)",
-        )
-        .run(batch.batchId, batch.createdAt, batch.maxUnits, batch.maxSeconds);
+      if (request.newBatch)
+        database
+          .prepare(
+            "INSERT INTO batch (batch_id, created_at, state, max_units, max_seconds, units_started, spent_ms, cancelled_at) VALUES (?, ?, 'open', ?, ?, 0, 0, NULL)",
+          )
+          .run(
+            request.batch.batchId,
+            request.batch.createdAt,
+            request.batch.maxUnits,
+            request.batch.maxSeconds,
+          );
       const insert = database.prepare(
         "INSERT INTO unit (unit_id, batch_id, position, target_path, recipe_kind, recipe_json, priority, priority_json, state, attempt, created_at, updated_at, stop_kind, stop_error_tag, stop_operation, observation_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, NULL, NULL, NULL, NULL)",
       );
-      for (const unit of units)
+      for (const unit of request.units)
         insert.run(
           unit.unitId,
-          batch.batchId,
+          request.batch.batchId,
           unit.position,
           unit.targetPath,
           unit.recipe.kind,
           JSON.stringify(unit.recipe),
           unit.priority.score,
           JSON.stringify(unit.priority),
-          batch.createdAt,
-          batch.createdAt,
+          request.batch.createdAt,
+          request.batch.createdAt,
         );
       database.exec("COMMIT");
     } catch (cause: unknown) {
       database.exec("ROLLBACK");
       throw new HuntingQueueStoreFailure(
         "io",
-        "The scheduled batch could not be recorded",
-        { batch_id: batch.batchId },
-        { cause },
-      );
-    }
-  }
-
-  /** Append one unit to an existing batch (a watch trigger). */
-  insertUnit(batchId: string, unit: HuntingUnitWrite, at: string): void {
-    const database = this.#connection();
-    database.exec("BEGIN IMMEDIATE");
-    try {
-      database
-        .prepare(
-          "INSERT INTO unit (unit_id, batch_id, position, target_path, recipe_kind, recipe_json, priority, priority_json, state, attempt, created_at, updated_at, stop_kind, stop_error_tag, stop_operation, observation_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, NULL, NULL, NULL, NULL)",
-        )
-        .run(
-          unit.unitId,
-          batchId,
-          unit.position,
-          unit.targetPath,
-          unit.recipe.kind,
-          JSON.stringify(unit.recipe),
-          unit.priority.score,
-          JSON.stringify(unit.priority),
-          at,
-          at,
-        );
-      database.exec("COMMIT");
-    } catch (cause: unknown) {
-      database.exec("ROLLBACK");
-      throw new HuntingQueueStoreFailure(
-        "io",
-        "The watch trigger could not be queued",
-        { batch_id: batchId, unit_id: unit.unitId },
+        "The queued units could not be recorded",
+        { batch_id: request.batch.batchId, unit_count: request.units.length },
         { cause },
       );
     }
@@ -478,18 +464,33 @@ export class HuntingQueueStore {
     return row === undefined ? null : this.#unit(row);
   }
 
-  /** Admit one unit: its attempt counter rises and it is observed running. */
+  /**
+   * Admit one unit: its attempt counter rises and it is observed running.
+   *
+   * The update is conditional on the unit still being admissible, so a second
+   * REA process sharing the queue file cannot admit a unit another process
+   * already took. A refused admission is reported instead of being silent.
+   */
   beginUnit(unitId: string, at: string): void {
     const database = this.#connection();
     database.exec("BEGIN IMMEDIATE");
     try {
-      database
+      const admitted = database
         .prepare(
-          "UPDATE unit SET state = 'running', attempt = attempt + 1, updated_at = ?, stop_kind = NULL, stop_error_tag = NULL, stop_operation = NULL WHERE unit_id = ?",
+          "UPDATE unit SET state = 'running', attempt = attempt + 1, updated_at = ?, stop_kind = NULL, stop_error_tag = NULL, stop_operation = NULL WHERE unit_id = ? AND state IN ('queued', 'blocked')",
         )
         .run(at, unitId);
+      if (Number(admitted.changes) === 0) {
+        database.exec("ROLLBACK");
+        throw new HuntingQueueStoreFailure(
+          "io",
+          "The unit was no longer admissible when this process tried to admit it; another REA process may already have taken it",
+          { unit_id: unitId, state_changed: true },
+        );
+      }
       database.exec("COMMIT");
     } catch (cause: unknown) {
+      if (cause instanceof HuntingQueueStoreFailure) throw cause;
       database.exec("ROLLBACK");
       throw new HuntingQueueStoreFailure(
         "io",

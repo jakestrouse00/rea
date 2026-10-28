@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createTestTempDirectory } from "../../tests/fixtures/temporaryDirectory.js";
 import type {
@@ -97,10 +97,7 @@ class ManualTimers implements HuntingTimers {
     const live = [...this.handles.entries()].filter(
       ([, entry]) => !entry.cleared,
     );
-    for (const [id, entry] of live) {
-      this.handles.delete(id);
-      entry.callback();
-    }
+    for (const [, entry] of live) entry.callback();
     return live.length;
   }
 
@@ -173,7 +170,9 @@ interface HarnessOptions {
   readonly settings?: AnalysisSettingsSnapshot;
   readonly observer?: HuntingWatchObserver;
   readonly sandboxState?: () => SandboxDisableState;
-  readonly unknowns?: FakeUnknowns;
+  /** `null` leaves the server without an investigation-session registry. */
+  readonly unknowns?: FakeUnknowns | null;
+  readonly createStore?: (directory: string) => HuntingQueueStore;
   readonly directoryName?: string;
 }
 
@@ -181,20 +180,26 @@ const harness = async (options: HarnessOptions = {}) => {
   const root = await createTestTempDirectory("hunting-");
   const directory = join(root, options.directoryName ?? "state");
   const timers = new ManualTimers();
-  const unknowns = options.unknowns ?? new FakeUnknowns();
+  const unknowns =
+    options.unknowns === null
+      ? undefined
+      : (options.unknowns ?? new FakeUnknowns());
   const recorded: Evidence[] = [];
+  const store =
+    options.createStore?.(directory) ??
+    new HuntingQueueStore(directory, "darwin");
   const service = new HuntingQueueService({
     environment: {},
     platform: "darwin",
     runners: options.recipeRunners ?? runners(null),
-    unknowns,
+    ...(unknowns === undefined ? {} : { unknowns }),
     writer: {
       recordEvidence: (evidence) => {
         recorded.push(evidence);
         return ok("added");
       },
     },
-    createStore: () => new HuntingQueueStore(directory, "darwin"),
+    createStore: () => store,
     timers,
     ...(options.settings === undefined
       ? {}
@@ -203,7 +208,7 @@ const harness = async (options: HarnessOptions = {}) => {
     sandboxState: options.sandboxState ?? (() => ({ kind: "enabled" })),
     now: () => "2026-10-28T00:00:00.000Z",
   });
-  return { root, directory, timers, unknowns, recorded, service };
+  return { root, directory, timers, unknowns, recorded, service, store };
 };
 
 const schedule = (
@@ -528,6 +533,35 @@ describe("hunting queue preconditions", () => {
     await service.closeAll();
   });
 
+  it("clears the admission guard when the store refuses the admit", async () => {
+    const { service, store } = await harness({
+      recipeRunners: runners(
+        runner(async () => ok(observation("binary_overview"))),
+      ),
+    });
+    const scheduled = await schedule(service, {
+      targets: [target(TARGET)],
+      recipes: [reanalysis],
+    });
+    if (!scheduled.ok) return;
+    const batchId = batchIdOf(scheduled.value);
+    const begin = vi.spyOn(store, "beginUnit").mockImplementationOnce(() => {
+      throw new Error("the queue file is locked by another REA process");
+    });
+    const refused = await run(service, { batchId });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error._tag).toBe("AnalysisOutputError");
+    begin.mockRestore();
+    const admitted = await run(service, { batchId });
+    if (!admitted.ok) throw admitted.error;
+    expect(resultOf(admitted.value).state).toBe("succeeded");
+    expect(resultOf(admitted.value).unit?.attempt).toBe(1);
+    await service.closeAll();
+  });
+});
+
+describe("hunting queue sandbox gate", () => {
   it("refuses to admit a unit when REA_DISABLE_SANDBOX is uninterpretable", async () => {
     const { service } = await harness({
       recipeRunners: runners(
@@ -630,6 +664,39 @@ describe("hunting queue cancellation and unknowns", () => {
     expect(unknowns.recorded).toHaveLength(1);
     expect(unknowns.recorded[0]?.domain).toBe("hunting");
     expect(unknowns.recorded[0]?.supporting_evidence_ids).toHaveLength(1);
+    await service.closeAll();
+  });
+
+  it("states that no residual unknown was recorded without an investigation session", async () => {
+    const { service } = await harness({
+      recipeRunners: runners(
+        runner(async () =>
+          err(
+            new AnalysisCapabilityUnavailableError(
+              HUNTING_PROVIDER.id,
+              "binary_overview",
+              "no admitted target",
+            ),
+          ),
+        ),
+      ),
+      unknowns: null,
+    });
+    const scheduled = await schedule(service, {
+      targets: [target(TARGET)],
+      recipes: [reanalysis],
+    });
+    if (!scheduled.ok) return;
+    const executed = await run(service, {
+      batchId: batchIdOf(scheduled.value),
+    });
+    if (!executed.ok) throw executed.error;
+    const result = resultOf(executed.value);
+    expect(result.state).toBe("blocked");
+    const said = result.limitations.join(" ");
+    expect(said).toContain("no investigation session");
+    expect(said).toContain("appended no residual unknown");
+    expect(said).not.toContain("records one residual unknown");
     await service.closeAll();
   });
 
@@ -882,6 +949,61 @@ describe("hunting watch lifecycle", () => {
     await service.closeAll();
   });
 
+  it("re-observes a change whose enqueue failed instead of losing it", async () => {
+    let call = 0;
+    const snapshots = [
+      snapshot([{ path: "target.bin", bytes: 4, mtime_ms: 1 }]),
+      snapshot([{ path: "target.bin", bytes: 8, mtime_ms: 2 }]),
+    ];
+    const built = await harness({
+      createStore: (directory) => new HuntingQueueStore(directory, "darwin"),
+      observer: {
+        snapshot: async () => {
+          const value = snapshots[Math.min(call, snapshots.length - 1)]!;
+          call += 1;
+          return value;
+        },
+      },
+    });
+    const { service, timers } = built;
+    const enqueue = vi
+      .spyOn(built.store, "appendUnits")
+      .mockImplementationOnce(() => {
+        throw new Error("the queue file is locked");
+      });
+    const started = await service.startWatch({
+      source: { kind: "directory", path: "/cases/api/build", recursive: true },
+      target: target(TARGET),
+      operation: "binary_overview",
+      intervalMs: 1_000,
+      maxTriggers: 4,
+      maxUnits: undefined,
+      maxSeconds: undefined,
+    });
+    if (!started.ok) return;
+    timers.fire();
+    await waitFor(() => enqueue.mock.calls.length === 1);
+    const afterFailure = await service.read({
+      batchId: undefined,
+      offset: 0,
+      limit: 10,
+    });
+    expect(afterFailure.ok && afterFailure.value.totals.units).toBe(0);
+    await waitFor(async () => {
+      timers.fire();
+      const read = await service.read({
+        batchId: undefined,
+        offset: 0,
+        limit: 10,
+      });
+      return read.ok && read.value.totals.units === 1;
+    });
+    enqueue.mockRestore();
+    await service.closeAll();
+  });
+});
+
+describe("hunting watch cancellation and release", () => {
   it("returns typed cancellation when the start call is aborted during the baseline read", async () => {
     const controller = new AbortController();
     let baselineStarted: (() => void) | undefined;

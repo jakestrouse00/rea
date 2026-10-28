@@ -111,7 +111,7 @@ does not block on it.
 The queue lives in an owner-only SQLite file:
 
 ```
-$HOME/.rea/state/hunting/queue.sqlite   (0600 on POSIX; DACL on Windows)
+$HOME/.rea/state/hunting/queue.sqlite   (0600 on macOS and Linux)
 ```
 
 - The batch, every unit, its recipe, ordering facts, attempt count, stop, and
@@ -121,6 +121,9 @@ $HOME/.rea/state/hunting/queue.sqlite   (0600 on POSIX; DACL on Windows)
   `stop.kind: "interrupted"`: REA never claims it completed.
 - The file is durable by design, unlike a temporary runtime root. `rea uninstall`
   purges the `state` directory with the rest of REA's managed data.
+- The store sets `0600` on macOS and Linux. On Windows it applies no ACL of its
+  own: the file keeps whatever DACL the state directory carries, and REA does
+  not verify it.
 
 Watch sessions are **not** durable: their timers belong to this server's
 lifetime, exactly like an interception or replay session. The units they already
@@ -169,10 +172,12 @@ Every call that changes queue state records Evidence:
   identity and canonical result digest — the unit record does not inline it;
 - each cancellation and each watch session's start and release.
 
-A unit that does not complete also records one residual unknown in the `hunting`
-domain, scoped to its own unit Evidence, so an unfinished claim stays visible.
-When the server has no investigation session, unknown updates are skipped and
-the reply says so.
+A unit that does not complete asks this session's unknown registry to record one
+residual unknown in the `hunting` domain, scoped to its own unit Evidence, so an
+unfinished claim stays visible. When the server has no investigation session the
+registry is absent, nothing is appended, and the unit Evidence carries that fact
+as a limitation ("appended no residual unknown"). A registry that refuses the
+append is reported the same way, so the note and the registry never disagree.
 
 ## Boundaries
 

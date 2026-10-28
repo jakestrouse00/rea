@@ -83,6 +83,14 @@ export const HUNTING_BLOCKED_NOTE =
 export const HUNTING_UNKNOWN_NOTE =
   "A unit that does not complete records one residual unknown scoped to its own unit Evidence, so the unfinished claim stays visible instead of being reported as done.";
 
+/** The registry is absent without an investigation session; the reply says so. */
+export const HUNTING_UNKNOWN_SKIPPED_NOTE =
+  "This server has no investigation session, so it appended no residual unknown for this unit; the unit Evidence is the only record of the unfinished claim.";
+
+/** A present registry can still refuse the append; the reply says so. */
+export const HUNTING_UNKNOWN_REJECTED_NOTE =
+  "This session's unknown registry refused the residual unknown for this unit, so the claim remains unrecorded there; the unit Evidence is the only record of it.";
+
 /** Re-analysis runs against the admitted target only. */
 export const HUNTING_REANALYSIS_REMEDIATION =
   "Open the unit's target with open_binary first: a re-analysis unit runs one inspection operation over the server's admitted analysis target, and refuses to analyze a different path.";

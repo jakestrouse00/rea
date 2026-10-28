@@ -79,6 +79,30 @@ describe("durable hunting queue store", () => {
     await expect(store.ensure()).rejects.toMatchObject({ reason: "io" });
   });
 
+  it("refuses to admit a unit another store handle already took", async () => {
+    const directory = await createTestTempDirectory("hunting-store-");
+    const first = await open(directory);
+    first.createBatch(
+      {
+        batchId: BATCH,
+        createdAt: "2026-10-28T00:00:00.000Z",
+        maxUnits: 2,
+        maxSeconds: 60,
+      },
+      [unit(0, TARGET, 5)],
+    );
+    const second = await open(directory);
+    const unitId = unit(0, TARGET, 5).unitId;
+    first.beginUnit(unitId, "2026-10-28T00:00:01.000Z");
+    expect(() => second.beginUnit(unitId, "2026-10-28T00:00:02.000Z")).toThrow(
+      HuntingQueueStoreFailure,
+    );
+    expect(second.unit(unitId)?.state).toBe("running");
+    expect(second.unit(unitId)?.attempt).toBe(1);
+    await first.close();
+    await second.close();
+  });
+
   it("admits queued units before blocked ones and keeps a stable order", async () => {
     const directory = await createTestTempDirectory("hunting-store-");
     const store = await open(directory);
@@ -104,7 +128,16 @@ describe("durable hunting queue store", () => {
       observation: null,
     });
     expect(store.nextUnit(BATCH)?.targetPath).toBe(TARGET);
-    store.insertUnit(BATCH, unit(2, TARGET, 500), "2026-10-28T00:00:02.000Z");
+    store.appendUnits({
+      batch: {
+        batchId: BATCH,
+        createdAt: "2026-10-28T00:00:00.000Z",
+        maxUnits: 4,
+        maxSeconds: 60,
+      },
+      newBatch: false,
+      units: [unit(2, TARGET, 500)],
+    });
     expect(store.nextUnit(BATCH)?.unitId).toBe(unit(2, TARGET, 500).unitId);
     expect(store.unitStates(BATCH)).toEqual({
       queued: 2,

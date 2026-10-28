@@ -6,7 +6,6 @@ import {
   HUNTING_LAUNCH_NOTE,
   HUNTING_PROVIDER,
   HUNTING_STORE_NOTE,
-  HUNTING_UNKNOWN_NOTE,
   HUNTING_WATCH_NOTE,
 } from "../domain/hunting/huntingLimits.js";
 import type {
@@ -25,7 +24,6 @@ const SUBJECT_UNAVAILABLE =
 const baseLimitations = (): readonly string[] => [
   HUNTING_LAUNCH_NOTE,
   HUNTING_BUDGET_NOTE,
-  HUNTING_UNKNOWN_NOTE,
   HUNTING_STORE_NOTE,
 ];
 
