@@ -42,12 +42,14 @@ export const FUZZING_POV_DEFAULT_SANITIZERS: readonly SanitizerClass[] = [
 
 /** One candidate's reproduction evidence, in run order. */
 export interface FuzzingPovEvidence {
-  /** Parsed reports, one per completed reproduction, in run order. */
+  /** Parsed reports, one per reproduction that produced a readable report. */
   readonly reports: readonly {
     readonly sanitizerClass: SanitizerClass;
     readonly stateHash: string;
     readonly frameCount: number;
   }[];
+  /** Reproductions the caller requested; every one must crash. */
+  readonly requestedReproductions: number;
   /** Caller-declared class the reproduced report must equal. */
   readonly expectedSanitizer: SanitizerClass | undefined;
 }
@@ -66,16 +68,19 @@ const rejected = (reason: FuzzingPovRejection): FuzzingPovDecision => ({
 /**
  * Decide whether one candidate is a validated POV.
  *
- * The rule is pattern-only and engine-agnostic: every reproduction must parse,
- * the caller's expected class (or the default sanitizer set) must be named,
- * frames must exist, and every repetition must agree on the crash state hash.
- * The hash already covers the sanitizer class, crash kind, and normalized top
- * frames, so agreement is a stable signature rather than an address match.
+ * The rule is pattern-only and engine-agnostic: every requested reproduction
+ * must crash and parse, the caller's expected class (or the default sanitizer
+ * set) must be named, frames must exist, and every repetition must agree on the
+ * crash state hash. The hash already covers the sanitizer class, crash kind,
+ * and normalized top frames, so agreement is a stable signature rather than an
+ * address match.
  */
 export const evaluatePov = (
   evidence: FuzzingPovEvidence,
 ): FuzzingPovDecision => {
   if (evidence.reports.length === 0) return rejected("report_unreadable");
+  if (evidence.reports.length !== evidence.requestedReproductions)
+    return rejected("not_reproduced");
   const expected = evidence.expectedSanitizer;
   const classes = evidence.reports.map((report) => report.sanitizerClass);
   const acceptedClasses =

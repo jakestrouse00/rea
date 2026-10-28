@@ -92,7 +92,9 @@ observed count.
 A crash artifact is only a candidate. It becomes an accepted crash when every
 requested reproduction (`pov_repeats`, 1–3, default 2):
 
-- ran the target and exited as a crash;
+- ran the target under the same deny-default profile as the engine launch, with
+  the campaign root writable, the adapter's declared paths readable, and no
+  outbound network, and exited as a crash;
 - parsed as a crash report through the crash-triage parser;
 - named an accepted sanitizer class — the caller's `expected_sanitizer` when
   given, otherwise any sanitizer-identified class, which refuses signal-only OS
@@ -101,7 +103,8 @@ requested reproduction (`pov_repeats`, 1–3, default 2):
 - agreed with every other reproduction on the crash-state hash.
 
 A candidate that fails is reported with one reason: `missing_input`,
-`not_reproduced`, `report_unreadable`, `report_too_large`,
+`not_reproduced` (a requested reproduction exited without crashing, or the
+repetitions stopped early), `report_unreadable`, `report_too_large`,
 `unsupported_sanitizer`, `no_frames`, or `unstable_state`. Rejected candidates
 never reach the store, so `crash_count` and `list_crash_dedups` only describe
 validated crashes. A stable crash-state hash is a reproducible signature over

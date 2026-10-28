@@ -56,6 +56,9 @@ const writeReport = (basename) => {
     counter = Number(readFileSync(counterPath, "utf8")) || 0;
   if (counterPath !== undefined)
     writeFileSync(counterPath, String(counter + 1));
+  // A candidate may crash only in its first N reproductions.
+  if (counter >= (scenario.reproduceCrashes ?? Number.POSITIVE_INFINITY))
+    return null;
   return bodies[counter % bodies.length];
 };
 

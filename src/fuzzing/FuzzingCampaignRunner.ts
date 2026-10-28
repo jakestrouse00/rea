@@ -73,6 +73,8 @@ import { err, ok, type Result } from "../domain/result.js";
 import {
   SandboxProfileRejection,
   sandboxLaunchPlan,
+  type SandboxLaunchPlan,
+  type SandboxLaunchRequest,
 } from "../domain/sandboxProfiles.js";
 import {
   ExecFileOutputCancelledError,
@@ -118,6 +120,8 @@ export interface FuzzingCampaignRunnerOptions {
   readonly platform?: NodeJS.Platform;
   readonly arch?: string;
   readonly statsIntervalMs?: number;
+  /** Sandbox wrapper seam; the default renders the deny-default seatbelt profile. */
+  readonly sandboxLaunch?: (request: SandboxLaunchRequest) => SandboxLaunchPlan;
 }
 
 interface CampaignWorkspace extends FuzzingCampaignWorkspace {
@@ -321,6 +325,7 @@ export class FuzzingCampaignRunner {
   readonly #platform: NodeJS.Platform;
   readonly #arch: string;
   readonly #statsIntervalMs: number;
+  readonly #sandboxLaunch: (request: SandboxLaunchRequest) => SandboxLaunchPlan;
 
   constructor(options: FuzzingCampaignRunnerOptions) {
     this.#environment = options.environment ?? process.env;
@@ -332,6 +337,7 @@ export class FuzzingCampaignRunner {
     this.#arch = options.arch ?? process.arch;
     this.#statsIntervalMs =
       options.statsIntervalMs ?? FUZZING_STATS_INTERVAL_MS;
+    this.#sandboxLaunch = options.sandboxLaunch ?? sandboxLaunchPlan;
   }
 
   async run(
@@ -648,7 +654,7 @@ export class FuzzingCampaignRunner {
   ): Promise<Result<FuzzingRunWatch, AnalysisError>> {
     let plan;
     try {
-      plan = sandboxLaunchPlan({
+      plan = this.#sandboxLaunch({
         executable: launch.executable,
         args: launch.arguments,
         profile: {
@@ -996,10 +1002,11 @@ export class FuzzingCampaignRunner {
       );
       if (!evidence.ok) return evidence;
       const decision =
-        evidence.value.reports.length === 0
+        evidence.value.rejection !== null
           ? { accepted: false, reason: evidence.value.rejection }
           : evaluatePov({
               reports: evidence.value.reports,
+              requestedReproductions: request.povRepeats,
               expectedSanitizer: request.expectedSanitizer,
             });
       if (!decision.accepted || decision.reason !== null) {
@@ -1163,7 +1170,7 @@ export class FuzzingCampaignRunner {
       if (signal?.aborted === true) break;
       const captured =
         labVm === null
-          ? await this.#reproduceOnHost(plan, signal)
+          ? await this.#reproduceOnHost(plan, workspace, signal)
           : await this.#reproduceInLabVm(
               labVm,
               workspace,
@@ -1203,15 +1210,60 @@ export class FuzzingCampaignRunner {
       });
       reportBody ??= body;
     }
+    if (rejection === null && reports.length !== request.povRepeats)
+      rejection = "not_reproduced";
     return ok({ reports, reportBody, rejection });
+  }
+
+  /**
+   * Wrap one reproduction in the same deny-default profile as the engine.
+   *
+   * A candidate is untrusted bytes: the target runs under the campaign root's
+   * write allowance, the adapter's declared reads, and no outbound network.
+   */
+  #sandboxedReproduction(
+    plan: FuzzingReproducePlan,
+    workspace: CampaignWorkspace,
+  ): Result<
+    { executable: string; arguments: readonly string[] },
+    AnalysisError
+  > {
+    try {
+      const sandboxed = this.#sandboxLaunch({
+        executable: plan.executable,
+        args: plan.arguments,
+        profile: {
+          workspace_root: workspace.root,
+          writable_paths: [...plan.writablePaths],
+          readable_paths: [...plan.readablePaths],
+          executable_paths: [plan.executable],
+        },
+        environment: this.#environment,
+      });
+      return ok({
+        executable: sandboxed.executable,
+        arguments: sandboxed.args,
+      });
+    } catch (cause: unknown) {
+      if (!(cause instanceof SandboxProfileRejection)) throw cause;
+      return err(
+        new AnalysisInputError(operation, {
+          cause,
+          userMessage: `The POV reproduction cannot be expressed as a deny-default sandbox profile: ${cause.message}. Select absolute target and engine paths, or set REA_DISABLE_SANDBOX=1 to run the reproduction unconfined.`,
+        }),
+      );
+    }
   }
 
   async #reproduceOnHost(
     plan: FuzzingReproducePlan,
+    workspace: CampaignWorkspace,
     signal: AbortSignal | undefined,
   ): Promise<Result<ReproductionCapture, AnalysisError>> {
+    const launch = this.#sandboxedReproduction(plan, workspace);
+    if (!launch.ok) return launch;
     try {
-      await execFileBytes(plan.executable, plan.arguments, {
+      await execFileBytes(launch.value.executable, launch.value.arguments, {
         timeout: FUZZING_POV_TIMEOUT_MS,
         maxBuffer: FUZZING_MAX_OUTPUT_BYTES,
         stopSignal: "SIGTERM",

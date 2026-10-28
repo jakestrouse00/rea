@@ -119,7 +119,8 @@ no target; the fuzz loop below does that.
 
 MCP registers `start_fuzzing_campaign` for the fuzz loop over one registered
 campaign. Select exactly one caller-supplied engine — `REA_LFZ_FUZZER_COMMAND`
-(libFuzzer target), `REA_AFLFRIDA_COMMAND` (afl-fuzz in FRIDA mode, macOS arm64),
+(libFuzzer target), `REA_AFLFRIDA_FUZZER_COMMAND` (afl-fuzz in FRIDA mode,
+macOS arm64),
 or `REA_JACKALOPE_DIR` (a Jackalope/TinyInst build directory) — and REA copies
 the campaign's seeds into a private corpus, launches the engine under a
 deny-default seatbelt profile (or inside an existing lab VM), enforces the

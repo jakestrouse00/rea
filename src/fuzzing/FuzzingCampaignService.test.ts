@@ -9,6 +9,7 @@ import { CrashTriageService } from "../crashTriage/CrashTriageService.js";
 import {
   AnalysisCapabilityUnavailableError,
   AnalysisInputError,
+  AnalysisResourceConstraintError,
 } from "../domain/analysisErrorCore.js";
 import {
   crashDedupListSchema,
@@ -18,6 +19,7 @@ import {
 import { createEvidence, type Evidence } from "../domain/evidence.js";
 import { FUZZING_LFZ_COMMAND_ENV } from "../domain/fuzzing/fuzzingEngine.js";
 import { fuzzingCampaignObservationSchema } from "../domain/fuzzing/fuzzingCampaignObservation.js";
+import type { SandboxLaunchRequest } from "../domain/sandboxProfiles.js";
 import { LAB_VM_PROVIDER } from "../domain/vmlab/labVm.js";
 import { FuzzingCampaignService } from "./FuzzingCampaignService.js";
 
@@ -68,6 +70,7 @@ interface Scenario {
   readonly exitCode?: number;
   readonly engine?: string;
   readonly statsFile?: Readonly<Record<string, number>>;
+  readonly reproduceCrashes?: number;
 }
 
 /** Lima stand-in: writes the guest files the run would have produced. */
@@ -361,6 +364,139 @@ describe("POV validation through the campaign service", () => {
     expect(observation.crashes.accepted).toBe(0);
     expect(observation.crashes.rejected_rows[0]?.reason).toBe("unstable_state");
   });
+  it("refuses a candidate that crashes in fewer reproductions than requested", async () => {
+    const harnessed = await harness({
+      engine: "libfuzzer",
+      stats: ["#5\tpulse cov: 1 ft: 1 corp: 1/4b exec/s: 9 rss: 9Mb"],
+      artifacts: [{ name: "crash-once", content: "FFFF" }],
+      reports: { "crash-once": [asanReport(["parse_items"])] },
+      reproduceCrashes: 1,
+    });
+    const campaignId = await register(harnessed, { max_seconds: 30 });
+    const observation = observationOf(
+      resultOf(
+        await harnessed.fuzzing.startCampaign({
+          campaignId,
+          engine: "libfuzzer",
+          povRepeats: 2,
+          expectedSanitizer: undefined,
+          minimizeCrashes: false,
+          labVm: null,
+        }),
+      ),
+    );
+    expect(observation.crashes.accepted).toBe(0);
+    expect(observation.crashes.rejected_rows[0]?.reason).toBe("not_reproduced");
+  });
+});
+
+describe("launch sandbox and campaign concurrency", () => {
+  it("wraps every reproduction launch in the sandbox profile", async () => {
+    const harnessed = await harness({
+      engine: "libfuzzer",
+      stats: ["#5\tpulse cov: 1 ft: 1 corp: 1/4b exec: 9 rss: 9Mb"],
+      artifacts: [{ name: "crash-wrapped", content: "GGGG" }],
+      reports: {
+        "crash-wrapped": [
+          asanReport(["parse_items"]),
+          asanReport(["parse_items"]),
+        ],
+      },
+    });
+    const campaignId = await register(harnessed, { max_seconds: 30 });
+    const requests: SandboxLaunchRequest[] = [];
+    const fuzzing = new FuzzingCampaignService({
+      crashTriage: harnessed.triage,
+      environment: {
+        ...process.env,
+        [FUZZING_LFZ_COMMAND_ENV]: harnessed.engine,
+        REA_FAKE_ENGINE_SCENARIO: harnessed.scenario,
+      },
+      statsIntervalMs: 5,
+      sandboxLaunch: (request) => {
+        requests.push(request);
+        return {
+          executable: request.executable,
+          args: [...request.args],
+          limitations: [],
+        };
+      },
+      createRuntimeRoot: async () => {
+        const path = join(harnessed.root, "wrapped");
+        await mkdir(path, { recursive: true, mode: 0o700 });
+        return {
+          path,
+          close: async () => {
+            await rm(path, { recursive: true, force: true });
+          },
+        };
+      },
+    });
+    services.push({ fuzzing, triage: harnessed.triage });
+    const observation = observationOf(
+      resultOf(
+        await fuzzing.startCampaign({
+          campaignId,
+          engine: "libfuzzer",
+          povRepeats: 2,
+          expectedSanitizer: undefined,
+          minimizeCrashes: false,
+          labVm: null,
+        }),
+      ),
+    );
+    expect(observation.crashes.accepted).toBe(1);
+    expect(requests).toHaveLength(3);
+    const [engineLaunch, ...reproductions] = requests;
+    expect(engineLaunch?.args.join(" ")).toContain("-artifact_prefix=");
+    expect(engineLaunch?.profile.workspace_root).toBe(
+      observation.workspace.root,
+    );
+    expect(engineLaunch?.profile.executable_paths).toEqual([
+      harnessed.engine,
+      harnessed.target,
+    ]);
+    for (const reproduction of reproductions) {
+      expect(reproduction.executable).toBe(harnessed.engine);
+      expect(reproduction.profile.workspace_root).toBe(
+        observation.workspace.root,
+      );
+      expect(reproduction.profile.executable_paths).toEqual([harnessed.engine]);
+      expect(reproduction.profile.readable_paths).toContain(
+        observation.workspace.root,
+      );
+      expect(
+        reproduction.profile.writable_paths?.some((path) =>
+          path.startsWith(observation.workspace.root),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("refuses a second campaign while one is running", async () => {
+    const harnessed = await harness({
+      engine: "libfuzzer",
+      stats: ["#5\tpulse cov: 1 ft: 1 corp: 1/4b exec/s: 9 rss: 9Mb"],
+      holdMs: 10_000,
+    });
+    const campaignId = await register(harnessed, { max_seconds: 1 });
+    const request = {
+      campaignId,
+      engine: "libfuzzer" as const,
+      povRepeats: 1,
+      expectedSanitizer: undefined,
+      minimizeCrashes: false,
+      labVm: null,
+    };
+    const first = harnessed.fuzzing.startCampaign(request);
+    const second = await harnessed.fuzzing.startCampaign(request);
+    expect(second.ok).toBe(false);
+    if (second.ok) throw new Error("Expected a resource refusal");
+    expect(second.error).toBeInstanceOf(AnalysisResourceConstraintError);
+    expect(observationOf(resultOf(await first)).stop_reason).toBe(
+      "budget_seconds",
+    );
+  }, 20_000);
 });
 
 describe("campaign budgets, cancellation, and lifecycle", () => {

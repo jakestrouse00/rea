@@ -8,7 +8,7 @@ that was not compiled with AFL++'s compiler wrapper.
 
 | Setting | Value |
 | --- | --- |
-| `REA_AFLFRIDA_COMMAND` | absolute path to a caller-supplied `afl-fuzz` |
+| `REA_AFLFRIDA_FUZZER_COMMAND` | absolute path to a caller-supplied `afl-fuzz` |
 
 `REA_AFLTMIN_COMMAND` names the `afl-tmin` binary used when
 `minimize_crashes: true`.
@@ -20,7 +20,7 @@ target. REA never installs or upgrades AFL++ tooling.
 ## Launch
 
 ```text
-"$REA_AFLFRIDA_COMMAND" -O \
+"$REA_AFLFRIDA_FUZZER_COMMAND" -O \
   -i <corpus-copy> \
   -o <campaign-root>/output \
   [-V <max_seconds>] \

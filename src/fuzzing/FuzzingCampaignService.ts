@@ -22,6 +22,10 @@ import {
 } from "../domain/fuzzing/fuzzingEngine.js";
 import type { Evidence } from "../domain/evidence.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
+import type {
+  SandboxLaunchPlan,
+  SandboxLaunchRequest,
+} from "../domain/sandboxProfiles.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   PrivateRuntimeRoot,
@@ -51,6 +55,8 @@ export interface FuzzingCampaignServiceOptions {
   readonly platform?: NodeJS.Platform;
   readonly arch?: string;
   readonly statsIntervalMs?: number;
+  /** Sandbox wrapper seam; production renders the deny-default seatbelt profile. */
+  readonly sandboxLaunch?: (request: SandboxLaunchRequest) => SandboxLaunchPlan;
 }
 
 const operation = "start_fuzzing_campaign";
@@ -93,6 +99,9 @@ export class FuzzingCampaignService implements FuzzingCampaignPort {
       ...(options.statsIntervalMs === undefined
         ? {}
         : { statsIntervalMs: options.statsIntervalMs }),
+      ...(options.sandboxLaunch === undefined
+        ? {}
+        : { sandboxLaunch: options.sandboxLaunch }),
     });
   }
 
@@ -117,15 +126,17 @@ export class FuzzingCampaignService implements FuzzingCampaignPort {
           },
         ),
       );
-    const campaign = await this.#crashTriage.campaignRecord(
-      { campaignId: request.campaignId },
-      options,
-    );
-    if (!campaign.ok) return campaign;
-    const root = await this.#workspaceRoot(request);
-    if (!root.ok) return root;
+    // Claim the slot before the first await so two overlapping calls cannot
+    // both pass the guard and launch two engines.
     this.#active = true;
     try {
+      const campaign = await this.#crashTriage.campaignRecord(
+        { campaignId: request.campaignId },
+        options,
+      );
+      if (!campaign.ok) return campaign;
+      const root = await this.#workspaceRoot(request);
+      if (!root.ok) return root;
       const observation = await this.#runner.run(
         {
           campaign: campaign.value,
