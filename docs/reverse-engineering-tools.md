@@ -71,6 +71,18 @@ gdb_session_status {"session_id":"…"}
 close_gdb_session {"session_id":"…"}
 ```
 
+## Lima lab VMs
+
+MCP registers `start_lab_vm`, `run_lab_vm_command`, and `stop_lab_vm` for an
+ephemeral Linux VM on Apple silicon macOS. Select the caller-supplied CLI with
+an absolute `REA_LIMACTL_COMMAND`; the lane is fail-closed, never installs or
+upgrades Lima, and reports `unsupported_host` where the `vz` driver is not
+available. Guest command output is not published: Evidence keeps the exit type,
+exit code, byte counts, truncation, and the workspace paths the command
+produced, modified, or removed. One REA server owns at most one lab VM. See
+[lab VMs](./lab-vms.md) and the [autonomous execution
+policy](./autonomous-execution.md).
+
 ## Rizin
 
 `start_rizin_debug_session` and `rea debug-with-rizin` require an explicit `inferior_tty` on Linux. Rizin launches the target with stdout and stderr routed to that caller-selected TTY and `dbg.exitkills=false`; the target can therefore continue running and writing to the TTY after REA closes the debugger. This is a visible target output effect, and the caller is responsible for selecting a suitable terminal that remains available. Before closing, REA serializes after the active command, parses the structured `olj` descriptor list, detaches only a unique `ptrace://` descriptor, confirms its absence, reads back `dbg.exitkills=false`, and verifies `/proc/<pid>/fd/1` and `/proc/<pid>/fd/2` still identify the selected TTY by device and inode. If a previously identified inferior exits after Rizin confirms detach, REA verifies that the original process has ended instead of requiring output descriptors from an exited process. Unresolved identity or ambiguous readback keeps the Rizin session owned for retry. After output limits or a failed command interval, cleanup first waits up to 1000 ms for a fresh private NUL-delimited marker, discarding earlier frames before obtaining that new inferior readback. Synchronization never reopens user command admission. A missing marker, unavailable transport, or unknown inferior identity retains the cleanup owner. Caller cancellation keeps its exact reason and typed cancellation outcome even when cleanup remains incomplete; a successful retry resolves that retained cleanup state. Cancellation during final cleanup retains the captured observation and cleanup owner. An already observed startup or protocol failure remains primary and retains a later cancellation as a secondary failure; recovering the transport does not erase that original diagnosis. Persistent Rizin debugger sessions are unavailable outside Linux because this verification depends on `/proc`.

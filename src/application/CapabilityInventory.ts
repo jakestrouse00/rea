@@ -44,10 +44,18 @@ import {
   NO_CLIENT_FEATURES,
 } from "./CapabilityClientRequirements.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
+import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
 );
+
+/** Session tools owned by the caller-supplied Lima lab-VM lane. */
+const LAB_VM_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "start_lab_vm",
+  "run_lab_vm_command",
+  "stop_lab_vm",
+]);
 
 const statusSchema = z.object({
   open: z.boolean(),
@@ -109,6 +117,8 @@ export type AvailabilityPolicy = {
   readonly grpcReflectionAvailability?: ProviderAvailability;
   readonly bindiffDiffAvailability?: ProviderAvailability;
   readonly bindiffExportAvailability?: ProviderAvailability;
+  /** Fresh lab-VM owner observation: host support and the limactl selection. */
+  readonly labVmAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -733,6 +743,11 @@ const workflowAvailabilityFor = ({
           remediation:
             "Start REA with its JavaScript runtime provider available.",
         };
+  if (LAB_VM_TOOL_NAMES.has(name))
+    return ownerProbeAvailability(
+      policy.labVmAvailability,
+      LAB_VM_COMMAND_REMEDIATION,
+    );
   if (kind === "session") return { reason: "available", remediation: null };
   return null;
 };

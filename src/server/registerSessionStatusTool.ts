@@ -80,6 +80,9 @@ export interface SessionAvailabilityProbes {
   readonly evmLimiterAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability | undefined>;
+  readonly labVmAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
 }
 
 /** Inputs required to register the binary session status tool. */
@@ -114,6 +117,7 @@ const probeSessionAvailability = (
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
+  readonly labVm: ProviderAvailability | undefined;
 }> =>
   Promise.all([
     probes.androidAnalysisAvailability(signal),
@@ -135,6 +139,7 @@ const probeSessionAvailability = (
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
+    probes.labVmAvailability?.(signal) ?? undefined,
   ] as const).then(
     ([
       android,
@@ -156,6 +161,7 @@ const probeSessionAvailability = (
       apktool,
       jeb,
       evmLimiter,
+      labVm,
     ]) => ({
       android,
       adb,
@@ -176,6 +182,7 @@ const probeSessionAvailability = (
       apktool,
       jeb,
       evmLimiter,
+      labVm,
     }),
   );
 
@@ -271,6 +278,9 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.evmLimiter === undefined
             ? {}
             : { evmLimiterAvailability: availabilityResults.evmLimiter }),
+          ...(availabilityResults.labVm === undefined
+            ? {}
+            : { labVmAvailability: availabilityResults.labVm }),
         },
         clientFeatures,
       );

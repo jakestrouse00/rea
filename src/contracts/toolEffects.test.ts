@@ -153,6 +153,8 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   list_ios_apps: "states it performs no install, removal, or data access",
   inspect_ios_provisioning: "states it has no install or removal path at all",
   inspect_apk_signature: "states that no Android code executes",
+  start_lab_vm:
+    "launches a caller-selected limactl that boots an isolated guest; no target code runs on this host",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {
@@ -229,6 +231,7 @@ describe("tool effects", () => {
       "push_adb_file",
       "resume_frida_session",
       "rizin_debug_command",
+      "run_lab_vm_command",
       "start_adb_activity",
       "start_adb_app",
       "start_rizin_debug_session",

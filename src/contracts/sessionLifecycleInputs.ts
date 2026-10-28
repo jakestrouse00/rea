@@ -1,10 +1,14 @@
 import { executableFormatHintSchema } from "../domain/dosCom.js";
-import { absoluteLocalPathStringSchema } from "../domain/localPath.js";
+import {
+  absoluteLocalPathStringSchema,
+  nulFreeStringSchema,
+} from "../domain/localPath.js";
 import {
   binaryArchitectureSchema,
   rawBinaryEntryPointSchema,
   rawBinarySelectionError,
 } from "../domain/rawBinary.js";
+import { labVmCommandTimeoutField } from "../domain/vmlab/labVm.js";
 import { z } from "zod";
 import { analysisProviderSelectorSchema } from "./providerSelection.js";
 
@@ -74,4 +78,30 @@ export const openBundleResourcesInputSchema = z.strictObject({
 export const closeBinaryInputSchema = z.strictObject({
   snapshot_path: snapshotPathSchema.optional(),
   overwrite: z.boolean().default(false),
+});
+
+/** Session identity issued by `start_lab_vm`; not a binary target identity. */
+export const labVmSessionIdSchema = z.string().uuid();
+
+/** Start one lab VM on the caller's workspace mount. */
+export const startLabVmInputSchema = z.strictObject({
+  workspace_path: absoluteLocalPathStringSchema.describe(
+    "Existing absolute host directory mounted read-write at /workspace in the guest; artifacts the guest writes there are visible to the caller after the VM stops.",
+  ),
+});
+
+/** Run one shell command line through the guest exec channel. */
+export const runLabVmCommandInputSchema = z.strictObject({
+  session_id: labVmSessionIdSchema,
+  command: nulFreeStringSchema
+    .min(1)
+    .describe(
+      "Command line passed to /bin/sh -lc inside the guest, with the workspace as the working directory.",
+    ),
+  command_timeout_ms: labVmCommandTimeoutField,
+});
+
+/** Stop and remove one lab VM by its issued session identity. */
+export const stopLabVmInputSchema = z.strictObject({
+  session_id: labVmSessionIdSchema,
 });

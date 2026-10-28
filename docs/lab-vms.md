@@ -1,0 +1,97 @@
+# Lab VMs
+
+`start_lab_vm`, `run_lab_vm_command`, and `stop_lab_vm` manage one ephemeral
+Linux virtual machine on an Apple silicon macOS host through a caller-supplied
+[Lima](https://lima-vm.io/) installation. The lane exists for work that cannot
+run on the host directly: AFL++ and ASan builds, sanitizer-heavy test suites,
+distribution-specific toolchains, and containerized benchmarks.
+
+The same three tools are session tools on the MCP server only; this release has
+no CLI command for them. Each tool returns Evidence, and the lane never reports
+a guest result as if it had run on the host.
+
+| Setting               | Meaning                                                                                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `REA_LIMACTL_COMMAND` | **Required.** Absolute path to a caller-supplied `limactl` binary. Fail-closed: a relative, missing, or non-executable path is a configuration refusal with the selected setting and remediation. |
+| `REA_DISABLE_SANDBOX` | Emergency exit for deny-default host sandbox profiles. It does not change this lane; see [autonomous execution](./autonomous-execution.md).                                                       |
+
+REA never downloads, installs, or upgrades Lima, and it does not ship a guest
+image. A first boot therefore needs whatever image the generated template
+references, plus the network access that pull requires. On a host without Apple
+Virtualization.framework (`vz`), the lane reports `unsupported_host` instead of
+falling back to another driver.
+
+## Lifecycle
+
+```text
+start_lab_vm {"workspace_path":"/absolute/workdir"}
+run_lab_vm_command {"session_id":"…","command":"cmake --build build","command_timeout_ms":600000}
+stop_lab_vm {"session_id":"…"}
+```
+
+1. `start_lab_vm` validates the absolute workspace directory, writes one
+   private template (mode `0600`, inside a private runtime root) that selects
+   `vmType: vz` with Rosetta translation and mounts only that workspace
+   read-write at `/workspace`, then runs `limactl start --tty=false --name <vm> <template>`.
+   The `session_id` is issued only after that call observed a clean exit. A
+   clean exit means the start command returned; it does not prove that every
+   guest startup script finished.
+2. `run_lab_vm_command` passes the command line to `/bin/sh -lc` inside the
+   guest with `/workspace` as the working directory. Guest output bytes are not
+   published: Evidence keeps the exit type, exit code, duration, stdout and
+   stderr byte counts, truncation, and the workspace paths the command
+   produced, modified, or removed. Those paths come from a bounded inventory
+   taken immediately before and after the command, so a change that never
+   touches the mount is not observed.
+3. `stop_lab_vm` runs `limactl stop` and then `limactl delete --force`, and
+   releases the session identity only after both were observed. The mounted
+   workspace is left untouched, so artifacts the guest wrote there remain on
+   the host. A failed stop or removal keeps the identity retained and admits
+   no further guest command; calling `stop_lab_vm` again retries that owner, and
+   a retry that only observes removal reports `stop: null` instead of inventing
+   a second stop call.
+
+One REA server owns at most one lab VM at a time. That is a capacity bound, not
+a claim that a second VM would not fit: each VM is a complete guest operating
+system, and the bound keeps cleanup attribution unambiguous. `binary_session`
+reports the lane's availability from the owner's own observation, including the
+`unsupported_host` case and the selected `limactl` path.
+
+## Observation boundaries
+
+- Exit facts are observed; guest-side behavior inside the command is not. A
+  zero exit status establishes the command's own report, not the correctness of
+  what it built.
+- `produced_paths`, `modified_paths`, and `removed_paths` compare two bounded
+  inventories of the mounted workspace. `changes_truncated` marks a bounded
+  inventory or change list that stopped before covering the workspace.
+- A timeout stops the owned `limactl` invocation at its deadline. It does not
+  prove that a command it had already handed to the guest stopped running in
+  the VM. `stop_lab_vm` removes the instance, which is what ends guest work.
+- Cancellation keeps the caller's exact reason. Cancellation after `stop` was
+  observed still reports the typed cancellation, with the retained cleanup
+  owner attached, so a later retry can release it.
+- `limactl` itself runs on this host without a deny-default seatbelt profile. VM
+  management needs its own control socket, guest transport, and `~/.lima`
+  state, and a deny-default profile would break it. Isolation for the work
+  inside the guest comes from the virtual machine.
+
+## Limits
+
+| Bound                                         | Value                            | Override             |
+| --------------------------------------------- | -------------------------------- | -------------------- |
+| Live lab VMs per REA server                   | 1                                | None in this release |
+| First boot (`limactl start`) deadline         | 900000 ms                        | None in this release |
+| Guest command deadline (`command_timeout_ms`) | 120000 ms default, 1..2147483647 | Per call             |
+| Retained `limactl` output per stream          | 4194304 bytes                    | None in this release |
+| Workspace inventory entries                   | 20000                            | None in this release |
+| Retained produced/modified/removed paths      | 512                              | None in this release |
+
+## Verification status
+
+The automated tests use a scripted `limactl` stand-in: it records argv, writes
+into the mounted workspace, and returns scripted exit statuses. They are
+offline and require no Lima installation. They do not establish real `vz`
+behavior, Rosetta translation, guest-image acquisition, or real guest teardown.
+See [autonomous execution](./autonomous-execution.md) before pointing this lane
+at anything other than a lab-owned target.

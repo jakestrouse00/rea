@@ -29,6 +29,8 @@ import { registerFunctionComparisonTool } from "./registerFunctionComparisonTool
 import { registerInvestigationTools } from "./registerInvestigationTools.js";
 import { registerBinaryDiffTool } from "./registerBinaryDiffTool.js";
 import type { BindiffPort } from "../application/bindiff/BindiffPort.js";
+import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
+import { registerLabVmTools } from "./registerLabVmTools.js";
 import { registerProcessComparisonTool } from "./registerProcessComparisonTool.js";
 import {
   registerEvidenceTools,
@@ -228,6 +230,8 @@ export interface SessionToolOptions extends Partial<SessionAvailabilityProbes> {
   readonly artifactResources: ArtifactResourceScope;
   /** Optional provider-backed binary comparison used by diff_binaries. */
   readonly bindiff?: BindiffPort;
+  /** Caller-supplied Lima lab-VM lane; absent disables the three session tools. */
+  readonly labVm?: LabVmPort;
   /** Server environment snapshot that process capture resolves and inherits. */
   readonly environment: Readonly<NodeJS.ProcessEnv>;
   readonly startedAt?: string;
@@ -388,6 +392,13 @@ export const registerSessionTools = (
     resourceScope: processResources,
     environment: options.environment,
   });
+  if (options.labVm !== undefined)
+    registerLabVmTools({
+      server,
+      labVm: options.labVm,
+      logger,
+      recordEvidence: (evidence) => session.recordEvidence(evidence),
+    });
   const closeServer = server.close.bind(server);
   server.close = async () => {
     const results = await Promise.allSettled([

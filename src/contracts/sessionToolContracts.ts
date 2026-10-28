@@ -20,6 +20,9 @@ import {
   closeBinaryInputSchema,
   openBundleResourcesInputSchema,
   openBinaryInputSchema,
+  runLabVmCommandInputSchema,
+  startLabVmInputSchema,
+  stopLabVmInputSchema,
 } from "./sessionLifecycleInputs.js";
 import { binarySessionInputSchema } from "./sessionStatusContract.js";
 import {
@@ -186,5 +189,20 @@ export const SESSION_TOOL_CONTRACTS = [
     "inspect_address_context",
     "Inspect one explicit reproducible address for its analyzed name, containing procedure, regular and inline comments, and matching bookmarks. Each unsupported facet returns a typed unavailable outcome; use xrefs, assembly, or pseudocode for those deeper views.",
     addressContextInputSchema,
+  ),
+  session(
+    "start_lab_vm",
+    "Start one caller-supplied Lima virtual machine for Linux-only work such as sanitizer builds, fuzzing, or containerized benchmarks. REA writes a temporary template that selects the vz driver and Rosetta translation, mounts only the selected workspace read-write at /workspace, and runs the limactl named by an absolute REA_LIMACTL_COMMAND; first boot may download whatever guest image that template references. The returned session_id is issued only after limactl reported a clean exit, which does not prove every guest startup script finished. This server owns at most one lab VM, and a failed cleanup retains that identity for retry. See docs/lab-vms.md and docs/autonomous-execution.md for the target-ownership policy.",
+    startLabVmInputSchema,
+  ),
+  session(
+    "run_lab_vm_command",
+    "Run one command line through the guest exec channel of a live lab VM created by start_lab_vm. The line is passed to /bin/sh -lc with the workspace as its working directory, and it can do anything the guest user can do inside the virtual machine, including destroying files under the mounted workspace. Guest output bytes are not published: Evidence keeps the exit type, exit code, duration, stdout and stderr byte counts, truncation, and the workspace paths this command produced, modified, or removed, compared against a bounded inventory taken immediately before and after it. A timeout or cancellation keeps those observed facts as a partial observation. See docs/autonomous-execution.md before running anything a lab VM does not own.",
+    runLabVmCommandInputSchema,
+  ),
+  session(
+    "stop_lab_vm",
+    "Remove one live lab VM and its guest disk, and release its session identity only after both the stop call and the instance removal were observed. The mounted workspace is left untouched, so artifacts the guest wrote there remain on the host. A failed stop or removal keeps the identity retained for retry through this same tool, and no further guest command is admitted until that retry releases it; a retry that removes an instance whose stop was already observed reports stop: null rather than inventing a second stop call.",
+    stopLabVmInputSchema,
   ),
 ] as const satisfies readonly ToolContract[];

@@ -269,6 +269,8 @@ import { CutterBridgeClient } from "../cutter/CutterBridgeClient.js";
 import { CutterBridgeService } from "../cutter/CutterBridgeService.js";
 import { registerCutterTools } from "./registerCutterTools.js";
 import { GdbSessionManager } from "../gdb/GdbSessionManager.js";
+import { createLabVmService } from "../composition/vmlab.js";
+import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
@@ -328,6 +330,8 @@ export interface CreateServerOptions {
   readonly jvmDecompiler?: JvmDecompilerPort;
   readonly protobufRecovery?: ProtobufRecoveryPort;
   readonly bindiff?: BindiffPort;
+  /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
+  readonly labVm?: LabVmPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -676,6 +680,7 @@ export const createServer = (
   const protobufRecovery =
     options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
   const bindiff = options.bindiff ?? createBindiffProvider(environment);
+  const labVm = options.labVm ?? createLabVmService(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -710,6 +715,9 @@ export const createServer = (
       jvmDecompiler.close(),
       protobufRecovery.close(),
       bindiff.close(),
+      labVm.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -1093,6 +1101,7 @@ export const createServer = (
       ...selectedOptions,
       artifactResources,
       bindiff,
+      labVm,
       ...(availability === undefined
         ? {}
         : { availabilityPolicy: availability.policy }),
@@ -1144,6 +1153,7 @@ export const createServer = (
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),
+      labVmAvailability: (signal) => labVm.inspectAvailability(signal),
       startedAt,
     });
   }
