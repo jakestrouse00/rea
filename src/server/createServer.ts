@@ -78,6 +78,13 @@ import { createIl2cppMetadataService } from "../composition/il2cpp.js";
 import type { Il2cppMetadataService } from "../application/il2cpp/Il2cppMetadataService.js";
 import type { GoBinaryService } from "../application/go/GoBinaryService.js";
 import { createElectronFuseService } from "../composition/electronFuses.js";
+import { AsarIntegrityService } from "../application/electron/AsarIntegrityService.js";
+import { createAsarIntegrityProvider } from "../composition/asarIntegrity.js";
+import { registerAsarIntegrityTool } from "./registerAsarIntegrityTool.js";
+import { V8BytecodeService } from "../application/javascript/V8BytecodeService.js";
+import type { V8BytecodePort } from "../application/javascript/V8BytecodePort.js";
+import { createV8BytecodeProvider } from "../composition/v8Bytecode.js";
+import { registerV8BytecodeTool } from "./registerV8BytecodeTool.js";
 import type { ElectronFuseService } from "../application/electron/ElectronFuseService.js";
 import { registerGoTools } from "./registerGoTools.js";
 import { registerIl2cppTools } from "./registerIl2cppTools.js";
@@ -296,6 +303,8 @@ export interface CreateServerOptions {
   readonly pythonPyc?: PythonPycService;
   readonly erlangBeam?: BeamService;
   readonly electronFuses?: ElectronFuseService;
+  readonly asarIntegrity?: AsarIntegrityService;
+  readonly v8Bytecode?: V8BytecodePort;
   readonly recordedCrash?: RecordedCrashService;
   readonly firmwareAnalysis?: FirmwareAnalysisPort;
   readonly javascriptRecovery?: JavaScriptRecoveryPort;
@@ -562,6 +571,11 @@ export const createServer = (
   const peCertificates = createPeCertificatesService();
   const peImports = createPeImportsService();
   const electronFuses = options.electronFuses ?? createElectronFuseService();
+  const asarIntegrity =
+    options.asarIntegrity ??
+    new AsarIntegrityService(createAsarIntegrityProvider(environment));
+  const v8Bytecode =
+    options.v8Bytecode ?? createV8BytecodeProvider(environment);
   const pythonPyc = options.pythonPyc ?? createPythonPycService();
   const webNetworkCapture =
     options.webNetworkCapture ??
@@ -727,6 +741,8 @@ export const createServer = (
       peCertificates.close(),
       peImports.close(),
       electronFuses.close(),
+      asarIntegrity.close(),
+      v8Bytecode.close(),
       pythonPyc.close(),
       webNetworkCapture.close(),
       javascriptRecovery.close?.() ?? Promise.resolve(),
@@ -801,6 +817,8 @@ export const createServer = (
     peCertificates,
     peImports,
     electronFuses,
+    asarIntegrity,
+    v8Bytecode,
     pythonPyc,
     webNetworkCapture,
   };
@@ -1109,6 +1127,8 @@ export const createServer = (
         pythonDecompiler.inspectAvailability(signal),
       jvmDecompilerAvailability: (signal) =>
         jvmDecompiler.inspectAvailability(signal),
+      v8BytecodeAvailability: (signal) =>
+        v8Bytecode.inspectAvailability(signal),
       protobufRecoveryAvailability: (signal) =>
         protobufRecovery.inspectRecoveryAvailability?.(signal) ??
         protobufRecovery.inspectAvailability(signal),
@@ -1461,6 +1481,8 @@ interface ServerToolContext extends ReturnType<typeof createSessionRecorders> {
   readonly peCertificates: PeCertificatesService;
   readonly peImports: PeImportsService;
   readonly electronFuses: ElectronFuseService;
+  readonly asarIntegrity: AsarIntegrityService;
+  readonly v8Bytecode: V8BytecodePort;
   readonly pythonPyc: PythonPycService;
   readonly webNetworkCapture: WebNetworkCaptureService;
   readonly artifactResources: ArtifactResourceScope;
@@ -1533,6 +1555,8 @@ const registerBinaryAnalysisTools = ({
 
 const registerObservationTools = ({
   electronFuses,
+  asarIntegrity,
+  v8Bytecode,
   evidenceById,
   server,
   options,
@@ -1569,6 +1593,20 @@ const registerObservationTools = ({
     activeLoadFailure:
       options.optionalProviderLoadFailures?.electronActiveObservation,
   });
+  registerAsarIntegrityTool(
+    server,
+    asarIntegrity,
+    logger,
+    recordEvidence,
+    withAdmittedAnalysis,
+  );
+  registerV8BytecodeTool(
+    server,
+    new V8BytecodeService(v8Bytecode),
+    logger,
+    recordEvidence,
+    withAdmittedAnalysis,
+  );
   registerJavaScriptRuntimeObservationTools(server, {
     ...common,
     runtime: options.javascriptRuntimeObservation,

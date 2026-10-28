@@ -56,6 +56,9 @@ export interface SessionAvailabilityProbes {
   readonly jvmDecompilerAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly v8BytecodeAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly protobufRecoveryAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
@@ -103,6 +106,7 @@ const probeSessionAvailability = (
   readonly dotnetDecompiler: ProviderAvailability | undefined;
   readonly pythonDecompiler: ProviderAvailability | undefined;
   readonly jvmDecompiler: ProviderAvailability | undefined;
+  readonly v8Bytecode: ProviderAvailability | undefined;
   readonly protobufRecovery: ProviderAvailability | undefined;
   readonly grpcReflection: ProviderAvailability | undefined;
   readonly bindiffDiff: ProviderAvailability | undefined;
@@ -123,6 +127,7 @@ const probeSessionAvailability = (
     probes.dotnetDecompilerAvailability?.(signal) ?? undefined,
     probes.pythonDecompilerAvailability?.(signal) ?? undefined,
     probes.jvmDecompilerAvailability?.(signal) ?? undefined,
+    probes.v8BytecodeAvailability?.(signal) ?? undefined,
     probes.protobufRecoveryAvailability?.(signal) ?? undefined,
     probes.grpcReflectionAvailability?.(signal) ?? undefined,
     probes.bindiffDiffAvailability?.(signal) ?? undefined,
@@ -143,6 +148,7 @@ const probeSessionAvailability = (
       dotnetDecompiler,
       pythonDecompiler,
       jvmDecompiler,
+      v8Bytecode,
       protobufRecovery,
       grpcReflection,
       bindiffDiff,
@@ -162,6 +168,7 @@ const probeSessionAvailability = (
       dotnetDecompiler,
       pythonDecompiler,
       jvmDecompiler,
+      v8Bytecode,
       protobufRecovery,
       grpcReflection,
       bindiffDiff,
@@ -241,6 +248,9 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.jvmDecompiler === undefined
             ? {}
             : { jvmDecompilerAvailability: availabilityResults.jvmDecompiler }),
+          ...(availabilityResults.v8Bytecode === undefined
+            ? {}
+            : { v8BytecodeAvailability: availabilityResults.v8Bytecode }),
           ...(availabilityResults.protobufRecovery === undefined
             ? {}
             : {

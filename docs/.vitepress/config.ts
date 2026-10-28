@@ -56,6 +56,7 @@ export default defineConfig({
           { text: "Agent environments", link: "/agent-environments" },
           { text: "Electron observation", link: "/electron-observation" },
           { text: "Electron fuses", link: "/electron-fuses" },
+          { text: "ASAR integrity", link: "/asar-integrity" },
           { text: "Process capture", link: "/process-capture" },
           { text: ".NET assemblies", link: "/managed-code-analysis" },
           {

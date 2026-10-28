@@ -125,6 +125,11 @@ const SOURCE_PATHS = {
   jvmDecompilerContracts:
     "dist/contracts/jvmdecomp/jvmDecompilerToolContracts.js",
   jvmDecompilerProvider: "dist/jvmdecomp/JvmDecompilerProvider.js",
+  v8BytecodeContracts: "dist/contracts/javascript/v8BytecodeToolContracts.js",
+  v8BytecodeProvider: "dist/javascript/v8/View8Provider.js",
+  asarIntegrityContracts:
+    "dist/contracts/electron/asarIntegrityToolContracts.js",
+  asarIntegrityProvider: "dist/electron/AsarIntegrityProvider.js",
   protobufContracts:
     "dist/contracts/protobufrecovery/protobufRecoveryToolContracts.js",
   protobufProvider: "dist/protobufrecovery/ProtobufRecoveryProvider.js",

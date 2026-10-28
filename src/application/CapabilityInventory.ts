@@ -104,6 +104,7 @@ export type AvailabilityPolicy = {
   readonly dotnetDecompilerAvailability?: ProviderAvailability;
   readonly pythonDecompilerAvailability?: ProviderAvailability;
   readonly jvmDecompilerAvailability?: ProviderAvailability;
+  readonly v8BytecodeAvailability?: ProviderAvailability;
   readonly protobufRecoveryAvailability?: ProviderAvailability;
   readonly grpcReflectionAvailability?: ProviderAvailability;
   readonly bindiffDiffAvailability?: ProviderAvailability;
@@ -471,7 +472,8 @@ const workflowAvailabilityFor = ({
     name === "inspect_python_pyc" ||
     name === "inspect_apple_ips" ||
     name === "inspect_erlang_beam" ||
-    name === "inspect_electron_fuses"
+    name === "inspect_electron_fuses" ||
+    name === "inspect_asar_integrity"
   )
     return { reason: "available", remediation: null };
   if (name === "inspect_sqlite_database") {
@@ -655,6 +657,11 @@ const workflowAvailabilityFor = ({
     return ownerProbeAvailability(
       policy.jvmDecompilerAvailability,
       "Set REA_VINEFLOWER_JAR to a caller-supplied Vineflower JAR (absolute path) and provide JDK 11 or newer through JAVA_HOME or PATH. This checks the JAR and Java version only; a container path is still required per request.",
+    );
+  if (kind === "v8-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.v8BytecodeAvailability,
+      "Build View8 with its patched V8 disassembler for this host and set REA_VIEW8_COMMAND to an absolute path to the launcher. This checks the selection only; a cached-data path is still required per request.",
     );
   if (kind === "protobuf-provider") {
     if (name === "enumerate_grpc_reflection")

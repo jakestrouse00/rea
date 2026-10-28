@@ -1,5 +1,6 @@
 import { getHeapStatistics } from "node:v8";
 import { MAX_JSON_DEPTH } from "../domain/jsonValue.js";
+import { DEFAULT_VIEW8_OPERATION_TIMEOUT_MS as VIEW8_OPERATION_TIMEOUT_MS } from "../javascript/v8/View8Release.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -48,5 +49,23 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     observation: "known" as const,
     recovery:
       "REA's JSON representation has this fixed nesting policy. This release has no runtime override; increasing byte or worker budgets does not change it.",
+  },
+  {
+    control: "REA_VIEW8_COMMAND",
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery:
+      "Select a locally built View8 launcher by absolute path in the launch environment and restart REA. REA never installs or builds it and cannot observe the selected patched V8 revision; decompile_v8_bytecode refuses until a usable absolute path is present. See docs/v8-bytecode.md.",
+  },
+  {
+    control: "view8.operation_timeout",
+    authority: "fixed" as const,
+    value: VIEW8_OPERATION_TIMEOUT_MS,
+    unit: "ms",
+    observation: "known" as const,
+    recovery:
+      "One View8 run has this fixed deadline. This release has no runtime override; keep the client call deadline above it and reduce the selected artifact rather than raising host memory. A longer budget would not make the launcher's patched V8 revision match the artifact.",
   },
 ];

@@ -109,6 +109,9 @@ const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "enumerate_grpc_reflection",
   "diff_binaries",
   "export_binexport_protobuf",
+  // V8 bytecode disassembly and ASAR packed-integrity inspection are MCP-only.
+  "decompile_v8_bytecode",
+  "inspect_asar_integrity",
 ]);
 
 describe("CLI canonical tool coverage", () => {

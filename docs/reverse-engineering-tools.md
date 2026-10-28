@@ -176,6 +176,10 @@ The signature lane is caller-supplied and fail-closed. `REA_CAPA_COMMAND` select
 
 The decompiler lane is likewise caller-supplied. `REA_ILSPY_CMD_PATH` selects ilspycmd, `REA_PYLINGUAL_COMMAND` or `REA_PYCDC_COMMAND` selects the Python decompiler, and `REA_VINEFLOWER_JAR` plus `JAVA_HOME` or `PATH` selects the JVM decompiler. Only declaration structure reaches Evidence; recovered source text stays out. See [.NET](./dotnet-decompilation.md), [Python](./python-decompilation.md), and [JVM](./jvm-decompilation.md).
 
+V8 disassembly is caller-supplied and fail-closed. `REA_VIEW8_COMMAND` selects a locally built View8 launcher by absolute path; REA never builds, downloads, or installs it, so the patched V8 revision remains operator-owned. Only the cached-data header, the artifact digest, and the disassembly's digest and size reach Evidence; disassembly text stays out. See [V8 bytecode](./v8-bytecode.md).
+
+ASAR packed-integrity inspection needs no external tool. It reuses the ASAR header admission selected for static JavaScript analysis (`REA_ASAR_MAX_HEADER_BYTES` or `asar.max_header_bytes`) and lists V8 bytecode candidates for the launcher above. See [ASAR integrity](./asar-integrity.md).
+
 Protobuf recovery selects pbtk or protodump through `REA_PBTK_COMMAND` / `REA_PROTODUMP_COMMAND`, and gRPC reflection selects grpcurl through `REA_GRPCURL_COMMAND`; all three require absolute paths. Recovered `.proto` files are published with digests and only their structure reaches Evidence. See [protobuf recovery](./protobuf-recovery.md).
 
 The binary-comparison lane selects a BinDiff adapter with `REA_BINDIFF_COMMAND` and a BinExport exporter with `REA_BINEXPORT_COMMAND`, both absolute and fail-closed. `diff_binaries` composes with `find_changed_behavior` as static candidates and remains a provider-backed alternative to `compare_functions`, not a replacement; `export_binexport_protobuf` publishes one `.BinExport` file with a digest. See [binary diffing](./binary-diffing.md).

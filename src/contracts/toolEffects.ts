@@ -352,6 +352,10 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
     writesFilesystem: true,
   }),
+  decompile_v8_bytecode: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
   recover_proto_definitions: effects({
     mutatesSession: true,
     launchesProcess: true,
@@ -945,6 +949,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
   }),
   inspect_electron_fuses: evidence,
+  inspect_asar_integrity: evidence,
   export_web_scripts: effects({
     mutatesSession: true,
     writesFilesystem: true,

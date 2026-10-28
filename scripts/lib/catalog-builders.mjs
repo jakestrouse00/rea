@@ -155,6 +155,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
     },
     {
+      id: "v8-decompiler",
+      surface: "v8-decompiler-provider",
+      contracts: sources.v8BytecodeContracts.V8_BYTECODE_TOOL_CONTRACTS,
+    },
+    {
       id: "protobuf",
       surface: "protobuf-provider",
       contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
@@ -183,7 +188,10 @@ export const toolFamilyCatalog = (sources) => {
     {
       id: "electron",
       surface: "electron-provider",
-      contracts: sources.electronContracts.ELECTRON_TOOL_CONTRACTS,
+      contracts: [
+        ...sources.electronContracts.ELECTRON_TOOL_CONTRACTS,
+        ...sources.asarIntegrityContracts.ASAR_INTEGRITY_TOOL_CONTRACTS,
+      ],
     },
     {
       id: "javascript-runtime",
@@ -572,6 +580,14 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.jvmDecompilerProvider.JVM_DECOMPILER_PROVIDER_IDENTITY,
       contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.v8BytecodeProvider.VIEW8_PROVIDER_IDENTITY,
+      contracts: sources.v8BytecodeContracts.V8_BYTECODE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.asarIntegrityProvider.ASAR_INTEGRITY_PROVIDER_IDENTITY,
+      contracts: sources.asarIntegrityContracts.ASAR_INTEGRITY_TOOL_CONTRACTS,
     },
     {
       identity: sources.protobufProvider.PROTOBUF_RECOVERY_PROVIDER_IDENTITY,
