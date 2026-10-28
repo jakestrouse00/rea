@@ -78,6 +78,11 @@ import {
   HUNTING_DEFAULT_WATCH_TRIGGERS,
   HUNTING_LIMITS,
 } from "../domain/hunting/huntingLimits.js";
+import {
+  BENCH_LIMA_PROFILE_ENV,
+  BENCH_LIMA_PROFILE_REMEDIATION,
+  BENCH_LIMITS,
+} from "../domain/bench/benchLimits.js";
 import { PROTOCOL_MODEL_FILE_MAX_BYTES } from "../protolearn/ProtocolModelStore.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
@@ -615,6 +620,30 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "triggers",
     observation: "known" as const,
     recovery: `One watch session enqueues at most ${String(HUNTING_LIMITS.maxWatchTriggers)} units (default ${String(HUNTING_DEFAULT_WATCH_TRIGGERS)}) and then stops observing. At most ${String(HUNTING_LIMITS.maxWatchEntries)} directory entries and ${String(HUNTING_LIMITS.maxWatchPathsPerTick)} paths per interval are reported, and at most ${String(HUNTING_LIMITS.maxLiveWatches)} watch sessions stay live at once.`,
+  },
+  {
+    control: BENCH_LIMA_PROFILE_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "profile",
+    observation: "unknown" as const,
+    recovery: BENCH_LIMA_PROFILE_REMEDIATION,
+  },
+  {
+    control: "bench.task_seconds",
+    authority: "fixed" as const,
+    value: BENCH_LIMITS.maxTaskSeconds,
+    unit: "seconds",
+    observation: "known" as const,
+    recovery: `One benchmark task command may declare at most ${String(BENCH_LIMITS.maxTaskSeconds)} seconds (default ${String(BENCH_LIMITS.defaultTaskSeconds)}). REA stops the guest command at that deadline and reports budget_exhausted, never a verdict on the task. This release has no runtime override; a longer budget needs a task the harness can finish, not a raised MCP client deadline.`,
+  },
+  {
+    control: "bench.outcome_bytes",
+    authority: "fixed" as const,
+    value: BENCH_LIMITS.maxOutcomeBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `REA reads at most ${String(BENCH_LIMITS.maxOutcomeBytes)} bytes of the guest harness outcome file at .rea-bench/outcome.json in the task workspace. A larger file is refused as an unknown outcome state rather than parsed, because a partially read outcome could look like a clean failure. This release has no runtime override.`,
   },
   {
     control: "mitm.stream_line_bytes",

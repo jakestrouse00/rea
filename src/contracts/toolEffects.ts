@@ -225,6 +225,18 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     writesFilesystem: true,
     idempotent: false,
   }),
+  // A benchmark task boots a VM, runs caller-selected containerized code, and
+  // reads back whatever the harness wrote into the mounted workspace.
+  run_bench_task: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   start_fuzzing_campaign: effects({
     mutatesSession: true,
     writesFilesystem: true,

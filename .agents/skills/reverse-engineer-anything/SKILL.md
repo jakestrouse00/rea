@@ -362,6 +362,14 @@ explicit path or endpoint and do not need it.
   queues re-analysis rather than analyzing inside the watch, and
   `stop_watch_session` releases it. See the
   [hunting queue guide](https://github.com/morluto/rea/blob/main/docs/hunting-queue.md).
+- A benchmark or CTF task: `run_bench_task` boots the lab-VM profile named by
+  `REA_BENCH_LIMA_PROFILE` (`nyu-ctf-bench` or `cybench`), runs your containerized
+  task in `/workspace`, and reports whether the flag digest or recorded POV bit
+  matched. Pass `expected_flag_sha256`, never the flag value, and keep the harness
+  writing `/workspace/.rea-bench/outcome.json`. A missing outcome or a command
+  stopped at `budget_seconds` is unknown, not unsolved; a result with
+  `vm.stopped: false` means retry `stop_lab_vm` before another run. See the
+  [benchmark harness guide](https://github.com/morluto/rea/blob/main/docs/benchmark-harness.md).
 
 For an existing IDA MCP configuration, use `open_binary` with the original
 input binary and `provider_id: "ida"`; do not pass an `.idb` or `.i64` database.

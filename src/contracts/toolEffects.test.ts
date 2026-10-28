@@ -257,6 +257,7 @@ describe("tool effects", () => {
       "push_adb_file",
       "resume_frida_session",
       "rizin_debug_command",
+      "run_bench_task",
       "run_lab_vm_command",
       "run_objection_recipe",
       "run_scheduled_batch",

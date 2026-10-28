@@ -150,6 +150,8 @@ const SOURCE_PATHS = {
   fuzzingProvider: "dist/domain/fuzzing/fuzzingEngine.js",
   huntingContracts: "dist/contracts/hunting/huntingToolContracts.js",
   huntingProvider: "dist/domain/hunting/huntingLimits.js",
+  benchContracts: "dist/contracts/bench/benchToolContracts.js",
+  benchProvider: "dist/domain/bench/benchLimits.js",
   mobileToolchainContracts:
     "dist/contracts/mobile/mobileToolchainToolContracts.js",
   mobileToolchainProvider: "dist/mobile/MobileToolchainProvider.js",

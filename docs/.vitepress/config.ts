@@ -92,6 +92,10 @@ export default defineConfig({
             link: "/hunting-queue",
           },
           {
+            text: "Benchmark harness",
+            link: "/benchmark-harness",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

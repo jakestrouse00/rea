@@ -59,6 +59,7 @@ import {
 } from "./CapabilityClientRequirements.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
+import { BENCH_LIMA_PROFILE_REMEDIATION } from "../domain/bench/benchLimits.js";
 import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
 import { MITM_TOOL_REMEDIATION } from "../domain/mitm/mitmLimits.js";
 import { FUZZING_TOOL_REMEDIATION } from "../domain/fuzzing/fuzzingEngine.js";
@@ -137,6 +138,8 @@ export type AvailabilityPolicy = {
   readonly bindiffExportAvailability?: ProviderAvailability;
   /** Fresh lab-VM owner observation: host support and the limactl selection. */
   readonly labVmAvailability?: ProviderAvailability;
+  /** Fresh benchmark-harness observation: profile selection and lab-VM readiness. */
+  readonly benchAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -798,6 +801,11 @@ const workflowAvailabilityFor = ({
     return ownerProbeAvailability(
       policy.labVmAvailability,
       LAB_VM_COMMAND_REMEDIATION,
+    );
+  if (kind === "benchmark-harness")
+    return ownerProbeAvailability(
+      policy.benchAvailability,
+      BENCH_LIMA_PROFILE_REMEDIATION,
     );
   if (kind === "mitm-provider") {
     if (name === "proxy_replay_send")

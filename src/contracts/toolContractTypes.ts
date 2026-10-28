@@ -54,6 +54,7 @@ export const TOOL_KINDS = [
   "mobile-toolchain-provider",
   "protocol-learning",
   "hunting-queue",
+  "benchmark-harness",
   "session",
 ] as const;
 

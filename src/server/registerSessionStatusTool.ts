@@ -83,6 +83,9 @@ export interface SessionAvailabilityProbes {
   readonly labVmAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly benchAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly objectionAvailability?: (
     signal: AbortSignal,
   ) => ProviderAvailability | Promise<ProviderAvailability>;
@@ -127,6 +130,7 @@ const probeSessionAvailability = (
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
   readonly labVm: ProviderAvailability | undefined;
+  readonly bench: ProviderAvailability | undefined;
   readonly objection: ProviderAvailability | undefined;
   readonly androguard: ProviderAvailability | undefined;
   readonly ileApp: ProviderAvailability | undefined;
@@ -152,6 +156,7 @@ const probeSessionAvailability = (
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
     probes.labVmAvailability?.(signal) ?? undefined,
+    probes.benchAvailability?.(signal) ?? undefined,
     probes.objectionAvailability?.(signal) ?? undefined,
     probes.androguardAvailability?.(signal) ?? undefined,
     probes.ileAppAvailability?.(signal) ?? undefined,
@@ -177,6 +182,7 @@ const probeSessionAvailability = (
       jeb,
       evmLimiter,
       labVm,
+      bench,
       objection,
       androguard,
       ileApp,
@@ -201,6 +207,7 @@ const probeSessionAvailability = (
       jeb,
       evmLimiter,
       labVm,
+      bench,
       objection,
       androguard,
       ileApp,
@@ -302,6 +309,9 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.labVm === undefined
             ? {}
             : { labVmAvailability: availabilityResults.labVm }),
+          ...(availabilityResults.bench === undefined
+            ? {}
+            : { benchAvailability: availabilityResults.bench }),
           ...(availabilityResults.objection === undefined
             ? {}
             : { objectionAvailability: availabilityResults.objection }),

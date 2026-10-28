@@ -320,6 +320,9 @@ import type { HuntingQueuePort } from "../application/hunting/HuntingQueuePort.j
 import { createHuntingQueueService } from "../composition/hunting.js";
 import { registerHuntingTools } from "./registerHuntingTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
+import type { BenchTaskPort } from "../application/bench/BenchTaskPort.js";
+import { createBenchTaskService } from "../composition/bench.js";
+import { registerBenchTools } from "./registerBenchTools.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
@@ -381,6 +384,8 @@ export interface CreateServerOptions {
   readonly bindiff?: BindiffPort;
   /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
   readonly labVm?: LabVmPort;
+  /** Benchmark harness over the lab-VM lane; omitted means the lane is selected from the environment. */
+  readonly bench?: BenchTaskPort;
   readonly crashTriage?: CrashTriagePort;
   /** Fuzz loop over registered campaigns; omitted means the lane is selected from the environment. */
   readonly fuzzing?: FuzzingCampaignPort;
@@ -777,6 +782,7 @@ export const createServer = (
     options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
   const bindiff = options.bindiff ?? createBindiffProvider(environment);
   const labVm = options.labVm ?? createLabVmService(environment);
+  const bench = options.bench ?? createBenchTaskService(environment, labVm);
   const crashTriage =
     options.crashTriage ?? createCrashTriageService(environment);
   const fuzzing =
@@ -1314,6 +1320,12 @@ export const createServer = (
     logger: toolLogger,
     recordEvidence,
   });
+  registerBenchTools({
+    server,
+    bench,
+    logger: toolLogger,
+    recordEvidence,
+  });
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {
@@ -1373,6 +1385,7 @@ export const createServer = (
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),
       labVmAvailability: (signal) => labVm.inspectAvailability(signal),
+      benchAvailability: (signal) => bench.inspectAvailability(signal),
       objectionAvailability: (signal) =>
         mobileToolchain.inspectAvailability("objection", signal),
       androguardAvailability: (signal) =>

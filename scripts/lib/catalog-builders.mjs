@@ -260,6 +260,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
     },
     {
+      id: "bench",
+      surface: "benchmark-harness",
+      contracts: sources.benchContracts.BENCH_TOOL_CONTRACTS,
+    },
+    {
       id: "mobile-toolchain",
       surface: "mobile-toolchain-provider",
       contracts:
@@ -685,6 +690,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.huntingProvider.HUNTING_PROVIDER,
       contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.benchProvider.BENCH_PROVIDER,
+      contracts: sources.benchContracts.BENCH_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

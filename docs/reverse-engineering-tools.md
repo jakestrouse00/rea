@@ -195,6 +195,22 @@ tree (names, sizes, modification times; no content) and enqueue re-analysis for
 changes; device and endpoint sources are refused this release. See
 [hunting queue](./hunting-queue.md).
 
+## Benchmark harness
+
+MCP registers `run_bench_task`. One call boots a lab VM from the profile named
+by `REA_BENCH_LIMA_PROFILE` (`nyu-ctf-bench` or `cybench`), runs the caller's
+containerized task command with its workspace mounted at `/workspace`, reads the
+harness outcome from `.rea-bench/outcome.json`, and removes the instance. A
+`flag` task succeeds only when the recovered flag hashes to the declared digest;
+a `pov` task succeeds only when the harness recorded a proof-of-vulnerability
+bit, optionally naming the expected sanitizer class. Flag values never become
+Evidence, only digests and the metric bit. A command stopped at
+`budget_seconds`, and a missing, oversized, or malformed outcome, is reported as
+unknown rather than unsolved, and a failed VM removal reports `vm.stopped:
+false` with the `stop_lab_vm` retry it needs. REA downloads no benchmark corpus,
+container image, or container runtime. See
+[benchmark harness](./benchmark-harness.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,
