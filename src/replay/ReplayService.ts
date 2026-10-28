@@ -351,24 +351,26 @@ export class ReplayService implements ReplayPort {
         ),
       );
 
-    const dispatch = this.#core.send({
-      operation,
-      request: composed.value,
-      allowedOrigins: session.record.target_origins,
-      timeoutMs: request.timeoutMs,
-      followRedirects: request.followRedirects,
-      signal: options.signal,
-      dump: request.dump,
-    });
-    session.pending.add(dispatch);
-    const exchange = await dispatch.finally(() => {
-      session.pending.delete(dispatch);
+    // The counter write belongs to the admitted operation: a close must not
+    // remove the record between the dispatch and its own book-keeping.
+    const admitted = (async () => {
+      const exchange = await this.#core.send({
+        operation,
+        request: composed.value,
+        allowedOrigins: session.record.target_origins,
+        timeoutMs: request.timeoutMs,
+        followRedirects: request.followRedirects,
+        signal: options.signal,
+        dump: request.dump,
+      });
+      if (exchange.ok) await this.#recordSend(session, this.#now());
+      return exchange;
+    })();
+    session.pending.add(admitted);
+    const exchange = await admitted.finally(() => {
+      session.pending.delete(admitted);
     });
     if (!exchange.ok) return exchange;
-    const sentAt = this.#now();
-    // Counters describe this server's own dispatches. A record that cannot be
-    // rewritten does not erase the observation the target already produced.
-    await this.#recordSend(session, sentAt);
 
     return ok(
       createEvidence(
@@ -603,6 +605,7 @@ export class ReplayService implements ReplayPort {
   }
 
   async #recordSend(session: ReplaySession, sentAt: string): Promise<void> {
+    if (!this.#sessions.has(session.id)) return;
     const record: ReplaySessionRecord = {
       ...session.record,
       send_count: session.record.send_count + 1,

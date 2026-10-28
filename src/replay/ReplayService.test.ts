@@ -461,6 +461,79 @@ describe("replay session ownership", () => {
   });
 });
 
+describe("replay close lifecycle", () => {
+  it("drains an admitted send before removing the record", async () => {
+    const fixture = await service();
+    const session = await startDraftSession(fixture);
+    const body = controllableBody();
+    const sentPromise = fixture.replay.send({
+      sessionId: session.session_id,
+      entryOrdinal: undefined,
+      mutation: {},
+      timeoutMs: 5_000,
+      followRedirects: true,
+      dump: undefined,
+    });
+    (await firstDispatch(fixture)).settle(response({ status: 200, body }));
+    body.push("partial");
+    let closed = false;
+    const closing = fixture.replay
+      .closeSession({ sessionId: session.session_id })
+      .then((result) => {
+        closed = true;
+        return result;
+      });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    body.push("-rest");
+    body.end();
+    const sent = await sentPromise;
+    expect(sent.ok).toBe(true);
+    const closedResult = await closing;
+    expect(closedResult.ok).toBe(true);
+    await expect(
+      stat(fixture.files.pathFor(session.session_id)),
+    ).rejects.toThrow();
+  });
+
+  it("leaves the record for a retry when close is cancelled during the drain", async () => {
+    const fixture = await service();
+    const session = await startDraftSession(fixture);
+    const body = controllableBody();
+    const sentPromise = fixture.replay.send({
+      sessionId: session.session_id,
+      entryOrdinal: undefined,
+      mutation: {},
+      timeoutMs: 5_000,
+      followRedirects: true,
+      dump: undefined,
+    });
+    (await firstDispatch(fixture)).settle(response({ status: 200, body }));
+    const controller = new AbortController();
+    const closing = fixture.replay.closeSession(
+      { sessionId: session.session_id },
+      { signal: controller.signal },
+    );
+    await Promise.resolve();
+    const reason = new Error("analyst cancelled the close");
+    controller.abort(reason);
+    body.end();
+    await sentPromise;
+    const closed = await closing;
+    expect(closed.ok).toBe(false);
+    if (closed.ok) return;
+    expect(closed.error._tag).toBe("AnalysisCancelledError");
+    expect(closed.error.cause).toBe(reason);
+    expect(
+      (await stat(fixture.files.pathFor(session.session_id))).isFile(),
+    ).toBe(true);
+    const retried = await fixture.replay.closeSession({
+      sessionId: session.session_id,
+    });
+    expect(retried.ok).toBe(true);
+  });
+});
+
 describe("replay send", () => {
   const verbatimSend = async (fixture: Awaited<ReturnType<typeof service>>) => {
     const session = await startDraftSession(fixture);
