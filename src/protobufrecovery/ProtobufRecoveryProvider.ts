@@ -18,6 +18,7 @@ import {
   AnalysisOutputError,
   AnalysisProtocolError,
 } from "../domain/analysisErrorCore.js";
+import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { providerConfigurationRefusal } from "../domain/providerConfigurationRefusal.js";
 import type {
@@ -304,13 +305,15 @@ export class ProtobufRecoveryProvider {
       await root.value.close();
     } catch (cause: unknown) {
       return err(
-        new ProviderCleanupError(
-          PROTOBUF_RECOVERY_PROVIDER_ID,
-          [root.value.path],
-          {
-            reason: cause instanceof Error ? cause.message : String(cause),
-          },
-          { operation, cause },
+        cleanupOutcome(
+          outcome,
+          cleanupError(
+            PROTOBUF_RECOVERY_PROVIDER_ID,
+            root.value.path,
+            cause,
+            operation,
+          ),
+          operation,
         ),
       );
     }
@@ -684,6 +687,38 @@ export class ProtobufRecoveryProvider {
     }
   }
 }
+
+const cleanupError = (
+  providerId: string,
+  path: string,
+  cause: unknown,
+  operation: string,
+): ProviderCleanupError => {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return new ProviderCleanupError(
+    providerId,
+    [path],
+    { reason },
+    { operation, cause, cleanup: { reason, resources: [path] } },
+  );
+};
+
+const cleanupOutcome = (
+  outcome: Result<AnalysisExecution, AnalysisError>,
+  cleanup: ProviderCleanupError,
+  operation: string,
+): AnalysisError =>
+  outcome.ok
+    ? cleanup.retainPartialObservation({
+        kind: "provider-result",
+        operation,
+        result: outcome.value.result,
+      })
+    : analysisErrorWithCleanupFailure(
+        outcome.error,
+        cleanup,
+        operation,
+      ).bindCleanupDependencies([outcome.error, cleanup]);
 
 const sanitize = (value: string): string =>
   value.replaceAll(/[^\w.-]+/gu, "-").slice(0, 64) || "artifact";

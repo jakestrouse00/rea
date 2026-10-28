@@ -24,6 +24,7 @@ import {
   exportBinexportResultSchema,
 } from "../domain/bindiff/binaryDiff.js";
 import { parseJsonObject } from "../domain/jsonShape.js";
+import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { providerConfigurationRefusal } from "../domain/providerConfigurationRefusal.js";
 import { err, ok, type Result } from "../domain/result.js";
@@ -338,12 +339,7 @@ export class BindiffProvider {
       await root.value.close();
     } catch (cause: unknown) {
       return err(
-        new ProviderCleanupError(
-          BINDIFF_PROVIDER_ID,
-          [root.value.path],
-          { reason: cause instanceof Error ? cause.message : String(cause) },
-          { operation: "export_binexport_protobuf", cause },
-        ),
+        exportCleanupOutcome(outcome, cleanupError(root.value.path, cause)),
       );
     }
     return outcome;
@@ -540,6 +536,36 @@ export class BindiffProvider {
     }
   }
 }
+
+const cleanupError = (path: string, cause: unknown): ProviderCleanupError => {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return new ProviderCleanupError(
+    BINDIFF_PROVIDER_ID,
+    [path],
+    { reason },
+    {
+      operation: "export_binexport_protobuf",
+      cause,
+      cleanup: { reason, resources: [path] },
+    },
+  );
+};
+
+const exportCleanupOutcome = (
+  outcome: Result<ExportBinexportResult, AnalysisError>,
+  cleanup: ProviderCleanupError,
+): AnalysisError =>
+  outcome.ok
+    ? cleanup.retainPartialObservation({
+        kind: "provider-result",
+        operation: "export_binexport_protobuf",
+        result: outcome.value,
+      })
+    : analysisErrorWithCleanupFailure(
+        outcome.error,
+        cleanup,
+        "export_binexport_protobuf",
+      ).bindCleanupDependencies([outcome.error, cleanup]);
 
 const sanitize = (value: string): string =>
   value.replaceAll(/[^\w.-]+/gu, "-").slice(0, 64) || "artifact";

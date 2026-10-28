@@ -166,3 +166,74 @@ test("reports availability after probing the JAR and JDK", async () => {
   expect(available.diagnostics).toMatchObject({ java_major: 17 });
   await provider.close();
 });
+
+const failingRootFactory = async (path: string) => ({
+  path,
+  close: async () => {
+    throw new Error("root removal denied");
+  },
+});
+
+test("retains a successful decompilation when root cleanup fails", async () => {
+  const root = await createTestTempDirectory("rea-jvm-cleanup-");
+  const { launcher } = await writeFakeJava(root, {
+    files: { "com/example/Main.java": MAIN_SOURCE },
+  });
+  const jarPath = join(root, "vineflower.jar");
+  await writeFile(jarPath, "JAR-FIXTURE");
+  const runtimeRoot = await createTestTempDirectory("rea-jvm-root-");
+  const provider = new JvmDecompilerProvider({
+    environment: { REA_VINEFLOWER_JAR: jarPath, PATH: root },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const container = join(root, "app.jar");
+  await writeFile(container, "ZIP-FIXTURE");
+  const result = await provider.execute({
+    operation: "decompile_jar_class",
+    input: { path: container, class_name: "com/example/Main" },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.partialObservation).toMatchObject({
+    kind: "provider-result",
+    operation: "decompile_jar_class",
+  });
+  const partial = result.error.partialObservation as
+    | { kind: "provider-result"; result: unknown }
+    | undefined;
+  if (partial?.kind !== "provider-result") return;
+  expect(partial.result).toMatchObject({ class_count: 1 });
+  expect(result.error.cleanupResources).toContain(runtimeRoot);
+  expect(result.error.cleanup?.reason).toContain("root removal denied");
+  await provider.close();
+});
+
+test("preserves the real decompilation error when root cleanup also fails", async () => {
+  const root = await createTestTempDirectory("rea-jvm-cleanup-fail-");
+  const { launcher } = await writeFakeJava(root, { exit: 3 });
+  const jarPath = join(root, "vineflower.jar");
+  await writeFile(jarPath, "JAR-FIXTURE");
+  const runtimeRoot = await createTestTempDirectory("rea-jvm-root-fail-");
+  const provider = new JvmDecompilerProvider({
+    environment: { REA_VINEFLOWER_JAR: jarPath, PATH: root },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const container = join(root, "app.jar");
+  await writeFile(container, "ZIP-FIXTURE");
+  const result = await provider.execute({
+    operation: "decompile_jar_archive",
+    input: { path: container },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.cleanupPrimary?._tag).toBe("ProviderAdapterError");
+  expect(JSON.stringify(result.error.diagnostics?.primary_error)).toContain(
+    "Vineflower failed",
+  );
+  expect(JSON.stringify(result.error.diagnostics?.cleanup_error)).toContain(
+    "root removal denied",
+  );
+  await provider.close();
+});

@@ -18,6 +18,7 @@ import {
 } from "../domain/analysisErrorCore.js";
 import type { JvmDecompilerRequest } from "../domain/jvmdecomp/jvmDecompilation.js";
 import { jvmDecompilationResultSchema } from "../domain/jvmdecomp/jvmDecompilation.js";
+import { analysisErrorWithCleanupFailure } from "../domain/analysisErrorCleanup.js";
 import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { providerConfigurationRefusal } from "../domain/providerConfigurationRefusal.js";
 import { err, ok, type Result } from "../domain/result.js";
@@ -265,13 +266,15 @@ export class JvmDecompilerProvider {
       await root.value.close();
     } catch (cause: unknown) {
       return err(
-        new ProviderCleanupError(
-          JVM_DECOMPILER_PROVIDER_ID,
-          [root.value.path],
-          {
-            reason: cause instanceof Error ? cause.message : String(cause),
-          },
-          { operation, cause },
+        cleanupOutcome(
+          outcome,
+          cleanupError(
+            JVM_DECOMPILER_PROVIDER_ID,
+            root.value.path,
+            cause,
+            operation,
+          ),
+          operation,
         ),
       );
     }
@@ -441,6 +444,38 @@ interface CollectedSource {
   readonly relativePath: string;
   readonly source: string;
 }
+
+const cleanupError = (
+  providerId: string,
+  path: string,
+  cause: unknown,
+  operation: string,
+): ProviderCleanupError => {
+  const reason = cause instanceof Error ? cause.message : String(cause);
+  return new ProviderCleanupError(
+    providerId,
+    [path],
+    { reason },
+    { operation, cause, cleanup: { reason, resources: [path] } },
+  );
+};
+
+const cleanupOutcome = (
+  outcome: Result<AnalysisExecution, AnalysisError>,
+  cleanup: ProviderCleanupError,
+  operation: string,
+): AnalysisError =>
+  outcome.ok
+    ? cleanup.retainPartialObservation({
+        kind: "provider-result",
+        operation,
+        result: outcome.value.result,
+      })
+    : analysisErrorWithCleanupFailure(
+        outcome.error,
+        cleanup,
+        operation,
+      ).bindCleanupDependencies([outcome.error, cleanup]);
 
 const collectJavaSources = async (
   root: string,

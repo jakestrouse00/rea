@@ -289,3 +289,73 @@ test("probes recovery and reflection selections separately", async () => {
   });
   await reflection.close();
 });
+
+const failingRootFactory = async (path: string) => ({
+  path,
+  close: async () => {
+    throw new Error("root removal denied");
+  },
+});
+
+test("retains a successful recovery when root cleanup fails", async () => {
+  const root = await createTestTempDirectory("rea-protobuf-cleanup-");
+  const { launcher } = await writeFakeProtoTool(root, "pbtk", {
+    files: { "example/api.proto": PROTO_FIXTURE },
+  });
+  const runtimeRoot = await createTestTempDirectory("rea-protobuf-root-");
+  const provider = new ProtobufRecoveryProvider({
+    environment: { REA_PBTK_COMMAND: launcher },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const artifact = join(root, "app.apk");
+  await writeFile(artifact, "APK-FIXTURE");
+  const result = await provider.execute({
+    operation: "recover_proto_definitions",
+    input: { path: artifact, output_directory: join(root, "out") },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.partialObservation).toMatchObject({
+    kind: "provider-result",
+    operation: "recover_proto_definitions",
+  });
+  const partial = result.error.partialObservation as
+    | { kind: "provider-result"; result: unknown }
+    | undefined;
+  if (partial?.kind !== "provider-result") return;
+  expect(partial.result).toMatchObject({ file_count: 1 });
+  expect(result.error.cleanupResources).toContain(runtimeRoot);
+  expect(result.error.cleanup?.reason).toContain("root removal denied");
+  await provider.close();
+});
+
+test("preserves the real recovery error when root cleanup also fails", async () => {
+  const root = await createTestTempDirectory("rea-protobuf-cleanup-fail-");
+  const { launcher } = await writeFakeProtoTool(root, "pbtk", {
+    exit: 2,
+    stderr: "recovery failed badly",
+  });
+  const runtimeRoot = await createTestTempDirectory("rea-protobuf-root-fail-");
+  const provider = new ProtobufRecoveryProvider({
+    environment: { REA_PBTK_COMMAND: launcher },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const artifact = join(root, "app.apk");
+  await writeFile(artifact, "APK-FIXTURE");
+  const result = await provider.execute({
+    operation: "recover_proto_definitions",
+    input: { path: artifact, output_directory: join(root, "out") },
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.cleanupPrimary?._tag).toBe("ProviderAdapterError");
+  expect(JSON.stringify(result.error.diagnostics?.primary_error)).toContain(
+    "recovery failed badly",
+  );
+  expect(JSON.stringify(result.error.diagnostics?.cleanup_error)).toContain(
+    "root removal denied",
+  );
+  await provider.close();
+});

@@ -227,3 +227,76 @@ test("reports BinDiff and BinExport availability separately", async () => {
   });
   await provider.close();
 });
+
+const failingRootFactory = async (path: string) => ({
+  path,
+  close: async () => {
+    throw new Error("root removal denied");
+  },
+});
+
+test("retains a successful BinExport when root cleanup fails", async () => {
+  const root = await createTestTempDirectory("rea-binexf-cleanup-");
+  const contents = "BINE-FIXTURE-PAYLOAD";
+  const { launcher } = await writeFakeBindiff(root, "exporter", {
+    exportFile: { name: "sample.BinExport", contents },
+  });
+  const runtimeRoot = await createTestTempDirectory("rea-binexf-root-");
+  const provider = new BindiffProvider({
+    environment: { REA_BINEXPORT_COMMAND: launcher },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const source = join(root, "sample.so");
+  await writeFile(source, "ELF-FIXTURE");
+  const result = await provider.exportBinexport({
+    path: source,
+    outputDirectory: join(root, "out"),
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.partialObservation).toMatchObject({
+    kind: "provider-result",
+    operation: "export_binexport_protobuf",
+  });
+  const partial = result.error.partialObservation as
+    | { kind: "provider-result"; result: unknown }
+    | undefined;
+  if (partial?.kind !== "provider-result") return;
+  expect(partial.result).toMatchObject({
+    file: { format: "binexport", sha256: sha256(contents) },
+  });
+  expect(result.error.cleanupResources).toContain(runtimeRoot);
+  expect(result.error.cleanup?.reason).toContain("root removal denied");
+  await provider.close();
+});
+
+test("preserves the real export error when root cleanup also fails", async () => {
+  const root = await createTestTempDirectory("rea-binexf-cleanup-fail-");
+  const { launcher } = await writeFakeBindiff(root, "exporter", {
+    exit: 2,
+    stderr: "export failed badly",
+  });
+  const runtimeRoot = await createTestTempDirectory("rea-binexf-root-fail-");
+  const provider = new BindiffProvider({
+    environment: { REA_BINEXPORT_COMMAND: launcher },
+    createRuntimeRoot: async () => failingRootFactory(runtimeRoot),
+  });
+  const source = join(root, "sample.so");
+  await writeFile(source, "ELF-FIXTURE");
+  const result = await provider.exportBinexport({
+    path: source,
+    outputDirectory: join(root, "out"),
+  });
+  expect(result.ok).toBe(false);
+  if (result.ok) return;
+  expect(result.error.cleanupIncomplete).toBe(true);
+  expect(result.error.cleanupPrimary?._tag).toBe("ProviderAdapterError");
+  expect(JSON.stringify(result.error.diagnostics?.primary_error)).toContain(
+    "export failed badly",
+  );
+  expect(JSON.stringify(result.error.diagnostics?.cleanup_error)).toContain(
+    "root removal denied",
+  );
+  await provider.close();
+});

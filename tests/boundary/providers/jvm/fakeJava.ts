@@ -5,6 +5,7 @@ import { join } from "node:path";
 export interface FakeJavaBehavior {
   readonly version?: string;
   readonly files?: Readonly<Record<string, string>>;
+  readonly exit?: number;
 }
 
 const SCRIPT = String.raw`#!${process.execPath}
@@ -18,6 +19,10 @@ const args = process.argv.slice(2);
 if (args[0] === "-version") {
   process.stderr.write(behavior.version ?? 'openjdk version "17.0.1" 2024-04-16\n');
 } else if (args[0] === "-jar") {
+  if (behavior.exit !== undefined) {
+    process.stderr.write("decompilation failed\n");
+    process.exit(behavior.exit);
+  }
   const destination = args[args.length - 1] ?? "";
   for (const [relativePath, contents] of Object.entries(behavior.files ?? {})) {
     const target = path.join(destination, relativePath);
