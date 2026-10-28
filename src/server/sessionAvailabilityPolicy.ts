@@ -32,6 +32,7 @@ export interface SessionAvailabilityDefaults {
     | "mitmInterceptionEnabled"
     | "emuEmulationEnabled"
     | "angrSymbolicEnabled"
+    | "fuzzingCampaignEnabled"
   >;
 }
 
@@ -79,6 +80,8 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.emuEmulationEnabled ?? false,
       angrSymbolicEnabled:
         defaults.optionalFeatures?.angrSymbolicEnabled ?? false,
+      fuzzingCampaignEnabled:
+        defaults.optionalFeatures?.fuzzingCampaignEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

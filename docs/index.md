@@ -64,6 +64,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Capture and compare a command | [Process capture](process-capture.md) |
 | Run Linux-only builds and fuzzing | [Lab VMs](lab-vms.md), [autonomous execution policy](autonomous-execution.md) |
 | Triage sanitizer and macOS crash reports | [Crash triage](crash-triage.md) |
+| Fuzz a target and validate its crashes | [Fuzzing campaigns](fuzzing-campaigns.md), [libFuzzer](fuzzing-libfuzzer.md), [AFL++ FRIDA](fuzzing-aflpp-frida.md), [Jackalope](fuzzing-jackalope.md) |
 | Inspect and rewrite one application's traffic | [mitmproxy interception](mitm-interception.md) |
 | Emulate one function body and assemble patch bytes | [Isolated emulation](emulation.md) |
 | Ask whether code can reach an address under assumptions | [Symbolic execution](angr-symbolic-execution.md) |

@@ -56,6 +56,7 @@ import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
 import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
 import { MITM_TOOL_REMEDIATION } from "../domain/mitm/mitmLimits.js";
+import { FUZZING_TOOL_REMEDIATION } from "../domain/fuzzing/fuzzingEngine.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
@@ -147,6 +148,8 @@ export type AvailabilityPolicy = {
   readonly emuEmulationEnabled?: boolean;
   /** A Python interpreter and the angr bridge script are selected. */
   readonly angrSymbolicEnabled?: boolean;
+  /** At least one caller-supplied fuzzing engine is selected. */
+  readonly fuzzingCampaignEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -799,6 +802,13 @@ const workflowAvailabilityFor = ({
       : {
           reason: "provider_missing",
           remediation: `${ANGR_BRIDGE_DIR_REMEDIATION} ${ANGR_PYTHON_ENV_REMEDIATION} ${ANGR_JOBS_ENV} caps concurrent jobs in the same environment.`,
+        };
+  if (kind === "fuzzing-provider")
+    return policy.fuzzingCampaignEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: FUZZING_TOOL_REMEDIATION,
         };
   if (kind === "session") return { reason: "available", remediation: null };
   return null;

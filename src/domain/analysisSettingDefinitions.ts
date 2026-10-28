@@ -27,6 +27,11 @@ import {
   MAX_WASM_COMMAND_TIMEOUT_MS,
 } from "./wasm/wasmArtifact.js";
 import { DEFAULT_ANGR_OPERATION_TIMEOUT_MS } from "./angr/angrLimits.js";
+import {
+  FUZZING_DEFAULT_MAX_CAMPAIGN_SECONDS,
+  FUZZING_PROVIDER,
+} from "./fuzzing/fuzzingEngine.js";
+import { CRASH_TRIAGE_MAX_SECONDS } from "./crashTriage/fuzzingCampaign.js";
 interface SettingDefinition {
   readonly environment?: string;
   readonly defaultValue: number | null;
@@ -203,6 +208,15 @@ export const ANALYSIS_SETTINGS = {
     provider: "wabt-artifact",
     operations: ["inspect_wasm_artifact"],
     parameter: "command_timeout_ms",
+  },
+  "fuzzing.max_campaign_seconds": {
+    defaultValue: FUZZING_DEFAULT_MAX_CAMPAIGN_SECONDS,
+    minimum: 1,
+    maximum: CRASH_TRIAGE_MAX_SECONDS,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: FUZZING_PROVIDER.id,
+    operations: ["start_fuzzing_campaign"],
   },
 } as const satisfies Record<AnalysisSettingId, SettingDefinition>;
 export const analysisSettingIds = Object.keys(

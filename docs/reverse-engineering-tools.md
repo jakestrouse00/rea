@@ -138,8 +138,29 @@ numbers do not split one defect into many groups. Report bodies stay on disk
 (mode `0600`) inside a private runtime root that the owning server removes when
 it closes; only a 200-character sanitizer summary is inlined, and frame text is
 clipped to 512 characters with a `text_truncated` flag rather than passing
-report bytes through as structure. No engine is started and no target is
-executed by these tools.
+report bytes through as structure. These four tools start no engine and execute
+no target; the fuzz loop below does that.
+
+## Fuzzing campaigns
+
+MCP registers `start_fuzzing_campaign` for the fuzz loop over one registered
+campaign. Select exactly one caller-supplied engine — `REA_LFZ_FUZZER_COMMAND`
+(libFuzzer target), `REA_AFLFRIDA_FUZZER_COMMAND` (afl-fuzz in FRIDA mode,
+macOS arm64),
+or `REA_JACKALOPE_DIR` (a Jackalope/TinyInst build directory) — and REA copies
+the campaign's seeds into a private corpus, launches the engine under a
+deny-default seatbelt profile (or inside an existing lab VM), enforces the
+declared run, seconds, and crash budgets plus the agent-editable
+`fuzzing.max_campaign_seconds` cap, and returns a bounded series of the engine's
+own execs/sec, coverage, and corpus counters. Every crash artifact is
+reproduced before it counts: only candidates whose repetitions agree on the
+crash-state hash and name an accepted sanitizer class are recorded, so
+`list_crash_dedups` and `fetch_crash_evidence` describe validated POVs rather
+than raw artifacts. Engines and targets are never installed or modified. See
+[fuzzing campaigns](./fuzzing-campaigns.md), the
+[libFuzzer](./fuzzing-libfuzzer.md), [AFL++ FRIDA](./fuzzing-aflpp-frida.md),
+and [Jackalope](./fuzzing-jackalope.md) adapter guides, and
+[lab VMs](./lab-vms.md) for the Linux route.
 
 The minimizer adapters take caller-supplied binaries and fail closed:
 `REA_LFZ_MINIMIZE_COMMAND` selects the libFuzzer-instrumented target used with

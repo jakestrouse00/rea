@@ -957,3 +957,21 @@ it("keeps independent native sessions discoverable without an unrelated binary t
     { available: false, reason: "target_required" },
   );
 });
+
+it("reports the fuzzing lane only when an engine is selected", () => {
+  const disabled = buildCapabilityInventory(status(), enabledPolicy);
+  expect(
+    disabled.find((entry) => entry.name === "start_fuzzing_campaign"),
+  ).toMatchObject({ available: false, reason: "provider_missing" });
+  expect(
+    disabled.find((entry) => entry.name === "start_fuzzing_campaign")
+      ?.remediation,
+  ).toContain("REA_LFZ_FUZZER_COMMAND");
+  const enabled = buildCapabilityInventory(status(), {
+    ...enabledPolicy,
+    fuzzingCampaignEnabled: true,
+  });
+  expect(
+    enabled.find((entry) => entry.name === "start_fuzzing_campaign"),
+  ).toMatchObject({ available: true, reason: "available", remediation: null });
+});

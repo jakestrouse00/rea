@@ -9,6 +9,7 @@ import type {
   MinimizeCrashRequest,
   RecordCrashRequest,
   RegisterFuzzingCampaignRequest,
+  RegisteredFuzzingCampaign,
 } from "../application/crashTriage/CrashTriagePort.js";
 import type { AnalysisError } from "../domain/analysisErrorBase.js";
 import type { JsonValue } from "../domain/jsonValue.js";
@@ -248,6 +249,33 @@ export class CrashTriageService implements CrashTriagePort {
         report_store_path: this.#store.path,
       });
       return ok(createCampaignStatusEvidence(result));
+    } catch (cause: unknown) {
+      return err(storeFailure(operation, cause));
+    }
+  }
+
+  /** The registered campaign a fuzz-loop launch needs, without any engine claim. */
+  async campaignRecord(
+    request: { readonly campaignId: string },
+    options: ExecutionOptions = {},
+  ): Promise<Result<RegisteredFuzzingCampaign, AnalysisError>> {
+    const operation = "read_registered_campaign";
+    if (crashTriageAborted(options.signal))
+      return err(crashTriageCancelled(operation, options.signal));
+    try {
+      const campaign = this.#campaign(operation, request.campaignId);
+      if (!campaign.ok) return campaign;
+      return ok({
+        campaignId: campaign.value.campaignId,
+        status: campaign.value.status,
+        targetPath: campaign.value.target.path,
+        targetSha256: campaign.value.target.sha256,
+        targetBytes: campaign.value.target.bytes,
+        seedPaths: campaign.value.seeds.map((seed) => seed.path),
+        budget: campaign.value.budget,
+        dedupFrames: campaign.value.dedupFrames,
+        registeredAt: campaign.value.registeredAt,
+      });
     } catch (cause: unknown) {
       return err(storeFailure(operation, cause));
     }

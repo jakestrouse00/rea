@@ -60,6 +60,10 @@ export default defineConfig({
           { text: "Process capture", link: "/process-capture" },
           { text: "Lab VMs", link: "/lab-vms" },
           { text: "Crash triage", link: "/crash-triage" },
+          { text: "Fuzzing campaigns", link: "/fuzzing-campaigns" },
+          { text: "libFuzzer adapter", link: "/fuzzing-libfuzzer" },
+          { text: "AFL++ FRIDA adapter", link: "/fuzzing-aflpp-frida" },
+          { text: "Jackalope adapter", link: "/fuzzing-jackalope" },
           { text: "HTTP replay", link: "/replay-client" },
           {
             text: "mitmproxy interception",

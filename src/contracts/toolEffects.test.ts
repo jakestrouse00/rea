@@ -251,6 +251,7 @@ describe("tool effects", () => {
       "run_lab_vm_command",
       "start_adb_activity",
       "start_adb_app",
+      "start_fuzzing_campaign",
       "start_rizin_debug_session",
       "stop_adb_app",
       "uninstall_adb_package",
