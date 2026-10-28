@@ -33,6 +33,12 @@ import {
 } from "./fuzzing/fuzzingEngine.js";
 import { CRASH_TRIAGE_MAX_SECONDS } from "./crashTriage/fuzzingCampaign.js";
 import {
+  HUNTING_DEFAULT_BATCH_SECONDS,
+  HUNTING_DEFAULT_UNIT_SECONDS,
+  HUNTING_LIMITS,
+  HUNTING_PROVIDER,
+} from "./hunting/huntingLimits.js";
+import {
   DEFAULT_PROTOLEARN_PROBE_TIMEOUT_MS,
   PROTOLEARN_LIMITS,
   PROTOLEARN_PROBE_TIMEOUT_ENV,
@@ -230,6 +236,24 @@ export const ANALYSIS_SETTINGS = {
     appliesAt: "next_operation",
     provider: FUZZING_PROVIDER.id,
     operations: ["start_fuzzing_campaign"],
+  },
+  "hunting.max_unit_seconds": {
+    defaultValue: HUNTING_DEFAULT_UNIT_SECONDS,
+    minimum: 1,
+    maximum: HUNTING_LIMITS.maxUnitSeconds,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: HUNTING_PROVIDER.id,
+    operations: ["run_scheduled_batch"],
+  },
+  "hunting.max_batch_seconds": {
+    defaultValue: HUNTING_DEFAULT_BATCH_SECONDS,
+    minimum: 1,
+    maximum: HUNTING_LIMITS.maxBatchSeconds,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: HUNTING_PROVIDER.id,
+    operations: ["schedule_investigation_batch", "start_watch_session"],
   },
 } as const satisfies Record<AnalysisSettingId, SettingDefinition>;
 export const analysisSettingIds = Object.keys(

@@ -35,6 +35,8 @@ export interface SessionAvailabilityDefaults {
     | "fuzzingCampaignEnabled"
     | "bleGattEnabled"
     | "probeLearnedModelEnabled"
+    | "huntingQueueEnabled"
+    | "watchSessionEnabled"
   >;
 }
 
@@ -87,6 +89,10 @@ export const sessionAvailabilityPolicy = (
       bleGattEnabled: defaults.optionalFeatures?.bleGattEnabled ?? false,
       probeLearnedModelEnabled:
         defaults.optionalFeatures?.probeLearnedModelEnabled ?? false,
+      huntingQueueEnabled:
+        defaults.optionalFeatures?.huntingQueueEnabled ?? true,
+      watchSessionEnabled:
+        defaults.optionalFeatures?.watchSessionEnabled ?? true,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

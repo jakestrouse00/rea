@@ -71,6 +71,13 @@ import {
   PROTOLEARN_PYTHON_ENV,
   PROTOLEARN_PYTHON_ENV_REMEDIATION,
 } from "../domain/protolearn/protolearnLimits.js";
+import {
+  HUNTING_DEFAULT_BATCH_SECONDS,
+  HUNTING_DEFAULT_UNIT_SECONDS,
+  HUNTING_DEFAULT_WATCH_INTERVAL_MS,
+  HUNTING_DEFAULT_WATCH_TRIGGERS,
+  HUNTING_LIMITS,
+} from "../domain/hunting/huntingLimits.js";
 import { PROTOCOL_MODEL_FILE_MAX_BYTES } from "../protolearn/ProtocolModelStore.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
@@ -568,6 +575,46 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "bytes",
     observation: "known" as const,
     recovery: `probe_learned_model and export_protocol_grammar read a model file up to ${String(PROTOCOL_MODEL_FILE_MAX_BYTES)} bytes. A larger file is refused rather than parsed. This release has no runtime override; learn the model with fewer retained messages.`,
+  },
+  {
+    control: "hunting.units_per_batch",
+    authority: "fixed" as const,
+    value: HUNTING_LIMITS.maxUnitsPerBatch,
+    unit: "units",
+    observation: "known" as const,
+    recovery: `One schedule_investigation_batch call queues at most ${String(HUNTING_LIMITS.maxUnitsPerBatch)} units, where the count is targets × recipes; at most ${String(HUNTING_LIMITS.maxTargets)} targets and ${String(HUNTING_LIMITS.maxRecipes)} recipe entries fit in one call. An oversized request is refused rather than clamped; split it into further batches.`,
+  },
+  {
+    control: "hunting.unit_seconds",
+    authority: "fixed" as const,
+    value: HUNTING_LIMITS.maxUnitSeconds,
+    unit: "seconds",
+    observation: "known" as const,
+    recovery: `One admitted unit waits for the tighter of its max_unit_seconds argument and the agent-editable hunting.max_unit_seconds setting, default ${String(HUNTING_DEFAULT_UNIT_SECONDS)} seconds and at most ${String(HUNTING_LIMITS.maxUnitSeconds)}. REA stops waiting at that deadline and records a typed unit_budget stop; the unit stays queued. A composed runner that ignores cancellation may still finish, and REA does not wait for it.`,
+  },
+  {
+    control: "hunting.batch_seconds",
+    authority: "fixed" as const,
+    value: HUNTING_LIMITS.maxBatchSeconds,
+    unit: "seconds",
+    observation: "known" as const,
+    recovery: `One batch declares at most ${String(HUNTING_LIMITS.maxBatchSeconds)} seconds of wall clock across admitted units, also capped by the agent-editable hunting.max_batch_seconds setting (default ${String(HUNTING_DEFAULT_BATCH_SECONDS)}). A batch that reaches its unit or wall-clock budget becomes exhausted and its remaining units stay queued.`,
+  },
+  {
+    control: "hunting.watch_interval",
+    authority: "fixed" as const,
+    value: HUNTING_LIMITS.maxWatchIntervalMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `A watch session observes its directory every interval_ms, default ${String(HUNTING_DEFAULT_WATCH_INTERVAL_MS)} ms and from ${String(HUNTING_LIMITS.minWatchIntervalMs)} to ${String(HUNTING_LIMITS.maxWatchIntervalMs)} ms. A tick that is still running is not overlapped; the next tick is skipped instead.`,
+  },
+  {
+    control: "hunting.watch_triggers",
+    authority: "fixed" as const,
+    value: HUNTING_LIMITS.maxWatchTriggers,
+    unit: "triggers",
+    observation: "known" as const,
+    recovery: `One watch session enqueues at most ${String(HUNTING_LIMITS.maxWatchTriggers)} units (default ${String(HUNTING_DEFAULT_WATCH_TRIGGERS)}) and then stops observing. At most ${String(HUNTING_LIMITS.maxWatchEntries)} directory entries and ${String(HUNTING_LIMITS.maxWatchPathsPerTick)} paths per interval are reported, and at most ${String(HUNTING_LIMITS.maxLiveWatches)} watch sessions stay live at once.`,
   },
   {
     control: "mitm.stream_line_bytes",

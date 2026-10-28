@@ -14,6 +14,8 @@ export interface AnalysisSettingValues {
   readonly "javascript.max_heap_mb": number;
   readonly "wasm.command_timeout_ms": number;
   readonly "fuzzing.max_campaign_seconds": number;
+  readonly "hunting.max_unit_seconds": number;
+  readonly "hunting.max_batch_seconds": number;
 }
 export type AnalysisSettingId = keyof AnalysisSettingValues;
 export interface AnalysisSettingsSnapshot {

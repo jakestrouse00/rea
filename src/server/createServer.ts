@@ -316,6 +316,9 @@ import {
   protocolLearningProbeEnabled,
 } from "../composition/protolearn.js";
 import { registerProtolearnTools } from "./registerProtolearnTools.js";
+import type { HuntingQueuePort } from "../application/hunting/HuntingQueuePort.js";
+import { createHuntingQueueService } from "../composition/hunting.js";
+import { registerHuntingTools } from "./registerHuntingTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -393,6 +396,8 @@ export interface CreateServerOptions {
   readonly mobileToolchain?: MobileToolchainPort;
   /** Protocol learning lane; omitted means the lane is selected from the environment. */
   readonly protocolLearning?: ProtocolLearningPort;
+  /** Durable hunting queue; omitted means the lane is composed over the other lanes. */
+  readonly hunting?: HuntingQueuePort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   /** LIEF deep-parse lane; omitted means the lane is selected from the environment. */
@@ -843,6 +848,9 @@ export const createServer = (
       mitm.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
+      hunting.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
       emu.close(),
       angr.close(),
       mobileToolchain.close(),
@@ -928,6 +936,28 @@ export const createServer = (
     recordEvidenceWithUnknown,
   } = createSessionRecorders(server, session);
   const analysisAdmission = withAdmittedAnalysis(source);
+  const hunting =
+    options.hunting ??
+    createHuntingQueueService({
+      environment,
+      settings: analysisSettings.read,
+      fuzzing,
+      protocolLearning,
+      replay,
+      mitm,
+      withAnalysis: analysisAdmission,
+      activeTargetPath: () => session?.activeTarget()?.path,
+      ...(session === undefined
+        ? {}
+        : {
+            unknowns: {
+              list: () => session.listUnknowns(),
+              record: (input: Parameters<typeof session.recordUnknown>[0]) =>
+                session.recordUnknown(input),
+            },
+          }),
+      ...(recordEvidence === undefined ? {} : { writer: { recordEvidence } }),
+    });
   const toolContext: ServerToolContext = {
     server,
     session,
@@ -1278,6 +1308,12 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerHuntingTools({
+    server,
+    hunting,
+    logger: toolLogger,
+    recordEvidence,
+  });
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {

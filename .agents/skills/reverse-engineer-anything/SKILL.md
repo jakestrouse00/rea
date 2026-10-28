@@ -349,6 +349,19 @@ explicit path or endpoint and do not need it.
   `rea.fuzzing.campaign-seeds/v1` handoff. Treat a learned state as observed,
   never as required. See the
   [protocol learning guide](https://github.com/morluto/rea/blob/main/docs/protocol-learning.md).
+- Several targets and a long analysis plan: `schedule_investigation_batch` with
+  each target's completion ledger and residual-unknown identities, then
+  `run_scheduled_batch` once per unit inside a budget. Ordering comes from those
+  facts, so pass the ledger you already have instead of a hand-written priority.
+  `re-analysis` units run over the server's **admitted** target, so open that
+  target first; `fuzz-campaign`, `probe`, and `replay` units need the campaign,
+  lab allowlist, or live session they name. A unit that reaches its deadline or
+  a batch that reaches its budget reports a typed stop and stays queued — read
+  `read_hunting_queue` and admit it again instead of rescheduling. Watch a build
+  directory with `start_watch_session` when the artifact changes under you; it
+  queues re-analysis rather than analyzing inside the watch, and
+  `stop_watch_session` releases it. See the
+  [hunting queue guide](https://github.com/morluto/rea/blob/main/docs/hunting-queue.md).
 
 For an existing IDA MCP configuration, use `open_binary` with the original
 input binary and `provider_id: "ida"`; do not pass an `.idb` or `.i64` database.

@@ -53,6 +53,7 @@ export const TOOL_KINDS = [
   "symbolic-engine",
   "mobile-toolchain-provider",
   "protocol-learning",
+  "hunting-queue",
   "session",
 ] as const;
 

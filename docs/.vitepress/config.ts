@@ -88,6 +88,10 @@ export default defineConfig({
             link: "/protocol-learning",
           },
           {
+            text: "Hunting queue",
+            link: "/hunting-queue",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

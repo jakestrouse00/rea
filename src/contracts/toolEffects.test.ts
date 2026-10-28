@@ -259,6 +259,7 @@ describe("tool effects", () => {
       "rizin_debug_command",
       "run_lab_vm_command",
       "run_objection_recipe",
+      "run_scheduled_batch",
       "start_adb_activity",
       "start_adb_app",
       "start_fuzzing_campaign",

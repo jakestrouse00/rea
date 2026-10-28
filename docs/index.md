@@ -71,6 +71,7 @@ For runtime instrumentation, see the [Frida guide](./frida-instrumentation.md).
 | Load a curated Frida preset | [Frida script presets](frida-script-presets.md) |
 | Inventory an attached app or a forensic report | [Mobile runtime and forensics toolchain](mobile-runtime-toolchain.md) |
 | Learn a protocol model and probe a lab service | [Protocol learning](protocol-learning.md) |
+| Queue analysis work, budget it, and watch a tree for changes | [Hunting queue](hunting-queue.md) |
 | Use CLI/MCP and retain evidence | [CLI](cli.md), [MCP contracts](mcp-contracts.md), [agent prompts](mcp-prompts.md), [obligation ledgers](reconstruction-obligation-ledgers.md) |
 For development, use [testing](testing.md), [client verification](client-verification.md),
 [tool design](tool-design.md), [admission limits and recovery](design/limits-and-recovery.md),

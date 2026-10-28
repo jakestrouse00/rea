@@ -255,6 +255,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.fuzzingContracts.FUZZING_TOOL_CONTRACTS,
     },
     {
+      id: "hunting",
+      surface: "hunting-queue",
+      contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
+    },
+    {
       id: "mobile-toolchain",
       surface: "mobile-toolchain-provider",
       contracts:
@@ -676,6 +681,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.fuzzingProvider.FUZZING_PROVIDER,
       contracts: sources.fuzzingContracts.FUZZING_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.huntingProvider.HUNTING_PROVIDER,
+      contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

@@ -166,6 +166,10 @@ export type AvailabilityPolicy = {
   readonly bleGattEnabled?: boolean;
   /** The probe interpreter, runner script, and lab allowlist are selected. */
   readonly probeLearnedModelEnabled?: boolean;
+  /** The durable hunting queue is composed; it needs no external tool. */
+  readonly huntingQueueEnabled?: boolean;
+  /** A directory watcher is composed for watch sessions. */
+  readonly watchSessionEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -845,6 +849,23 @@ const workflowAvailabilityFor = ({
           reason: "provider_missing",
           remediation: FUZZING_TOOL_REMEDIATION,
         };
+  if (kind === "hunting-queue") {
+    if (name === "start_watch_session" || name === "stop_watch_session")
+      return policy.watchSessionEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "Start REA with its directory watcher composed. This release watches no other source kind.",
+          };
+    return policy.huntingQueueEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation:
+            "The durable hunting queue could not be composed; check that the REA home state directory is writable.",
+        };
+  }
   if (kind === "session") return { reason: "available", remediation: null };
   return null;
 };

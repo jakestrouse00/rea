@@ -176,6 +176,25 @@ unstable verdict. The third writes structure-aware seeds and the
 `rea.fuzzing.campaign-seeds/v1` handoff for a later fuzz campaign. Payload values
 never become Evidence. See [protocol learning](./protocol-learning.md).
 
+## Hunting queue
+
+MCP registers `schedule_investigation_batch`, `run_scheduled_batch`,
+`read_hunting_queue`, `cancel_hunting_batch`, `start_watch_session`, and
+`stop_watch_session`. The first queues every target × recipe pair into a durable
+owner-only SQLite queue, ordered by each target's completion ledger and residual
+unknowns. The second admits exactly one unit within the tighter of the call's and
+`hunting.max_unit_seconds`; a unit that reaches its deadline, or a batch that
+reaches its unit or wall-clock budget, ends with a typed stop and stays queued.
+Recipes delegate to the lanes that own the work — re-analysis over the admitted
+analysis target, a registered fuzz campaign, a protocol probe against one
+loopback lab socket, or a captured replay — and a recipe whose owner is not
+composed reports a typed `blocked` unit instead of a fabricated result. Every
+unit and its composed observation are recorded as Evidence, and an unfinished
+unit also records one residual unknown. Watch sessions observe one directory
+tree (names, sizes, modification times; no content) and enqueue re-analysis for
+changes; device and endpoint sources are refused this release. See
+[hunting queue](./hunting-queue.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

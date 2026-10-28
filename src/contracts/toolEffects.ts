@@ -192,6 +192,39 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   read_campaign_status: evidence,
   list_crash_dedups: evidence,
   fetch_crash_evidence: evidence,
+  schedule_investigation_batch: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  // A unit delegates to a composed capability, so it can launch a child,
+  // reach a lab socket, run foreign code, or discard engine output.
+  run_scheduled_batch: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  read_hunting_queue: effects(),
+  cancel_hunting_batch: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  start_watch_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  stop_watch_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   start_fuzzing_campaign: effects({
     mutatesSession: true,
     writesFilesystem: true,
