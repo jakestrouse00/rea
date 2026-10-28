@@ -13,6 +13,21 @@ describe("firmware release lines", () => {
     });
   });
 
+  it.each(["Binwalk v2.3.4", "binwalk 2.3.4"])(
+    "rejects the end-of-life 2.x banner %j before any inspection flag is chosen",
+    (banner) => {
+      const admitted = admitFirmwareVersion("binwalk", banner);
+      expect(
+        admitted.status === "verified" || admitted.status === "compatible",
+      ).toBe(false);
+      if (admitted.status === "verified" || admitted.status === "compatible")
+        throw new Error("expected a rejected banner");
+      expect(admitted.message).toContain("Binwalk 3.1.x");
+      expect(admitted.message).toContain(banner);
+      expect(admitted.message).not.toContain("--search-all");
+    },
+  );
+
   it.each([
     ["binwalk", "binwalk 3.1.2", "3.1.2"],
     ["binwalk", "binwalk 3.1.0-1", "3.1.0-1"],
@@ -32,6 +47,8 @@ describe("firmware release lines", () => {
   );
 
   it.each([
+    ["binwalk", "Binwalk v2.3.4", "Binwalk 3.1.x"],
+    ["binwalk", "binwalk 2.3.4", "Binwalk 3.1.x"],
     ["binwalk", "binwalk 3.2.0", "Binwalk 3.1.x"],
     ["binwalk", "unsupported", "Binwalk 3.1.x"],
     ["binwalk", "3.1.2", "Binwalk 3.1.x"],
