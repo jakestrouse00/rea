@@ -94,6 +94,14 @@ export const replaySessionIdSchema = z
     "Replay session identity issued by http_replay_session_start for this REA server's lifetime.",
   );
 
+/** Session identity issued by `start_interception_session`. */
+export const mitmSessionIdSchema = z
+  .string()
+  .uuid()
+  .describe(
+    "Interception session identity issued by start_interception_session for this REA server's lifetime.",
+  );
+
 /** Start one lab VM on the caller's workspace mount. */
 export const startLabVmInputSchema = z.strictObject({
   workspace_path: absoluteLocalPathStringSchema.describe(

@@ -131,8 +131,12 @@ reported an unremovable record.
   caller's origins are intersected with this plane's operator allowlist before
   the core sees them, and a redirected page fetch is opaque, so the core is
   never handed a hop it did not approve.
-- `proxy_replay_send` (Batch 3.4) — re-sends a captured mitmproxy entry through
-  the same boundary with the same dump convention.
+- `proxy_replay_send` (Batch 3.4, shipped in
+  [mitmproxy interception](mitm-interception.md#captured-entry-replay)) —
+  re-sends a captured mitmproxy entry through the same boundary with the same
+  dump convention. The interception lane owns the captured entry and its body;
+  the send core still owns the per-hop origin gate, the no-retry policy, the
+  body budget, and the echoed-form redaction.
 - Arjun-style parameter probes (Batch 3.4) — many one-shot sends, each gated and
   each reported value-free.
 

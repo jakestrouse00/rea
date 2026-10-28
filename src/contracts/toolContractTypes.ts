@@ -47,6 +47,7 @@ export const TOOL_KINDS = [
   "application",
   "crash-triage",
   "replay-provider",
+  "mitm-provider",
   "session",
 ] as const;
 

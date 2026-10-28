@@ -274,11 +274,17 @@ import { createCrashTriageService } from "../composition/crashTriage.js";
 import type { CrashTriagePort } from "../application/crashTriage/CrashTriagePort.js";
 import { registerCrashTriageTools } from "./registerCrashTriageTools.js";
 import type { ReplayPort } from "../application/replay/ReplayPort.js";
+import type { MitmInterceptionPort } from "../application/mitm/MitmInterceptionPort.js";
 import {
   createReplayService,
   replayAllowedOriginsConfigured,
 } from "../composition/replay.js";
 import { registerReplayTools } from "./registerReplayTools.js";
+import {
+  createMitmInterceptionService,
+  mitmInterceptionLaneEnabled,
+} from "../composition/mitm.js";
+import { registerMitmTools } from "./registerMitmTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -344,6 +350,8 @@ export interface CreateServerOptions {
   readonly crashTriage?: CrashTriagePort;
   /** Active request plane; omitted means the lane is selected from the environment. */
   readonly replay?: ReplayPort;
+  /** mitmproxy interception lane; omitted means the lane is selected from the environment. */
+  readonly mitm?: MitmInterceptionPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -478,6 +486,10 @@ const installSessionToolAvailability = (
       v8InspectorObservationEnabled:
         options.javascriptRuntimeObservation !== undefined,
       replayEnabled: replayAllowedOriginsConfigured(environment),
+      mitmInterceptionEnabled: mitmInterceptionLaneEnabled(
+        environment,
+        options.mitm !== undefined,
+      ),
     },
   });
   const policy = (): AvailabilityPolicy => {
@@ -697,6 +709,7 @@ export const createServer = (
   const crashTriage =
     options.crashTriage ?? createCrashTriageService(environment);
   const replay = options.replay ?? createReplayService(environment);
+  const mitm = options.mitm ?? createMitmInterceptionService(environment);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -738,6 +751,9 @@ export const createServer = (
         if (!closed.ok) throw closed.error;
       }),
       replay.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      mitm.closeAll().then((closed) => {
         if (!closed.ok) throw closed.error;
       }),
       discovery.close(),
@@ -1126,6 +1142,12 @@ export const createServer = (
   registerReplayTools({
     server,
     replay,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerMitmTools({
+    server,
+    mitm,
     logger: toolLogger,
     recordEvidence,
   });

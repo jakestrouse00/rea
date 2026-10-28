@@ -115,7 +115,8 @@ export const replayBodyByteLength = (body: ReplayBody): number =>
     ? 0
     : body.kind === "text"
       ? utf8Length(body.text)
-      : Math.floor((body.base64.length * 3) / 4);
+      : Math.floor((body.base64.length * 3) / 4) -
+        (body.base64.endsWith("==") ? 2 : body.base64.endsWith("=") ? 1 : 0);
 
 const bodyIssues = (
   body: ReplayBody,

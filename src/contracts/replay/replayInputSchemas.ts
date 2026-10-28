@@ -6,7 +6,7 @@ import { normalizedReplayOrigin } from "../../domain/replay/replayOrigins.js";
 import { replaySessionIdSchema } from "../sessionLifecycleInputs.js";
 
 /** Exact http or https origin: scheme, host, and optional port only. */
-const replayOriginSchema = z
+export const replayOriginSchema = z
   .string()
   .min(1)
   .max(255)

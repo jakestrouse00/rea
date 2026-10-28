@@ -29,6 +29,7 @@ export interface SessionAvailabilityDefaults {
     | "firmwareInspectionEnabled"
     | "firmwareExtractionEnabled"
     | "replayEnabled"
+    | "mitmInterceptionEnabled"
   >;
 }
 
@@ -70,6 +71,8 @@ export const sessionAvailabilityPolicy = (
       firmwareExtractionEnabled:
         defaults.optionalFeatures?.firmwareExtractionEnabled ?? false,
       replayEnabled: defaults.optionalFeatures?.replayEnabled ?? false,
+      mitmInterceptionEnabled:
+        defaults.optionalFeatures?.mitmInterceptionEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

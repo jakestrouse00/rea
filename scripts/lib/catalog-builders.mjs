@@ -220,6 +220,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.replayContracts.REPLAY_TOOL_CONTRACTS,
     },
     {
+      id: "mitm",
+      surface: "mitm-provider",
+      contracts: sources.mitmContracts.MITM_TOOL_CONTRACTS,
+    },
+    {
       id: "crash-triage",
       surface: "crash-triage",
       contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,

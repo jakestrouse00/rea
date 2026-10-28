@@ -13,6 +13,7 @@ import {
 } from "./browserObservation.js";
 import { absoluteLocalPathStringSchema } from "./localPath.js";
 import { REPLAY_LIMITS } from "./replay/replayLimits.js";
+import { replayBodyByteLength } from "./replay/replayRequest.js";
 import {
   REPLAY_OUTCOMES,
   replayRedirectStepSchema,
@@ -383,11 +384,7 @@ type BrowserFetchBodyInput =
 
 /** Byte length a page-context body sends, without materializing it. */
 const fetchBodyByteLength = (value: BrowserFetchBodyInput): number =>
-  value.kind === "none"
-    ? 0
-    : value.kind === "text"
-      ? Buffer.byteLength(value.text, "utf8")
-      : Math.floor((value.base64.length * 3) / 4);
+  replayBodyByteLength(value);
 
 /** Refuse an oversized or non-canonical body before any dispatch is spent. */
 const refineFetchBody = (

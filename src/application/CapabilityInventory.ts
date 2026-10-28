@@ -46,6 +46,7 @@ import {
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
 import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
+import { MITM_TOOL_REMEDIATION } from "../domain/mitm/mitmLimits.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
@@ -131,6 +132,8 @@ export type AvailabilityPolicy = {
   readonly v8InspectorObservationEnabled?: boolean;
   /** The active request plane is configured with at least one allowed origin. */
   readonly replayEnabled?: boolean;
+  /** A mitmdump binary and a generated addon are selected. */
+  readonly mitmInterceptionEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -751,6 +754,18 @@ const workflowAvailabilityFor = ({
       policy.labVmAvailability,
       LAB_VM_COMMAND_REMEDIATION,
     );
+  if (kind === "mitm-provider") {
+    if (name === "proxy_replay_send")
+      return policy.replayEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+          };
+    return policy.mitmInterceptionEnabled === true
+      ? { reason: "available", remediation: null }
+      : { reason: "provider_missing", remediation: MITM_TOOL_REMEDIATION };
+  }
   if (kind === "replay-provider")
     return policy.replayEnabled === true
       ? { reason: "available", remediation: null }

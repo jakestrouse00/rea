@@ -4,6 +4,7 @@ import { REPLAY_LIMITS } from "./replayLimits.js";
 import {
   composeReplayRequest,
   composeReplayWireRequest,
+  replayBodyByteLength,
   replayBodyBytes,
   type ReplayRequest,
 } from "./replayRequest.js";
@@ -159,6 +160,16 @@ describe("replay request composition", () => {
       expect(composed.ok).toBe(false);
       expect(composed.ok ? [] : composed.error[0]?.path).toEqual(["url"]);
     }
+  });
+
+  it("measures padded base64 bodies by their decoded bytes", () => {
+    expect(replayBodyByteLength({ kind: "none" })).toBe(0);
+    expect(replayBodyByteLength({ kind: "text", text: "é" })).toBe(2);
+    expect(
+      replayBodyByteLength({ kind: "base64", base64: "eyJhIjoxfQ==" }),
+    ).toBe(7);
+    expect(replayBodyByteLength({ kind: "base64", base64: "AAE=" })).toBe(2);
+    expect(replayBodyByteLength({ kind: "base64", base64: "AAAA" })).toBe(3);
   });
 
   it("materializes text and base64 bodies to their exact bytes", () => {

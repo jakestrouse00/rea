@@ -147,6 +147,43 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     writesFilesystem: true,
     idempotent: false,
   }),
+  start_interception_session: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  read_interception_inventory: effects({ mutatesSession: true }),
+  export_endpoint_inventory: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+  }),
+  proxy_rule_set: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  proxy_rule_clear: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  proxy_replay_send: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  stop_interception_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
   register_fuzzing_campaign: effects({
     mutatesSession: true,
     writesFilesystem: true,

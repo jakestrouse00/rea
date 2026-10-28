@@ -83,6 +83,21 @@ produced, modified, or removed. One REA server owns at most one lab VM. See
 [lab VMs](./lab-vms.md) and the [autonomous execution
 policy](./autonomous-execution.md).
 
+## mitmproxy interception
+
+MCP registers `start_interception_session`, `read_interception_inventory`,
+`export_endpoint_inventory`, `proxy_rule_set`, `proxy_rule_clear`,
+`proxy_replay_send`, and `stop_interception_session` for one per-application
+mitmproxy session. Select the caller-supplied engine with an absolute
+`REA_MITMDUMP_COMMAND` and the generated addon with `REA_MITM_ADDON_DIR`
+(`node bridge/mitm/generate_addon.ts --out <directory>`). The addon streams
+structure only — origins, methods, path templates, parameter names and type
+classes, status counts, header names, and a response-shape sketch — while bodies
+stay as owner-only files in a private capture directory. Rewrite rules are
+arming, value-free decisions are counted, and replay goes through the same
+one-shot send core as `http_replay_send`. No trust store, device-wide proxy, or
+pinning bypass is changed. See [mitmproxy interception](./mitm-interception.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

@@ -44,6 +44,7 @@ import {
 import {
   composeReplayRequest,
   composeReplayWireRequest,
+  replayBodyByteLength,
   type ReplayRequest,
 } from "../domain/replay/replayRequest.js";
 import {
@@ -111,12 +112,7 @@ const requestSummary = (request: ReplayRequest) => ({
   origin: requestOrigin(request.url),
   header_names: [...replayHeaderNames(request.headers)],
   credential_header_names: [...replayCredentialHeaderNames(request.headers)],
-  body_bytes:
-    request.body.kind === "text"
-      ? Buffer.byteLength(request.body.text, "utf8")
-      : request.body.kind === "base64"
-        ? Math.floor((request.body.base64.length * 3) / 4)
-        : 0,
+  body_bytes: replayBodyByteLength(request.body),
 });
 
 /**

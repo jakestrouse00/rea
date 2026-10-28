@@ -62,6 +62,10 @@ export default defineConfig({
           { text: "Crash triage", link: "/crash-triage" },
           { text: "HTTP replay", link: "/replay-client" },
           {
+            text: "mitmproxy interception",
+            link: "/mitm-interception",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

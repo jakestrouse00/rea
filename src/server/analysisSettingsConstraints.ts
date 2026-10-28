@@ -9,6 +9,15 @@ import {
 import { BROWSER_MUTATION_LIMITS } from "../domain/browserMutationLimits.js";
 import { REPLAY_LIMITS } from "../domain/replay/replayLimits.js";
 import {
+  MITM_ADDON_DIR_ENV,
+  MITM_ADDON_DIR_REMEDIATION,
+  MITM_ARJUN_COMMAND_ENV,
+  MITM_ARJUN_COMMAND_REMEDIATION,
+  MITM_COMMAND_ENV,
+  MITM_COMMAND_REMEDIATION,
+  MITM_LIMITS,
+} from "../domain/mitm/mitmLimits.js";
+import {
   REPLAY_ALLOWED_ORIGINS_ENV,
   REPLAY_ALLOWED_ORIGINS_REMEDIATION,
 } from "../domain/replay/replayOrigins.js";
@@ -161,5 +170,53 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "ms",
     observation: "known" as const,
     recovery: `One http_replay_send waits for the caller's timeout_ms, default ${String(REPLAY_LIMITS.defaultTimeoutMs)} ms and at most ${String(REPLAY_LIMITS.maxTimeoutMs)} ms. This release has no runtime override for that bound. REA dispatches once and never retries, so a timed-out request is a terminal observation; raising the host tool-call deadline does not make the target answer sooner.`,
+  },
+  {
+    control: MITM_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: MITM_COMMAND_REMEDIATION,
+  },
+  {
+    control: MITM_ADDON_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: MITM_ADDON_DIR_REMEDIATION,
+  },
+  {
+    control: MITM_ARJUN_COMMAND_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: MITM_ARJUN_COMMAND_REMEDIATION,
+  },
+  {
+    control: "mitm.inventory_endpoints",
+    authority: "fixed" as const,
+    value: MITM_LIMITS.maxEndpoints,
+    unit: "endpoints",
+    observation: "known" as const,
+    recovery: `One interception session retains at most ${String(MITM_LIMITS.maxEndpoints)} endpoints with up to ${String(MITM_LIMITS.maxParametersPerEndpoint)} parameter rows each, ${String(MITM_LIMITS.maxStatusCodes)} status counts per endpoint, and ${String(MITM_LIMITS.maxHeaderNames)} header names per direction. Later observations are counted as omissions rather than replacing retained ones, and the totals report what was dropped. This release has no runtime override.`,
+  },
+  {
+    control: "mitm.rule_ttl",
+    authority: "fixed" as const,
+    value: MITM_LIMITS.maxRuleTtlMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `A proxy_rule_set rule stays armed for its ttl_ms, default ${String(MITM_LIMITS.defaultRuleTtlMs)} ms and at most ${String(MITM_LIMITS.maxRuleTtlMs)} ms, then REA releases it and the addon drops it past its expires_at. At most ${String(MITM_LIMITS.maxArmedRules)} rules stay armed on one session. This release has no runtime override.`,
+  },
+  {
+    control: "mitm.stream_line_bytes",
+    authority: "fixed" as const,
+    value: MITM_LIMITS.maxStreamLineBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One structure-stream frame is retained up to ${String(MITM_LIMITS.maxStreamLineBytes)} bytes. A larger frame is refused and counted as oversized rather than parsed, and ${String(MITM_LIMITS.maxMalformedLines)} refused frames mark the session degraded. This release has no runtime override.`,
   },
 ];
