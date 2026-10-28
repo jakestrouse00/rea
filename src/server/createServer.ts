@@ -78,6 +78,13 @@ import { createIl2cppMetadataService } from "../composition/il2cpp.js";
 import type { Il2cppMetadataService } from "../application/il2cpp/Il2cppMetadataService.js";
 import type { GoBinaryService } from "../application/go/GoBinaryService.js";
 import { createElectronFuseService } from "../composition/electronFuses.js";
+import { AsarIntegrityService } from "../application/electron/AsarIntegrityService.js";
+import { createAsarIntegrityProvider } from "../composition/asarIntegrity.js";
+import { registerAsarIntegrityTool } from "./registerAsarIntegrityTool.js";
+import { V8BytecodeService } from "../application/javascript/V8BytecodeService.js";
+import type { V8BytecodePort } from "../application/javascript/V8BytecodePort.js";
+import { createV8BytecodeProvider } from "../composition/v8Bytecode.js";
+import { registerV8BytecodeTool } from "./registerV8BytecodeTool.js";
 import type { ElectronFuseService } from "../application/electron/ElectronFuseService.js";
 import { registerGoTools } from "./registerGoTools.js";
 import { registerIl2cppTools } from "./registerIl2cppTools.js";
@@ -192,6 +199,42 @@ import { createAdbDeviceAnalysisProvider } from "../composition/adb.js";
 import type { IdeviceAnalysisPort } from "../application/idevice/IdevicePort.js";
 import { IdeviceAnalysisService } from "../application/idevice/IdeviceAnalysisService.js";
 import { createIdeviceAnalysisProvider } from "../composition/idevice.js";
+import type { IpswAnalysisPort } from "../application/iosipsw/IpswAnalysisPort.js";
+import { IpswAnalysisService } from "../application/iosipsw/IpswAnalysisService.js";
+import { createIpswAnalysisProvider } from "../composition/iosipsw.js";
+import { registerIpswTools } from "./registerIpswTools.js";
+import type { CapaAnalysisPort } from "../application/capa/CapaAnalysisPort.js";
+import { CapaAnalysisService } from "../application/capa/CapaAnalysisService.js";
+import { createCapaAnalysisProvider } from "../composition/capa.js";
+import { registerCapaTools } from "./registerCapaTools.js";
+import type { YaraAnalysisPort } from "../application/yara/YaraAnalysisPort.js";
+import { YaraAnalysisService } from "../application/yara/YaraAnalysisService.js";
+import { createYaraAnalysisProvider } from "../composition/yara.js";
+import { registerYaraTools } from "./registerYaraTools.js";
+import type { SymbolRecoveryPort } from "../application/symbols/SymbolRecoveryPort.js";
+import { SymbolRecoveryService } from "../application/symbols/SymbolRecoveryService.js";
+import { createSymbolRecoveryProvider } from "../composition/symbols.js";
+import { registerSymbolTools } from "./registerSymbolTools.js";
+import type { DotnetDecompilerPort } from "../application/manageddecomp/DotnetDecompilerPort.js";
+import { DotnetDecompilerService } from "../application/manageddecomp/DotnetDecompilerService.js";
+import { createDotnetDecompilerProvider } from "../composition/manageddecomp.js";
+import { registerDotnetDecompilerTool } from "./registerDotnetDecompilerTool.js";
+import type { PythonDecompilerPort } from "../application/pysrc/PythonDecompilerPort.js";
+import { PythonDecompilerService } from "../application/pysrc/PythonDecompilerService.js";
+import { createPythonDecompilerProvider } from "../composition/pysrc.js";
+import { registerPythonDecompilerTool } from "./registerPythonDecompilerTool.js";
+import type { JvmDecompilerPort } from "../application/jvmdecomp/JvmDecompilerPort.js";
+import { JvmDecompilerService } from "../application/jvmdecomp/JvmDecompilerService.js";
+import { createJvmDecompilerProvider } from "../composition/jvmdecomp.js";
+import { registerJvmDecompilerTools } from "./registerJvmDecompilerTools.js";
+import type { ProtobufRecoveryPort } from "../application/protobufrecovery/ProtobufRecoveryPort.js";
+import { ProtobufRecoveryService } from "../application/protobufrecovery/ProtobufRecoveryService.js";
+import { createProtobufRecoveryProvider } from "../composition/protobufrecovery.js";
+import { registerProtobufRecoveryTools } from "./registerProtobufRecoveryTools.js";
+import type { BindiffPort } from "../application/bindiff/BindiffPort.js";
+import { BindiffExportService } from "../application/bindiff/BindiffExportService.js";
+import { createBindiffProvider } from "../composition/bindiff.js";
+import { registerBinexportTool } from "./registerBinexportTool.js";
 import { registerIdeviceTools } from "./registerIdeviceTools.js";
 import type { DiscoveryAnalysisPort } from "../application/discovery/DiscoveryPort.js";
 import { DiscoveryAnalysisService } from "../application/discovery/DiscoveryAnalysisService.js";
@@ -199,6 +242,9 @@ import { createDiscoveryAnalysisProvider } from "../composition/discovery.js";
 import { registerDiscoveryTools } from "./registerDiscoveryTools.js";
 import { createWindowsArtifactsService } from "../composition/windowsArtifacts.js";
 import type { WindowsArtifactsService } from "../application/windowsArtifacts/WindowsArtifactsService.js";
+import { createLiefService } from "../composition/lief.js";
+import type { LiefService } from "../application/lief/LiefService.js";
+import { registerLiefTools } from "./registerLiefTools.js";
 import { createNativeAotArtifactService } from "../composition/nativeAot.js";
 import type { NativeAotArtifactService } from "../application/nativeAot/NativeAotArtifactService.js";
 import { createGameDataService } from "../composition/gamedata.js";
@@ -226,6 +272,57 @@ import { CutterBridgeClient } from "../cutter/CutterBridgeClient.js";
 import { CutterBridgeService } from "../cutter/CutterBridgeService.js";
 import { registerCutterTools } from "./registerCutterTools.js";
 import { GdbSessionManager } from "../gdb/GdbSessionManager.js";
+import { createLabVmService } from "../composition/vmlab.js";
+import { createCrashTriageService } from "../composition/crashTriage.js";
+import type { CrashTriagePort } from "../application/crashTriage/CrashTriagePort.js";
+import { registerCrashTriageTools } from "./registerCrashTriageTools.js";
+import {
+  createFuzzingCampaignService,
+  fuzzingCampaignLaneEnabled,
+} from "../composition/fuzzing.js";
+import type { FuzzingCampaignPort } from "../application/fuzzing/FuzzingCampaignPort.js";
+import { registerFuzzingTools } from "./registerFuzzingTools.js";
+import type { ReplayPort } from "../application/replay/ReplayPort.js";
+import type { MitmInterceptionPort } from "../application/mitm/MitmInterceptionPort.js";
+import {
+  createReplayService,
+  replayAllowedOriginsConfigured,
+} from "../composition/replay.js";
+import { registerReplayTools } from "./registerReplayTools.js";
+import {
+  createMitmInterceptionService,
+  mitmInterceptionLaneEnabled,
+} from "../composition/mitm.js";
+import { registerMitmTools } from "./registerMitmTools.js";
+import type { EmuAnalysisPort } from "../application/emu/EmuAnalysisPort.js";
+import {
+  createEmuAnalysisProvider,
+  emuLaneEnabled,
+} from "../composition/emu.js";
+import { registerEmuTools } from "./registerEmuTools.js";
+import type { AngrAnalysisPort } from "../application/angr/AngrAnalysisPort.js";
+import {
+  angrLaneEnabled,
+  createAngrAnalysisProvider,
+} from "../composition/angr.js";
+import { registerAngrTools } from "./registerAngrTools.js";
+import type { MobileToolchainPort } from "../application/mobile/MobileToolchainPort.js";
+import { MobileToolchainService } from "../application/mobile/MobileToolchainService.js";
+import { createMobileToolchainProvider } from "../composition/mobile.js";
+import { registerMobileToolchainTools } from "./registerMobileToolchainTools.js";
+import type { ProtocolLearningPort } from "../application/protolearn/ProtocolLearningPort.js";
+import {
+  createProtocolLearningProvider,
+  protocolLearningProbeEnabled,
+} from "../composition/protolearn.js";
+import { registerProtolearnTools } from "./registerProtolearnTools.js";
+import type { HuntingQueuePort } from "../application/hunting/HuntingQueuePort.js";
+import { createHuntingQueueService } from "../composition/hunting.js";
+import { registerHuntingTools } from "./registerHuntingTools.js";
+import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
+import type { BenchTaskPort } from "../application/bench/BenchTaskPort.js";
+import { createBenchTaskService } from "../composition/bench.js";
+import { registerBenchTools } from "./registerBenchTools.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
 import { registerRizinDebugTools } from "./registerRizinDebugTools.js";
@@ -260,6 +357,8 @@ export interface CreateServerOptions {
   readonly pythonPyc?: PythonPycService;
   readonly erlangBeam?: BeamService;
   readonly electronFuses?: ElectronFuseService;
+  readonly asarIntegrity?: AsarIntegrityService;
+  readonly v8Bytecode?: V8BytecodePort;
   readonly recordedCrash?: RecordedCrashService;
   readonly firmwareAnalysis?: FirmwareAnalysisPort;
   readonly javascriptRecovery?: JavaScriptRecoveryPort;
@@ -274,8 +373,40 @@ export interface CreateServerOptions {
   readonly jebAnalysis?: JebAnalysisPort;
   readonly adbDeviceAnalysis?: AdbDeviceAnalysisPort;
   readonly ideviceDeviceAnalysis?: IdeviceAnalysisPort;
+  readonly ipswAnalysis?: IpswAnalysisPort;
+  readonly capaAnalysis?: CapaAnalysisPort;
+  readonly yaraAnalysis?: YaraAnalysisPort;
+  readonly symbolRecovery?: SymbolRecoveryPort;
+  readonly dotnetDecompiler?: DotnetDecompilerPort;
+  readonly pythonDecompiler?: PythonDecompilerPort;
+  readonly jvmDecompiler?: JvmDecompilerPort;
+  readonly protobufRecovery?: ProtobufRecoveryPort;
+  readonly bindiff?: BindiffPort;
+  /** Caller-supplied Lima lab-VM lane; omitted means the lane is selected from the environment. */
+  readonly labVm?: LabVmPort;
+  /** Benchmark harness over the lab-VM lane; omitted means the lane is selected from the environment. */
+  readonly bench?: BenchTaskPort;
+  readonly crashTriage?: CrashTriagePort;
+  /** Fuzz loop over registered campaigns; omitted means the lane is selected from the environment. */
+  readonly fuzzing?: FuzzingCampaignPort;
+  /** Active request plane; omitted means the lane is selected from the environment. */
+  readonly replay?: ReplayPort;
+  /** mitmproxy interception lane; omitted means the lane is selected from the environment. */
+  readonly mitm?: MitmInterceptionPort;
+  /** Bounded Unicorn/Keystone lane; omitted means the lane is selected from the environment. */
+  readonly emu?: EmuAnalysisPort;
+  /** Bounded angr symbolic lane; omitted means the lane is selected from the environment. */
+  readonly angr?: AngrAnalysisPort;
+  /** Caller-supplied mobile toolchain; omitted means the lanes are selected from the environment. */
+  readonly mobileToolchain?: MobileToolchainPort;
+  /** Protocol learning lane; omitted means the lane is selected from the environment. */
+  readonly protocolLearning?: ProtocolLearningPort;
+  /** Durable hunting queue; omitted means the lane is composed over the other lanes. */
+  readonly hunting?: HuntingQueuePort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
+  /** LIEF deep-parse lane; omitted means the lane is selected from the environment. */
+  readonly lief?: LiefService;
   readonly nativeAot?: NativeAotArtifactService;
   readonly gameData?: GameDataService;
   readonly containerInspection?: ContainerInspectionService;
@@ -369,6 +500,9 @@ const installSessionToolAvailability = (
         options.javascriptRecovery,
         verifiedHost.javascriptRecovery,
       ),
+      // CoreBluetooth peripheral identifiers, delegate behavior, and the
+      // permission prompt this lane drives are macOS-only.
+      bleGatt: platform !== "darwin",
     },
     optionalFeatures: {
       packetCaptureEnabled:
@@ -407,6 +541,31 @@ const installSessionToolAvailability = (
         options.electronActiveObservation !== undefined,
       v8InspectorObservationEnabled:
         options.javascriptRuntimeObservation !== undefined,
+      replayEnabled: replayAllowedOriginsConfigured(environment),
+      mitmInterceptionEnabled: mitmInterceptionLaneEnabled(
+        environment,
+        options.mitm !== undefined,
+      ),
+      emuEmulationEnabled: emuLaneEnabled(
+        environment,
+        options.emu !== undefined,
+      ),
+      angrSymbolicEnabled: angrLaneEnabled(
+        environment,
+        options.angr !== undefined,
+      ),
+      fuzzingCampaignEnabled: fuzzingCampaignLaneEnabled(
+        environment,
+        options.fuzzing !== undefined,
+      ),
+      bleGattEnabled:
+        platform === "darwin" &&
+        (isAbsolute(environment.REA_BLE_GATT_PATH ?? "") ||
+          isAbsolute(environment.REA_BLEAK_PYTHON ?? "")),
+      probeLearnedModelEnabled: protocolLearningProbeEnabled(
+        environment,
+        options.protocolLearning !== undefined,
+      ),
     },
   });
   const policy = (): AvailabilityPolicy => {
@@ -517,6 +676,11 @@ export const createServer = (
   const peCertificates = createPeCertificatesService();
   const peImports = createPeImportsService();
   const electronFuses = options.electronFuses ?? createElectronFuseService();
+  const asarIntegrity =
+    options.asarIntegrity ??
+    new AsarIntegrityService(createAsarIntegrityProvider(environment));
+  const v8Bytecode =
+    options.v8Bytecode ?? createV8BytecodeProvider(environment);
   const pythonPyc = options.pythonPyc ?? createPythonPycService();
   const webNetworkCapture =
     options.webNetworkCapture ??
@@ -603,10 +767,48 @@ export const createServer = (
     options.adbDeviceAnalysis ?? createAdbDeviceAnalysisProvider(environment);
   const idevice =
     options.ideviceDeviceAnalysis ?? createIdeviceAnalysisProvider(environment);
+  const ipsw = options.ipswAnalysis ?? createIpswAnalysisProvider(environment);
+  const capa = options.capaAnalysis ?? createCapaAnalysisProvider(environment);
+  const yara = options.yaraAnalysis ?? createYaraAnalysisProvider(environment);
+  const symbolRecovery =
+    options.symbolRecovery ?? createSymbolRecoveryProvider(environment);
+  const dotnetDecompiler =
+    options.dotnetDecompiler ?? createDotnetDecompilerProvider(environment);
+  const pythonDecompiler =
+    options.pythonDecompiler ?? createPythonDecompilerProvider(environment);
+  const jvmDecompiler =
+    options.jvmDecompiler ?? createJvmDecompilerProvider(environment);
+  const protobufRecovery =
+    options.protobufRecovery ?? createProtobufRecoveryProvider(environment);
+  const bindiff = options.bindiff ?? createBindiffProvider(environment);
+  const labVm = options.labVm ?? createLabVmService(environment);
+  const bench = options.bench ?? createBenchTaskService(environment, labVm);
+  const crashTriage =
+    options.crashTriage ?? createCrashTriageService(environment);
+  const fuzzing =
+    options.fuzzing ??
+    createFuzzingCampaignService(
+      providerEnvironment,
+      crashTriage,
+      labVm,
+      analysisSettings.read,
+    );
+  const replay = options.replay ?? createReplayService(environment);
+  const mitm = options.mitm ?? createMitmInterceptionService(environment);
+  const emu = options.emu ?? createEmuAnalysisProvider(environment);
+  const angr =
+    options.angr ??
+    createAngrAnalysisProvider(environment, analysisSettings.read);
+  const mobileToolchain =
+    options.mobileToolchain ?? createMobileToolchainProvider(environment);
+  const protocolLearning =
+    options.protocolLearning ??
+    createProtocolLearningProvider(environment, analysisSettings.read);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
     options.windowsArtifacts ?? createWindowsArtifactsService(environment);
+  const lief = options.lief ?? createLiefService(environment);
   const nativeAot = options.nativeAot ?? createNativeAotArtifactService();
   const gameData = options.gameData ?? createGameDataService();
   const containerInspection =
@@ -628,8 +830,40 @@ export const createServer = (
       jeb.close(),
       adbDevice.close(),
       idevice.close(),
+      ipsw.close(),
+      capa.close(),
+      yara.close(),
+      symbolRecovery.close(),
+      dotnetDecompiler.close(),
+      pythonDecompiler.close(),
+      jvmDecompiler.close(),
+      protobufRecovery.close(),
+      bindiff.close(),
+      labVm.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      crashTriage.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      fuzzing.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      replay.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      mitm.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      hunting.closeAll().then((closed) => {
+        if (!closed.ok) throw closed.error;
+      }),
+      emu.close(),
+      angr.close(),
+      mobileToolchain.close(),
+      protocolLearning.close(),
       discovery.close(),
       windowsArtifacts.close(),
+      lief.close(),
       nativeAot.close(),
       gameData.close(),
       containerInspection.close(),
@@ -659,6 +893,8 @@ export const createServer = (
       peCertificates.close(),
       peImports.close(),
       electronFuses.close(),
+      asarIntegrity.close(),
+      v8Bytecode.close(),
       pythonPyc.close(),
       webNetworkCapture.close(),
       javascriptRecovery.close?.() ?? Promise.resolve(),
@@ -706,6 +942,28 @@ export const createServer = (
     recordEvidenceWithUnknown,
   } = createSessionRecorders(server, session);
   const analysisAdmission = withAdmittedAnalysis(source);
+  const hunting =
+    options.hunting ??
+    createHuntingQueueService({
+      environment,
+      settings: analysisSettings.read,
+      fuzzing,
+      protocolLearning,
+      replay,
+      mitm,
+      withAnalysis: analysisAdmission,
+      activeTargetPath: () => session?.activeTarget()?.path,
+      ...(session === undefined
+        ? {}
+        : {
+            unknowns: {
+              list: () => session.listUnknowns(),
+              record: (input: Parameters<typeof session.recordUnknown>[0]) =>
+                session.recordUnknown(input),
+            },
+          }),
+      ...(recordEvidence === undefined ? {} : { writer: { recordEvidence } }),
+    });
   const toolContext: ServerToolContext = {
     server,
     session,
@@ -733,6 +991,8 @@ export const createServer = (
     peCertificates,
     peImports,
     electronFuses,
+    asarIntegrity,
+    v8Bytecode,
     pythonPyc,
     webNetworkCapture,
   };
@@ -879,6 +1139,69 @@ export const createServer = (
     recordEvidence,
     analysisAdmission,
   );
+  registerIpswTools(
+    server,
+    new IpswAnalysisService(ipsw),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerCapaTools(
+    server,
+    new CapaAnalysisService(capa),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerYaraTools(
+    server,
+    new YaraAnalysisService(yara),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerSymbolTools(
+    server,
+    new SymbolRecoveryService(symbolRecovery),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerDotnetDecompilerTool(
+    server,
+    new DotnetDecompilerService(dotnetDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerPythonDecompilerTool(
+    server,
+    new PythonDecompilerService(pythonDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerJvmDecompilerTools(
+    server,
+    new JvmDecompilerService(jvmDecompiler),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerProtobufRecoveryTools(
+    server,
+    new ProtobufRecoveryService(protobufRecovery),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerBinexportTool(
+    server,
+    new BindiffExportService(bindiff),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
   registerDiscoveryTools(
     server,
     new DiscoveryAnalysisService(discovery),
@@ -889,6 +1212,13 @@ export const createServer = (
   registerWindowsArtifactsTools(
     server,
     windowsArtifacts,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerLiefTools(
+    server,
+    lief,
     toolLogger,
     recordEvidence,
     analysisAdmission,
@@ -938,11 +1268,71 @@ export const createServer = (
     analysisAdmission,
   );
   registerObservationTools(toolContext);
+  registerCrashTriageTools({
+    server,
+    crashTriage,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerFuzzingTools({
+    server,
+    fuzzing,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerReplayTools({
+    server,
+    replay,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerMitmTools({
+    server,
+    mitm,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerEmuTools(server, emu, toolLogger, recordEvidence, analysisAdmission);
+  registerAngrTools(
+    server,
+    angr,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerMobileToolchainTools(
+    server,
+    new MobileToolchainService(mobileToolchain),
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerProtolearnTools(
+    server,
+    protocolLearning,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerHuntingTools({
+    server,
+    hunting,
+    logger: toolLogger,
+    recordEvidence,
+  });
+  registerBenchTools({
+    server,
+    bench,
+    logger: toolLogger,
+    recordEvidence,
+  });
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {
       ...selectedOptions,
       artifactResources,
+      bindiff,
+      labVm,
       ...(availability === undefined
         ? {}
         : { availabilityPolicy: availability.policy }),
@@ -953,9 +1343,55 @@ export const createServer = (
         android.inspectAvailability(signal),
       adbAnalysisAvailability: (signal) =>
         adbDevice.inspectAvailability(signal),
+      ipswAnalysisAvailability: (signal) => ipsw.inspectAvailability(signal),
+      capaAnalysisAvailability: (signal) => capa.inspectAvailability(signal),
+      yaraAnalysisAvailability: (signal) => yara.inspectAvailability(signal),
+      goresymAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "recover_go_symbols",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
+      rustfiltAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "demangle_rust_name",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
+      dumpSymsAnalysisAvailability: (signal) =>
+        symbolRecovery.inspectToolAvailability?.(
+          "generate_symbol_table",
+          signal,
+        ) ?? symbolRecovery.inspectAvailability(signal),
+      dotnetDecompilerAvailability: (signal) =>
+        dotnetDecompiler.inspectAvailability(signal),
+      pythonDecompilerAvailability: (signal) =>
+        pythonDecompiler.inspectAvailability(signal),
+      jvmDecompilerAvailability: (signal) =>
+        jvmDecompiler.inspectAvailability(signal),
+      v8BytecodeAvailability: (signal) =>
+        v8Bytecode.inspectAvailability(signal),
+      protobufRecoveryAvailability: (signal) =>
+        protobufRecovery.inspectRecoveryAvailability?.(signal) ??
+        protobufRecovery.inspectAvailability(signal),
+      grpcReflectionAvailability: (signal) =>
+        protobufRecovery.inspectReflectionAvailability?.(signal) ??
+        protobufRecovery.inspectAvailability(signal),
+      bindiffDiffAvailability: (signal) =>
+        bindiff.inspectDiffAvailability?.(signal) ??
+        bindiff.inspectAvailability(signal),
+      bindiffExportAvailability: (signal) =>
+        bindiff.inspectExportAvailability?.(signal) ??
+        bindiff.inspectAvailability(signal),
       apktoolAnalysisAvailability: (signal) =>
         apktool.inspectAvailability(signal),
       jebAnalysisAvailability: (signal) => jeb.inspectAvailability(signal),
+      labVmAvailability: (signal) => labVm.inspectAvailability(signal),
+      benchAvailability: (signal) => bench.inspectAvailability(signal),
+      objectionAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("objection", signal),
+      androguardAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("androguard", signal),
+      ileAppAvailability: (signal) =>
+        mobileToolchain.inspectAvailability("ileapp", signal),
       startedAt,
     });
   }
@@ -1293,6 +1729,8 @@ interface ServerToolContext extends ReturnType<typeof createSessionRecorders> {
   readonly peCertificates: PeCertificatesService;
   readonly peImports: PeImportsService;
   readonly electronFuses: ElectronFuseService;
+  readonly asarIntegrity: AsarIntegrityService;
+  readonly v8Bytecode: V8BytecodePort;
   readonly pythonPyc: PythonPycService;
   readonly webNetworkCapture: WebNetworkCaptureService;
   readonly artifactResources: ArtifactResourceScope;
@@ -1365,6 +1803,8 @@ const registerBinaryAnalysisTools = ({
 
 const registerObservationTools = ({
   electronFuses,
+  asarIntegrity,
+  v8Bytecode,
   evidenceById,
   server,
   options,
@@ -1401,6 +1841,20 @@ const registerObservationTools = ({
     activeLoadFailure:
       options.optionalProviderLoadFailures?.electronActiveObservation,
   });
+  registerAsarIntegrityTool(
+    server,
+    asarIntegrity,
+    logger,
+    recordEvidence,
+    withAdmittedAnalysis,
+  );
+  registerV8BytecodeTool(
+    server,
+    new V8BytecodeService(v8Bytecode),
+    logger,
+    recordEvidence,
+    withAdmittedAnalysis,
+  );
   registerJavaScriptRuntimeObservationTools(server, {
     ...common,
     runtime: options.javascriptRuntimeObservation,

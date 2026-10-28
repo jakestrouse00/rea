@@ -17,6 +17,10 @@ import type {
   FridaInstrumentationPort,
   FridaProcessObservation,
   FridaRemoteConnection,
+  FridaRpcCallObservation,
+  FridaRpcCallRequest,
+  FridaRpcExport,
+  FridaRpcInventory,
   FridaScriptObservation,
   FridaScriptSource,
   FridaSessionObservation,
@@ -37,12 +41,24 @@ import { ProviderCleanupError } from "../domain/providerCleanupError.js";
 import { AnalysisCleanupLease } from "../artifacts/AnalysisCleanupLease.js";
 import type { JsonValue } from "../domain/jsonValue.js";
 import { jsonStringByteLength } from "../domain/jsonStringByteLength.js";
+import type { FridaOwnedCaptureLimit } from "../domain/fridaCaptureLimitVocabulary.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   unknownFridaScript,
   unknownFridaSession,
+  unownedFridaScript,
 } from "../application/frida/fridaInputErrors.js";
 import { FRIDA_RUNTIME_PROBE_REMEDIATION } from "./FridaRelease.js";
+import {
+  FRIDA_RPC_MAX_TIMEOUT_MS,
+  type FridaRpcValueCaptureLimit,
+} from "../domain/fridaRpc.js";
+import {
+  FRIDA_RPC_INVENTORY_EPILOGUE,
+  MAX_RPC_EXPORTS,
+  MAX_RPC_EXPORT_NAME_BYTES,
+  reportedRpcInventory,
+} from "./fridaRpcInventory.js";
 import {
   MAX_BINARY_MESSAGE_BYTES,
   MAX_CAPTURE_JSON_NODES,
@@ -51,10 +67,16 @@ import {
   MAX_MESSAGE_TEXT_BYTES,
   MAX_MESSAGE_TYPE_BYTES,
   MAX_SESSION_CAPTURE_BYTES,
-  type FridaOwnedCaptureLimit,
 } from "./fridaCaptureLimits.js";
 
 const DEVICE_LOOKUP_TIMEOUT_MS = 1_000;
+
+/** The target never reported an export map; this is unknown, not empty. */
+const UNREPORTED_RPC_INVENTORY: FridaRpcInventory = Object.freeze({
+  state: "unreported",
+  exports: Object.freeze([]),
+  exportsTruncated: false,
+});
 
 /**
  * Frida Core 17.23.2 raises this from `getDeviceById` only after the supplied
@@ -83,7 +105,17 @@ interface ManagedScript {
   readonly name: string;
   readonly script: Script;
   readonly onMessage: (message: FridaMessage, data: Buffer | null) => void;
+  /** Calls waiting on this script's target replies under the session grant. */
+  readonly pendingCalls: Set<PendingRpcCall>;
+  /** Last inventory the target reported; undefined until it reports one. */
+  rpcInventory: FridaRpcInventory | undefined;
   state: "active" | "cleanup-pending" | "released";
+}
+
+interface PendingRpcCall {
+  readonly settle: (
+    outcome: Result<FridaRpcCallObservation, AnalysisError>,
+  ) => void;
 }
 
 interface ManagedRemoteConnection {
@@ -360,11 +392,21 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
       };
       session.detached.connect(() => {
         managed.detached = true;
+        this.#settleSessionCalls(
+          managed,
+          unknownFridaSession("frida_rpc_call", id),
+        );
       });
       // A target can exit while metadata lookup/attach is pending, before
       // Frida installs this listener. Subscribe first, then reconcile the
       // current provider state so an already-emitted detach is not lost.
-      if (session.isDetached()) managed.detached = true;
+      if (session.isDetached()) {
+        managed.detached = true;
+        this.#settleSessionCalls(
+          managed,
+          unknownFridaSession("frida_rpc_call", id),
+        );
+      }
       this.#sessions.set(id, managed);
       return ok(sessionObservation(managed));
     } catch (cause: unknown) {
@@ -486,14 +528,19 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     let entry: ManagedScript | undefined;
     let nativeFailure: { readonly cause: unknown } | undefined;
     try {
-      const nativeScript = await managed.session.createScript(scriptSource, {
-        name: `rea-${scriptId}`,
-      });
+      const nativeScript = await managed.session.createScript(
+        `${scriptSource}${FRIDA_RPC_INVENTORY_EPILOGUE}`,
+        {
+          name: `rea-${scriptId}`,
+        },
+      );
       entry = {
         id: scriptId,
         name: `rea-${scriptId}`,
         script: nativeScript,
         onMessage,
+        pendingCalls: new Set(),
+        rpcInventory: undefined,
         state: "active",
       };
       managed.scripts.set(scriptId, entry);
@@ -678,11 +725,140 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     );
   }
 
+  rpcInventory(
+    sessionId: string,
+    scriptId: string,
+  ): Result<FridaRpcInventory, AnalysisError> {
+    const managed = this.#sessions.get(sessionId);
+    if (managed === undefined || managed.detached)
+      return err(unknownFridaSession("frida_rpc_list", sessionId));
+    const entry = managed.scripts.get(scriptId);
+    if (entry === undefined || entry.state !== "active")
+      return err(unownedFridaScript("frida_rpc_list", scriptId));
+    return ok(entry.rpcInventory ?? UNREPORTED_RPC_INVENTORY);
+  }
+
+  callRpc(
+    sessionId: string,
+    scriptId: string,
+    request: FridaRpcCallRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<FridaRpcCallObservation, AnalysisError>> {
+    return this.#withOperation(
+      "frida_rpc_call",
+      () => this.#callRpc(sessionId, scriptId, request, signal),
+      signal,
+    );
+  }
+
+  /**
+   * Dispatch one target-side export under the grant established by this
+   * session's start mode. REA adds no target, resumes nothing, and keeps no
+   * claim on a reply that arrives after release, cancellation or the deadline.
+   */
+  async #callRpc(
+    sessionId: string,
+    scriptId: string,
+    request: FridaRpcCallRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<FridaRpcCallObservation, AnalysisError>> {
+    if (signal?.aborted)
+      return err(cancelledOperation("frida_rpc_call", signal));
+    const managed = this.#sessions.get(sessionId);
+    if (managed === undefined || managed.detached)
+      return err(unknownFridaSession("frida_rpc_call", sessionId));
+    const entry = managed.scripts.get(scriptId);
+    if (
+      entry === undefined ||
+      entry.state !== "active" ||
+      entry.script.isDestroyed
+    )
+      return err(unownedFridaScript("frida_rpc_call", scriptId));
+    const rejected = reportedRpcMethodRejection(entry, request.method);
+    if (rejected !== undefined) return err(rejected);
+    if (!hasRpcDispatch(request.method))
+      return err(uninvokableRpcMethod(entry, request.method));
+    const invoke = Reflect.get(entry.script.exports, request.method);
+    if (typeof invoke !== "function")
+      return err(uninvokableRpcMethod(entry, request.method));
+    const secrets = remoteSecrets(managed.remote);
+    const startedAt = performance.now();
+    return new Promise<Result<FridaRpcCallObservation, AnalysisError>>(
+      (resolve) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const call: PendingRpcCall = {
+          settle: (outcome) => {
+            if (settled) return;
+            settled = true;
+            if (timer !== undefined) clearTimeout(timer);
+            signal?.removeEventListener("abort", onAbort);
+            entry.pendingCalls.delete(call);
+            resolve(outcome);
+          },
+        };
+        const onAbort = (): void => {
+          if (signal === undefined) return;
+          call.settle(err(cancelledOperation("frida_rpc_call", signal)));
+        };
+        timer = setTimeout(() => {
+          call.settle(err(expiredRpcCall(request.method, request.timeoutMs)));
+        }, request.timeoutMs);
+        entry.pendingCalls.add(call);
+        signal?.addEventListener("abort", onAbort, { once: true });
+        let reply: Promise<unknown>;
+        try {
+          reply = Promise.resolve(invoke(...request.arguments));
+        } catch (cause: unknown) {
+          call.settle(
+            err(providerError("frida_rpc_call", cause, managed.remote)),
+          );
+          return;
+        }
+        void reply.then(
+          (value) => {
+            call.settle(
+              ok({
+                sessionId: managed.id,
+                scriptId: entry.id,
+                method: request.method,
+                mode: managed.mode,
+                ...boundedRpcValue(value, secrets),
+                durationMs: Math.max(
+                  0,
+                  Math.round(performance.now() - startedAt),
+                ),
+              }),
+            );
+          },
+          (cause: unknown) => {
+            call.settle(
+              err(providerError("frida_rpc_call", cause, managed.remote)),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  #settleScriptCalls(entry: ManagedScript, error: AnalysisError): void {
+    for (const call of Array.from(entry.pendingCalls)) call.settle(err(error));
+  }
+
+  #settleSessionCalls(managed: ManagedSession, error: AnalysisError): void {
+    for (const entry of managed.scripts.values())
+      this.#settleScriptCalls(entry, error);
+  }
+
   async #releaseScript(
     managed: ManagedSession,
     entry: ManagedScript,
     parentSessionReleased = false,
   ): Promise<string | undefined> {
+    this.#settleScriptCalls(
+      entry,
+      unownedFridaScript("frida_rpc_call", entry.id),
+    );
     if (parentSessionReleased || entry.script.isDestroyed)
       entry.state = "released";
     if (entry.state !== "released") {
@@ -1058,9 +1234,14 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     data: Buffer | null,
   ): void {
     const payload = message.payload;
-    const secrets = [managed.remote?.token, managed.remote?.certificate].filter(
-      (value): value is string => value !== undefined && value.length > 0,
-    );
+    const secrets = remoteSecrets(managed.remote);
+    if (message.type === "send") {
+      const report = reportedRpcInventory(payload);
+      if (report.reported) {
+        this.#recordRpcInventory(managed, scriptId, report.entries, secrets);
+        return;
+      }
+    }
     let payloadResult:
       | {
           readonly value: JsonValue;
@@ -1213,6 +1394,63 @@ export class FridaInstrumentationManager implements FridaInstrumentationPort {
     managed.messages.push({ observation, scriptId, charge });
     managed.scriptCaptures.get(scriptId)?.messages.push(observation);
     managed.capturedBytes += charge;
+  }
+
+  /**
+   * Retain the export surface the target reported at load under the same
+   * bounds and redaction as captured messages. A malformed or over-budget
+   * report keeps the observation partial instead of claiming completeness.
+   */
+  #recordRpcInventory(
+    managed: ManagedSession,
+    scriptId: string,
+    entries: unknown,
+    secrets: readonly string[],
+  ): void {
+    const entry = managed.scripts.get(scriptId);
+    if (entry === undefined) return;
+    if (!Array.isArray(entries)) {
+      entry.rpcInventory = UNREPORTED_RPC_INVENTORY;
+      return;
+    }
+    const exports: FridaRpcExport[] = [];
+    let truncated = false;
+    for (const reported of entries) {
+      if (exports.length >= MAX_RPC_EXPORTS) {
+        truncated = true;
+        break;
+      }
+      if (typeof reported !== "object" || reported === null) {
+        truncated = true;
+        continue;
+      }
+      const reportedName: unknown = Reflect.get(reported, "name");
+      if (typeof reportedName !== "string") {
+        truncated = true;
+        continue;
+      }
+      const name = boundedRedactedString(
+        reportedName,
+        MAX_RPC_EXPORT_NAME_BYTES,
+        secrets,
+      );
+      if (name.truncated) truncated = true;
+      const reportedParameters: unknown = Reflect.get(reported, "parameters");
+      exports.push({
+        name: name.value,
+        parameters:
+          typeof reportedParameters === "number" &&
+          Number.isSafeInteger(reportedParameters) &&
+          reportedParameters >= 0
+            ? reportedParameters
+            : null,
+      });
+    }
+    entry.rpcInventory = {
+      state: "observed",
+      exports,
+      exportsTruncated: truncated,
+    };
   }
 
   async #getDeviceManager(): Promise<DeviceManager> {
@@ -1648,6 +1886,109 @@ const providerError = (
 
 const errorMessage = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
+
+const remoteSecrets = (
+  remote: FridaRemoteConnection | undefined,
+): readonly string[] =>
+  [remote?.token, remote?.certificate].filter(
+    (secret): secret is string => secret !== undefined && secret.length > 0,
+  );
+
+/** Bound one RPC reply with the message-payload budget and redaction rules. */
+const boundedRpcValue = (
+  value: unknown,
+  secrets: readonly string[],
+): {
+  readonly value: JsonValue;
+  readonly valueTruncated: boolean;
+  readonly valueCaptureLimit: FridaRpcValueCaptureLimit | null;
+} => {
+  try {
+    const bounded = boundedJsonValue(
+      value,
+      MAX_SESSION_CAPTURE_BYTES - MAX_MESSAGE_METADATA_BYTES,
+      secrets,
+    );
+    return {
+      value: bounded.value,
+      valueTruncated: bounded.truncated,
+      valueCaptureLimit: bounded.limit ?? null,
+    };
+  } catch {
+    return {
+      value: null,
+      valueTruncated: true,
+      valueCaptureLimit: "unrepresentable",
+    };
+  }
+};
+
+/**
+ * REA invokes only a name the vendor proxy can dispatch. The proxy answers any
+ * unreserved string, so an unreported or truncated inventory leaves the export
+ * unknown and the target decides whether it exists.
+ */
+const uninvokableRpcMethod = (
+  entry: ManagedScript,
+  method: string,
+): AnalysisInputError => {
+  const inventory = entry.rpcInventory;
+  const reported =
+    inventory === undefined || inventory.state !== "observed"
+      ? []
+      : inventory.exports.map(({ name }) => name);
+  return new AnalysisInputError("frida_rpc_call", undefined, [
+    {
+      path: ["method"],
+      reason: "invalid_value",
+      message:
+        reported.length === 0
+          ? `Frida script ${entry.id} reported no invokable rpc export named ${JSON.stringify(method)}; call frida_rpc_list to read the reported surface.`
+          : `Frida script ${entry.id} reported no rpc export named ${JSON.stringify(method)}; it reported ${reported.map((name) => JSON.stringify(name)).join(", ")}.`,
+    },
+  ]);
+};
+
+const RESERVED_RPC_METHOD_NAMES: ReadonlySet<string> = new Set([
+  "then",
+  "catch",
+  "finally",
+]);
+
+/** `then`, `catch`, `finally`, and `Object.prototype` members are not RPC exports. */
+const hasRpcDispatch = (method: string): boolean =>
+  method.length > 0 &&
+  !RESERVED_RPC_METHOD_NAMES.has(method) &&
+  !Object.hasOwn(Object.prototype, method);
+
+/**
+ * Reject a method the target did not report. An unreported or truncated
+ * inventory leaves the name unknown, which is not the same as absent.
+ */
+const reportedRpcMethodRejection = (
+  entry: ManagedScript,
+  method: string,
+): AnalysisInputError | undefined => {
+  const inventory = entry.rpcInventory;
+  if (
+    inventory === undefined ||
+    inventory.state !== "observed" ||
+    inventory.exportsTruncated
+  )
+    return undefined;
+  return inventory.exports.some(({ name }) => name === method)
+    ? undefined
+    : uninvokableRpcMethod(entry, method);
+};
+
+const expiredRpcCall = (
+  method: string,
+  timeoutMs: number,
+): AnalysisTimeoutError =>
+  new AnalysisTimeoutError("frida_rpc_call", timeoutMs, {
+    userMessage: `Frida rpc export ${JSON.stringify(method)} returned no reply within ${String(timeoutMs)} ms (deadlineExpired).`,
+    remediationAction: `Retry with a larger timeout_ms (at most ${String(FRIDA_RPC_MAX_TIMEOUT_MS)} ms) or reduce target-side work. This release has no runtime override for that bound. REA stops waiting at the deadline but cannot cancel the call inside the target, so the target may still complete it.`,
+  });
 
 const cancelledOperation = (
   operation: string,

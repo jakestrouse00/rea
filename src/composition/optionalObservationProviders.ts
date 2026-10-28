@@ -31,7 +31,7 @@ export const createOptionalObservationFactories = (
     browserObservation: async () =>
       (
         await import("./browserObservation.js")
-      ).createBrowserObservationProvider(),
+      ).createBrowserObservationProvider(environment),
     browserScenarioCapture: async () =>
       (await import("./browserScenario.js")).createBrowserScenarioProvider(
         environment,

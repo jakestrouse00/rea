@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { TOOL_CONTRACTS } from "./toolContracts.js";
 import { FRIDA_KEEPALIVE_INTERVAL_DESCRIPTION } from "./fridaToolContracts.js";
+import {
+  FRIDA_RPC_DEFAULT_TIMEOUT_MS,
+  FRIDA_RPC_MAX_ARGUMENTS,
+  FRIDA_RPC_MAX_TIMEOUT_MS,
+  FRIDA_RPC_METHOD_MAX_CHARACTERS,
+} from "../domain/fridaRpc.js";
 import { isValidFridaRemoteAddress } from "./fridaRemoteAddress.js";
 
 const contract = (name: string) => {
@@ -166,5 +172,80 @@ describe("Frida tool contracts", () => {
     expect(isValidFridaRemoteAddress("127.0.0.1:")).toBe(false);
     expect(isValidFridaRemoteAddress("frida-target/path")).toBe(false);
     expect(isValidFridaRemoteAddress("user@frida-target")).toBe(false);
+  });
+});
+
+describe("Frida remote-export tool contracts", () => {
+  it("bounds one rpc call by a named method and a caller-selected deadline", () => {
+    const call = contract("frida_rpc_call");
+    const list = contract("frida_rpc_list");
+    const selection = {
+      session_id: "00000000-0000-4000-8000-000000000001",
+      script_id: "00000000-0000-4000-8000-000000000002",
+    };
+    expect(call.safeParse({ ...selection, method: "snapshot" }).success).toBe(
+      true,
+    );
+    expect(
+      call.safeParse({
+        ...selection,
+        method: "snapshot",
+        arguments: [{ key: [1, null, true] }],
+        timeout_ms: FRIDA_RPC_MAX_TIMEOUT_MS,
+      }).success,
+    ).toBe(true);
+    for (const input of [
+      { ...selection },
+      { ...selection, method: "" },
+      { ...selection, method: "x".repeat(FRIDA_RPC_METHOD_MAX_CHARACTERS + 1) },
+      { ...selection, method: "snapshot", timeout_ms: 0 },
+      {
+        ...selection,
+        method: "snapshot",
+        timeout_ms: FRIDA_RPC_MAX_TIMEOUT_MS + 1,
+      },
+      { ...selection, method: "snapshot", timeout_ms: 1.5 },
+      {
+        ...selection,
+        method: "snapshot",
+        arguments: Array.from(
+          { length: FRIDA_RPC_MAX_ARGUMENTS + 1 },
+          (_unused, index) => index,
+        ),
+      },
+      { ...selection, method: "snapshot", script: "send(1)" },
+    ])
+      expect(call.safeParse(input).success, JSON.stringify(input)).toBe(false);
+    expect(call.parse({ ...selection, method: "snapshot" })).toMatchObject({
+      arguments: [],
+      timeout_ms: FRIDA_RPC_DEFAULT_TIMEOUT_MS,
+    });
+    expect(list.safeParse(selection).success).toBe(true);
+    expect(list.safeParse({ session_id: selection.session_id }).success).toBe(
+      false,
+    );
+  });
+
+  it("declares target authority for the rpc surface without widening it", () => {
+    expect(TOOL_CONTRACTS.map(({ name }) => name)).toEqual(
+      expect.arrayContaining(["frida_rpc_list", "frida_rpc_call"]),
+    );
+    const list = TOOL_CONTRACTS.find(({ name }) => name === "frida_rpc_list");
+    const call = TOOL_CONTRACTS.find(({ name }) => name === "frida_rpc_call");
+    expect(list?.effects).toMatchObject({
+      mutatesTarget: false,
+      mutatesSession: true,
+      executesForeignCode: false,
+    });
+    expect(list?.returnsTargetContent).toBe(true);
+    expect(call?.effects).toMatchObject({
+      mutatesTarget: true,
+      mutatesSession: true,
+      executesForeignCode: true,
+      idempotent: false,
+    });
+    expect(call?.returnsTargetContent).toBe(true);
+    expect(call?.annotations.destructiveHint).toBe(true);
+    expect(call?.description).toContain("start_frida_session");
   });
 });

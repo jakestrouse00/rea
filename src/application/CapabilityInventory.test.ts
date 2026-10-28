@@ -145,6 +145,78 @@ describe("ADB and Apktool host availability", () => {
   });
 });
 
+describe("active request plane availability", () => {
+  it("stays provider_missing until an operator approves an origin", () => {
+    const disabled = buildCapabilityInventory(status(), enabledPolicy);
+    for (const name of [
+      "http_replay_session_start",
+      "http_replay_send",
+      "http_replay_session_status",
+      "http_replay_session_close",
+    ] as const)
+      expect(disabled.find((tool) => tool.name === name)).toMatchObject({
+        available: false,
+        reason: "provider_missing",
+      });
+    expect(
+      disabled.find((tool) => tool.name === "http_replay_send")?.remediation,
+    ).toContain("REA_REPLAY_ALLOWED_ORIGINS");
+
+    const enabled = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      replayEnabled: true,
+    });
+    expect(
+      enabled.find((tool) => tool.name === "http_replay_send"),
+    ).toMatchObject({ available: true, reason: "available" });
+  });
+});
+
+describe("interception lane availability", () => {
+  it("requires a selected mitmdump and addon, and replay needs an approved origin", () => {
+    const disabled = buildCapabilityInventory(status(), enabledPolicy);
+    for (const name of [
+      "start_interception_session",
+      "read_interception_inventory",
+      "export_endpoint_inventory",
+      "proxy_rule_set",
+      "proxy_rule_clear",
+      "stop_interception_session",
+    ] as const)
+      expect(disabled.find((tool) => tool.name === name)).toMatchObject({
+        available: false,
+        reason: "provider_missing",
+      });
+    expect(
+      disabled.find((tool) => tool.name === "start_interception_session")
+        ?.remediation,
+    ).toContain("REA_MITMDUMP_COMMAND");
+    expect(
+      disabled.find((tool) => tool.name === "proxy_replay_send")?.remediation,
+    ).toContain("REA_REPLAY_ALLOWED_ORIGINS");
+
+    const configured = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      mitmInterceptionEnabled: true,
+    });
+    expect(
+      configured.find((tool) => tool.name === "start_interception_session"),
+    ).toMatchObject({ available: true, reason: "available" });
+    expect(
+      configured.find((tool) => tool.name === "proxy_replay_send"),
+    ).toMatchObject({ available: false, reason: "provider_missing" });
+
+    const replaying = buildCapabilityInventory(status(), {
+      ...enabledPolicy,
+      mitmInterceptionEnabled: true,
+      replayEnabled: true,
+    });
+    expect(
+      replaying.find((tool) => tool.name === "proxy_replay_send"),
+    ).toMatchObject({ available: true, reason: "available" });
+  });
+});
+
 describe("capability failure reasons", () => {
   it("keeps an unavailable Android runtime distinct from a missing provider", () => {
     const inventory = buildCapabilityInventory(status(), {
@@ -884,4 +956,22 @@ it("keeps independent native sessions discoverable without an unrelated binary t
   expect(entries.find((entry) => entry.name === "inspect_macho")).toMatchObject(
     { available: false, reason: "target_required" },
   );
+});
+
+it("reports the fuzzing lane only when an engine is selected", () => {
+  const disabled = buildCapabilityInventory(status(), enabledPolicy);
+  expect(
+    disabled.find((entry) => entry.name === "start_fuzzing_campaign"),
+  ).toMatchObject({ available: false, reason: "provider_missing" });
+  expect(
+    disabled.find((entry) => entry.name === "start_fuzzing_campaign")
+      ?.remediation,
+  ).toContain("REA_LFZ_FUZZER_COMMAND");
+  const enabled = buildCapabilityInventory(status(), {
+    ...enabledPolicy,
+    fuzzingCampaignEnabled: true,
+  });
+  expect(
+    enabled.find((entry) => entry.name === "start_fuzzing_campaign"),
+  ).toMatchObject({ available: true, reason: "available", remediation: null });
 });

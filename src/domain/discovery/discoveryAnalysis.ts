@@ -185,6 +185,64 @@ export const discoveryInputSchemas = {
         "When false notifications are reported as SHA-256 digests and lengths only; when true the payload hex is retained in Evidence",
       ),
   }),
+  enumerate_gatt_services: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+    max_services: z
+      .number()
+      .int()
+      .min(1)
+      .max(64)
+      .default(16)
+      .describe(
+        "Maximum services retained from this enumeration; later services are counted as omitted",
+      ),
+    max_characteristics_per_service: z
+      .number()
+      .int()
+      .min(1)
+      .max(128)
+      .default(64)
+      .describe(
+        "Maximum characteristics retained per service; later ones are counted as omitted",
+      ),
+  }),
+  subscribe_characteristic: z.strictObject({
+    session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
+    service_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe("Service UUID exactly as discovery reported it"),
+    characteristic_uuid: z
+      .string()
+      .min(1)
+      .max(64)
+      .describe(
+        "Notifiable characteristic UUID exactly as discovery reported it",
+      ),
+    observe_seconds: z
+      .number()
+      .int()
+      .min(2)
+      .max(60)
+      .default(10)
+      .describe("Subscription observation window in seconds"),
+    max_notifications: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .default(100)
+      .describe(
+        "Maximum notification rows retained; the subscription stops collecting at this bound and reports it as a complete-for-bound window",
+      ),
+    include_payload_hex: z
+      .boolean()
+      .default(false)
+      .describe(
+        "When false notifications are reported as SHA-256 digests and lengths only; when true the payload hex is retained in Evidence",
+      ),
+  }),
   close_ble_gatt: z.strictObject({
     session_id: z.string().uuid().describe("Session from connect_ble_gatt"),
   }),
@@ -390,6 +448,14 @@ export const discoveryRequestSchema = z.discriminatedUnion("operation", [
     input: discoveryInputSchemas.observe_gatt_notifications,
   }),
   z.strictObject({
+    operation: z.literal("enumerate_gatt_services"),
+    input: discoveryInputSchemas.enumerate_gatt_services,
+  }),
+  z.strictObject({
+    operation: z.literal("subscribe_characteristic"),
+    input: discoveryInputSchemas.subscribe_characteristic,
+  }),
+  z.strictObject({
     operation: z.literal("close_ble_gatt"),
     input: discoveryInputSchemas.close_ble_gatt,
   }),
@@ -439,6 +505,8 @@ const tools = z.strictObject({
   ble_scanner: z.string().min(1).nullable(),
   wifi_scanner: z.string().min(1).nullable(),
   ble_gatt: z.string().min(1).nullable(),
+  /** Selected interpreter for the bundled bleak bridge, when that transport ran. */
+  bleak_python: z.string().min(1).nullable().optional(),
   stty: z.string().min(1).nullable(),
   packet_capture: z.string().min(1).nullable(),
 });
@@ -701,6 +769,42 @@ export const discoveryResultSchemas = {
     window_exhausted: z.boolean(),
     elapsed_ms: z.number().int().nonnegative(),
     stop_reason: z.enum(["deadline", "cancelled", "peer_disconnect", "error"]),
+    unparsed_lines: z.array(z.string().min(1)),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  enumerate_gatt_services: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    services: z.array(gattService),
+    service_count: z.number().int().nonnegative(),
+    characteristics_omitted: z.number().int().nonnegative(),
+    services_truncated: z.boolean(),
+    elapsed_ms: z.number().int().nonnegative(),
+    unparsed_lines: z.array(z.string().min(1)),
+    coverage: z.enum(["complete", "partial"]),
+  }),
+  subscribe_characteristic: z.strictObject({
+    tools,
+    session_id: z.string().uuid(),
+    peripheral_id: z.string().min(1),
+    service_uuid: z.string().min(1),
+    characteristic_uuid: z.string().min(1),
+    observe_seconds: z.number().int().positive(),
+    max_notifications: z.number().int().positive(),
+    subscribed: z.boolean(),
+    notifications: z.array(gattNotification),
+    notification_count: z.number().int().nonnegative(),
+    buffer_full: z.boolean(),
+    window_exhausted: z.boolean(),
+    elapsed_ms: z.number().int().nonnegative(),
+    stop_reason: z.enum([
+      "deadline",
+      "cancelled",
+      "peer_disconnect",
+      "buffer_full",
+      "error",
+    ]),
     unparsed_lines: z.array(z.string().min(1)),
     coverage: z.enum(["complete", "partial"]),
   }),

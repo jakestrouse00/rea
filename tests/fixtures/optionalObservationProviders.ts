@@ -46,6 +46,10 @@ export const optionalObservationFactories = (
     compareCaptures: unselected,
     captureScreenshot: unselected,
     compareScreenshots: unselected,
+    evaluatePage: unselected,
+    armRequestRule: unselected,
+    clearRequestRule: unselected,
+    fetchPage: unselected,
   };
   const runtime: JavaScriptRuntimeObservationPort = {
     identity: () => V8_INSPECTOR_PROVIDER_IDENTITY,

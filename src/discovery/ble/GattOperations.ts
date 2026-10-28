@@ -11,6 +11,7 @@ import {
   type GattSessionOpened,
   isGattSessionUnknown,
 } from "./GattSessionManager.js";
+import type { GattHelperSelection } from "./BleakBridge.js";
 
 export const GATT_CONNECT_OPERATION = "connect_ble_gatt";
 export const GATT_READ_OPERATION = "read_gatt_characteristic";
@@ -20,7 +21,7 @@ export const GATT_CLOSE_OPERATION = "close_ble_gatt";
 
 /** Shared limitations carried by every GATT Evidence record. */
 export const gattLimitations = (): string[] => [
-  "The GATT session drives a caller-supplied CoreBluetooth helper; REA never pairs, installs, or rebuilds the helper, and macOS may prompt for Bluetooth permission on first use",
+  "The GATT session drives a selected helper — a caller-built CoreBluetooth helper or REA's bundled bleak bridge under a caller-supplied interpreter; REA never pairs, installs, rebuilds, or upgrades either, and macOS may prompt for Bluetooth permission on first use",
   "macOS reports BLE peripherals by CoreBluetooth UUID, never by Bluetooth MAC address, and peripheral identifiers can rotate between scans",
   "GATT payloads are reported value-free by default: a length and SHA-256 digest; payload hex appears only when the caller opted in on that command",
 ];
@@ -54,7 +55,7 @@ const outcomeIntoError = (
 /** Open one session; the returned payload is Evidence-ready as-is. */
 export const executeGattConnect = async (
   sessions: GattSessionManager,
-  helperPath: string,
+  helper: GattHelperSelection,
   input: {
     readonly peripheral_id: string;
     readonly connect_timeout_ms: number;
@@ -74,7 +75,13 @@ export const executeGattConnect = async (
 > => {
   const started = Date.now();
   try {
-    const opened = await sessions.open(helperPath, input, signal);
+    const opened = await sessions.open(
+      helper.executable,
+      input,
+      signal,
+      GATT_CONNECT_OPERATION,
+      helper.leadingArguments,
+    );
     if (!opened.ok) {
       if (opened.error instanceof AnalysisErrorClass) return err(opened.error);
       return err(outcomeIntoError(GATT_CONNECT_OPERATION, opened.error));

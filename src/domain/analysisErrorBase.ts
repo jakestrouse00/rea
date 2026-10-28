@@ -295,6 +295,13 @@ import type { WebNetworkCapture } from "./webNetworkCapture.js";
 import type { FridaDeviceList, FridaProcessList } from "./fridaDiscovery.js";
 import type { CutterBridgeDiscovery } from "./cutterDiscovery.js";
 
+/** Completed provider result retained when final cleanup could not be confirmed. */
+export interface ProviderResultPartialObservation {
+  readonly kind: "provider-result";
+  readonly operation: string;
+  readonly result: JsonValue;
+}
+
 /** Provider-neutral evidence collected before a typed analysis failure. */
 export type AnalysisPartialObservation =
   | CutterBridgeDiscovery
@@ -334,4 +341,5 @@ export type AnalysisPartialObservation =
   | AdbAcquiredFilePartialObservation
   | AdbPackagePullPartialObservation
   | AdbRuntimeCapturePartialObservation
-  | AdbDisplayPartialObservation;
+  | AdbDisplayPartialObservation
+  | ProviderResultPartialObservation;

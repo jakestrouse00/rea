@@ -3,6 +3,7 @@ import { access, realpath } from "node:fs/promises";
 
 import { err, ok, type Result } from "../domain/result.js";
 import {
+  DISCOVERY_BLEAK_REMEDIATION,
   DISCOVERY_BLE_GATT_REMEDIATION,
   DISCOVERY_BLE_REMEDIATION,
   DISCOVERY_BLUEUTIL_REMEDIATION,
@@ -34,9 +35,15 @@ export interface DiscoveryConfiguration {
   readonly wifiScanner: string | null;
   /**
    * Caller-supplied CoreBluetooth GATT helper; absent means the GATT session
-   * tools stay skipped.
+   * tools stay skipped unless the bundled bleak bridge is selected.
    */
   readonly bleGatt: string | null;
+  /**
+   * Caller-supplied Python 3 with bleak installed, which runs the bundled
+   * bridge at bridge/ble/bleak_bridge.py; absent means the bundled bridge is
+   * not selected.
+   */
+  readonly bleakPython: string | null;
   /** stty, needed only by the serial observe window; absent means it is refused. */
   readonly stty: string | null;
   /** Caller-supplied capture program; absent means capture stays unavailable. */
@@ -194,6 +201,18 @@ export const readDiscoveryConfiguration = (
       "REA_BLE_GATT_PATH",
     );
 
+  const bleakPythonRaw = environment.REA_BLEAK_PYTHON;
+  if (
+    bleakPythonRaw !== undefined &&
+    bleakPythonRaw.length > 0 &&
+    !isAbsolute(bleakPythonRaw)
+  )
+    return failure(
+      "open_options_invalid",
+      `REA_BLEAK_PYTHON must be an absolute path; received ${bleakPythonRaw}. ${DISCOVERY_BLEAK_REMEDIATION}`,
+      "REA_BLEAK_PYTHON",
+    );
+
   const sttyRaw = environment.REA_STTY_PATH;
   if (sttyRaw !== undefined && sttyRaw.length > 0 && !isAbsolute(sttyRaw))
     return failure(
@@ -227,6 +246,10 @@ export const readDiscoveryConfiguration = (
         : wifiScannerRaw,
     bleGatt:
       bleGattRaw === undefined || bleGattRaw.length === 0 ? null : bleGattRaw,
+    bleakPython:
+      bleakPythonRaw === undefined || bleakPythonRaw.length === 0
+        ? null
+        : bleakPythonRaw,
     stty: sttyRaw === undefined || sttyRaw.length === 0 ? "/bin/stty" : sttyRaw,
     operationTimeoutMs: DEFAULT_OPERATION_TIMEOUT_MS,
     browseProcessTimeoutMs: DEFAULT_DNS_SD_TIMEOUT_MS,

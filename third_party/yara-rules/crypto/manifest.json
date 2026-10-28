@@ -1,0 +1,11 @@
+{
+  "pack": "rea-crypto-constants",
+  "version": 1,
+  "description": "Curated crypto-constant YARA rules shipped with REA. Matches are indicators, not proof of algorithm use.",
+  "rules": [
+    {
+      "file": "crypto-constants.yar",
+      "sha256": "df4b2b6059e7537203f343689e6d5073250744e998a67ae8a3e2e76c93822fb7"
+    }
+  ]
+}

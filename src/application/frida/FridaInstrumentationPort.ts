@@ -6,6 +6,10 @@ import { AnalysisCancelledError } from "../../domain/analysisErrorCore.js";
 import type { OptionalProviderLoadFailure } from "../OptionalObservationProviders.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 import type { Result } from "../../domain/result.js";
+import type {
+  FridaRpcExport,
+  FridaRpcValueCaptureLimit,
+} from "../../domain/fridaRpc.js";
 
 export interface FridaRemoteConnection {
   readonly address: string;
@@ -99,6 +103,35 @@ export interface FridaSessionCleanupObservation {
   readonly targetResumeObserved: boolean;
 }
 
+/** One caller-selected remote-export call on a loaded script. */
+export interface FridaRpcCallRequest {
+  readonly method: string;
+  readonly arguments: readonly JsonValue[];
+  readonly timeoutMs: number;
+}
+
+/** The bounded reply REA observed for one remote-export call. */
+export interface FridaRpcCallObservation {
+  readonly sessionId: string;
+  readonly scriptId: string;
+  readonly method: string;
+  /** The session's start mode; an RPC call never widens it. */
+  readonly mode: "attach" | "spawn";
+  readonly value: JsonValue;
+  readonly valueTruncated: boolean;
+  readonly valueCaptureLimit: FridaRpcValueCaptureLimit | null;
+  readonly durationMs: number;
+}
+
+export type { FridaRpcExport };
+
+/** The remote-export surface REA recorded for one live script. */
+export interface FridaRpcInventory {
+  readonly state: "observed" | "unreported";
+  readonly exports: readonly FridaRpcExport[];
+  readonly exportsTruncated: boolean;
+}
+
 /** Shared application boundary for Frida runtime instrumentation workflows. */
 export interface FridaInstrumentationPort {
   availabilityFailure?(): OptionalProviderLoadFailure | undefined;
@@ -139,6 +172,21 @@ export interface FridaInstrumentationPort {
     scriptId: string,
     signal?: AbortSignal,
   ): Promise<Result<null, AnalysisError>>;
+  /**
+   * Read the remote-export inventory this session's owner recorded for one
+   * live script. A released script is not owned, even by its known ID.
+   */
+  rpcInventory(
+    sessionId: string,
+    scriptId: string,
+  ): Result<FridaRpcInventory, AnalysisError>;
+  /** Invoke one reported remote export under the session's start-mode grant. */
+  callRpc(
+    sessionId: string,
+    scriptId: string,
+    request: FridaRpcCallRequest,
+    signal?: AbortSignal,
+  ): Promise<Result<FridaRpcCallObservation, AnalysisError>>;
   status(sessionId: string): FridaSessionStatus | undefined;
   closeSession(
     sessionId: string,

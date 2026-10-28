@@ -15,6 +15,7 @@ import {
   AnalysisInputError,
 } from "../../domain/analysisErrorCore.js";
 import { err, ok, type Result } from "../../domain/result.js";
+import type { JsonValue } from "../../domain/jsonValue.js";
 import { FRIDA_VERIFIED_VERSION } from "../../frida/FridaRelease.js";
 import { fridaSessionStatusInputSchema } from "../../domain/fridaSessionStatus.js";
 import { analysisInputErrorFromIssues } from "../../domain/inputIssueProjection.js";
@@ -24,6 +25,8 @@ import {
   type AnalysisViewRetention,
 } from "../analysisView/AnalysisViewService.js";
 import { fridaCaptureLimitations } from "../../frida/fridaCaptureLimits.js";
+import { readFridaScriptPreset } from "../../frida/FridaScriptPresets.js";
+import type { FridaScriptPresetName } from "../../domain/fridaScriptPreset.js";
 import { unknownFridaSession } from "./fridaInputErrors.js";
 import { FridaScriptLoadCancelledError } from "./FridaInstrumentationPort.js";
 import type {
@@ -234,12 +237,134 @@ export class FridaInstrumentationService {
       : loaded;
   }
 
+  /**
+   * Load one named REA preset into a live session. The preset's authored
+   * bytes are read at this call and identified by digest; Evidence carries
+   * that digest and the preset's declared detection surfaces, never the
+   * script text or target payloads.
+   */
+  async loadScriptPreset(
+    sessionId: string,
+    preset: FridaScriptPresetName,
+    signal?: AbortSignal,
+  ): Promise<Result<Evidence, AnalysisError>> {
+    const operation = "load_frida_script_preset";
+    if (signal?.aborted)
+      return err(
+        new AnalysisCancelledError(operation, { cause: signal.reason }),
+      );
+    const selected = await readFridaScriptPreset(preset, operation);
+    if (!selected.ok) return selected;
+    const loaded = await this.#provider.loadScript(
+      sessionId,
+      { sourceKind: "inline", source: selected.value.source },
+      signal,
+    );
+    if (!loaded.ok && loaded.error instanceof FridaScriptLoadCancelledError)
+      return err(cancelledScriptEvidence(sessionId, loaded.error));
+    if (!loaded.ok) return loaded;
+    return ok(
+      fridaPresetEvidence(operation, {
+        session_id: sessionId,
+        script_id: loaded.value.scriptId,
+        preset: selected.value.name,
+        preset_title: selected.value.title,
+        script_sha256: selected.value.sha256,
+        script_bytes: selected.value.bytes,
+        detected_methods: [...selected.value.detectedMethods],
+        message_count: loaded.value.messages.length,
+        messages_truncated: loaded.value.messagesTruncated,
+      }),
+    );
+  }
+
   resumeSession(sessionId: string, signal?: AbortSignal) {
     return this.#provider.resumeSession(sessionId, signal);
   }
 
   unloadScript(sessionId: string, scriptId: string, signal?: AbortSignal) {
     return this.#provider.unloadScript(sessionId, scriptId, signal);
+  }
+
+  /** Report the target's own rpc-export inventory for one owned script. */
+  listRpcExports(
+    sessionId: string,
+    scriptId: string,
+  ): Result<Evidence, AnalysisError> {
+    const inventory = this.#provider.rpcInventory(sessionId, scriptId);
+    if (!inventory.ok) return inventory;
+    return ok(
+      fridaEvidence(
+        "frida_rpc_list",
+        {
+          session_id: sessionId,
+          script_id: scriptId,
+          state: inventory.value.state,
+          exports: inventory.value.exports.map(({ name, parameters }) => ({
+            name,
+            parameters,
+          })),
+          exports_truncated: inventory.value.exportsTruncated,
+        },
+        { session_id: sessionId, script_id: scriptId },
+      ),
+    );
+  }
+
+  async callRpc(
+    input: {
+      readonly sessionId: string;
+      readonly scriptId: string;
+      readonly method: string;
+      readonly arguments: readonly JsonValue[];
+      readonly timeoutMs: number;
+    },
+    signal?: AbortSignal,
+  ): Promise<Result<Evidence, AnalysisError>> {
+    if (signal?.aborted)
+      return err(
+        new AnalysisCancelledError("frida_rpc_call", { cause: signal.reason }),
+      );
+    const called = await this.#provider.callRpc(
+      input.sessionId,
+      input.scriptId,
+      {
+        method: input.method,
+        arguments: input.arguments,
+        timeoutMs: input.timeoutMs,
+      },
+      signal,
+    );
+    if (!called.ok) return called;
+    const evidence = fridaEvidence(
+      "frida_rpc_call",
+      {
+        session_id: called.value.sessionId,
+        script_id: called.value.scriptId,
+        method: called.value.method,
+        mutation_authority: {
+          kind: "session-grant" as const,
+          mode: called.value.mode,
+        },
+        value: called.value.value,
+        value_truncated: called.value.valueTruncated,
+        value_capture_limit: called.value.valueCaptureLimit,
+        duration_ms: called.value.durationMs,
+      },
+      {
+        session_id: input.sessionId,
+        script_id: input.scriptId,
+        method: input.method,
+      },
+    );
+    return signal?.aborted
+      ? err(
+          new AnalysisCancelledError("frida_rpc_call", {
+            cause: signal.reason,
+            partialObservation: evidence,
+          }),
+        )
+      : ok(evidence);
   }
 
   status(sessionId: string): FridaSessionStatus | undefined {
@@ -446,6 +571,44 @@ export class FridaInstrumentationService {
   }
 }
 
+const fridaPresetEvidence = (
+  operation: string,
+  result: {
+    readonly session_id: string;
+    readonly script_id: string;
+    readonly preset: string;
+    readonly preset_title: string;
+    readonly script_sha256: string;
+    readonly script_bytes: number;
+    readonly detected_methods: readonly string[];
+    readonly message_count: number;
+    readonly messages_truncated: boolean;
+  },
+): Evidence =>
+  createEvidence(
+    undefined,
+    { id: "frida", name: "Frida", version: null },
+    {
+      predicateType: "rea.frida.script-preset-load",
+      operation,
+      parameters: {
+        session_id: result.session_id,
+        preset: result.preset,
+      },
+      result,
+      confidence: "observed",
+      authority: "external-service",
+      environment: null,
+      limitations: [
+        "The preset is REA's own minimal reference agent, not a vendored upstream script: it hooks only the checks this release documents, and an unlisted check in the target keeps working",
+        `The loaded source is identified by its SHA-256 (${result.script_sha256}) only; the script text is never returned or recorded`,
+        "detected_methods is the preset's declared list of pinning or detection surfaces it addresses, not an observation of which ones this target implements; the target's own hook-status messages stay in the session message stream",
+        `The target operating system and architecture were not reported by this observation.`,
+        `The frida transport is REA's local Node binding; REA verified frida ${FRIDA_VERIFIED_VERSION} and does not attest other releases. Run rea doctor to read the observed binding release.`,
+      ],
+    },
+  );
+
 const fridaEvidence = (
   operation: string,
   result: unknown,
@@ -482,7 +645,7 @@ const fridaEvidence = (
         ...(script?.sourceRepresentation === undefined
           ? []
           : [
-              "Invalid UTF-8 in the selected script file was decoded with replacement characters. source_sha256 identifies the original file bytes; raw_result.source_representation.loaded_source_sha256 identifies the UTF-8 encoding of the string passed to Frida.",
+              "Invalid UTF-8 in the selected script file was decoded with replacement characters. source_sha256 identifies the original file bytes; raw_result.source_representation.loaded_source_sha256 identifies the UTF-8 encoding of the selected source, before REA appends its rpc-inventory epilogue.",
             ]),
       ],
     },

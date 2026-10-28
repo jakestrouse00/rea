@@ -77,6 +77,9 @@ const COMMAND_TIMEOUT_OPERATIONS = new Set<BrowserObservationOperation>([
   "capture_web_screenshot",
   "inspect_electron_page",
   "capture_browser_scenario",
+  "browser_evaluate",
+  "browser_request_rule_set",
+  "browser_fetch",
 ]);
 
 export const cdpCommandTimeoutIsSelectable = (

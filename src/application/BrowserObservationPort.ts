@@ -25,15 +25,24 @@ import type {
   BrowserCaptureComparisonInput,
 } from "../domain/browserCaptureComparison.js";
 import type {
+  BrowserEvaluateInput,
+  BrowserEvaluateResult,
+  BrowserFetchInput,
+  BrowserFetchResult,
+  BrowserRequestRuleClearInput,
+  BrowserRequestRuleClearResult,
+  BrowserRequestRuleSetInput,
+  BrowserRequestRuleSetResult,
+} from "../domain/browserMutation.js";
+import type {
   CaptureWebScreenshotInput,
   CompareWebScreenshotsInput,
   WebScreenshot,
   WebScreenshotDiff,
 } from "../domain/webScreenshot.js";
-import type { ProviderIdentity } from "./AnalysisProvider.js";
-import type { ExecutionOptions } from "./AnalysisProvider.js";
+import type { ProviderIdentity, ExecutionOptions } from "./AnalysisProvider.js";
 
-/** Provider-neutral application boundary for passive browser observation. */
+/** Provider-neutral application boundary for the browser observation and mutation lane. */
 export interface BrowserObservationPort {
   /** Release provider-owned transports during command or server shutdown. */
   close?(): Promise<void>;
@@ -68,4 +77,24 @@ export interface BrowserObservationPort {
   compareScreenshots(
     input: CompareWebScreenshotsInput,
   ): Promise<Result<WebScreenshotDiff, AnalysisError>>;
+  /** Evaluate one expression in an authorized main frame's main world. */
+  evaluatePage(
+    input: BrowserEvaluateInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<BrowserEvaluateResult, AnalysisError>>;
+  /** Arm one interception rule and keep its owned session until released. */
+  armRequestRule(
+    input: BrowserRequestRuleSetInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<BrowserRequestRuleSetResult, AnalysisError>>;
+  /** Release one armed rule, including any request it still holds. */
+  clearRequestRule(
+    input: BrowserRequestRuleClearInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<BrowserRequestRuleClearResult, AnalysisError>>;
+  /** Dispatch one page-context request through the replay send core. */
+  fetchPage(
+    input: BrowserFetchInput,
+    options?: ExecutionOptions,
+  ): Promise<Result<BrowserFetchResult, AnalysisError>>;
 }

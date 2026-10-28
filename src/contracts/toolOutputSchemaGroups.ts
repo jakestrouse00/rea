@@ -76,6 +76,7 @@ import { managedReconstructionImportResultSchema } from "../domain/managed/manag
 import { managedApplicationGraphResultSchema } from "../domain/managed/managedApplicationGraph.js";
 import { artifactComparisonResultSchema } from "../domain/artifactComparison.js";
 import { functionComparisonResultSchema } from "../domain/functionComparisonSchemas.js";
+import { binaryDiffResultSchema } from "../domain/bindiff/binaryDiff.js";
 import { bundleComparisonResultSchema } from "../domain/bundleComparison.js";
 import { changedBehaviorResultSchema } from "../domain/changedBehavior.js";
 import { callPathResultSchema } from "../domain/callPathSchemas.js";
@@ -104,6 +105,11 @@ import {
 } from "./toolOutputSchemaPrimitives.js";
 
 import { processCaptureSchema } from "../domain/process/processCapture.js";
+import {
+  labVmCommandResultSchema,
+  labVmStartResultSchema,
+  labVmStopResultSchema,
+} from "../domain/vmlab/labVmObservation.js";
 import { electronFuseReportSchema } from "../domain/electron/electronFuses.js";
 const contextFacetSchema = z.discriminatedUnion("state", [
   z.object({ state: z.literal("available"), value: jsonValueSchema }),
@@ -614,9 +620,13 @@ export const sessionOutputSchemas = {
     }),
   ),
   capture_process_scenario: evidenceResultOf(processCaptureSchema),
+  start_lab_vm: evidenceResultOf(labVmStartResultSchema),
+  run_lab_vm_command: evidenceResultOf(labVmCommandResultSchema),
+  stop_lab_vm: evidenceResultOf(labVmStopResultSchema),
   compare_process_captures: evidenceResultOf(processCaptureComparisonSchema),
   compare_artifacts: evidenceResultOf(artifactComparisonResultSchema),
   compare_functions: evidenceResultOf(functionComparisonResultSchema),
+  diff_binaries: evidenceResultOf(binaryDiffResultSchema),
   match_native_functions: evidenceResultOf(
     z.union([
       nativeFunctionMatchingSchema,

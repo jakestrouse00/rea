@@ -1,4 +1,18 @@
 import { PCAP_CAPTURE_UNSUPPORTED_HOST_REASON } from "../domain/pcap/pcapAnalysis.js";
+import {
+  EMU_BRIDGE_DIR_REMEDIATION,
+  EMU_PYTHON_ENV_REMEDIATION,
+} from "../domain/emu/emuLimits.js";
+import {
+  ANGR_BRIDGE_DIR_REMEDIATION,
+  ANGR_JOBS_ENV,
+  ANGR_PYTHON_ENV_REMEDIATION,
+} from "../domain/angr/angrLimits.js";
+import {
+  PROTOLEARN_BRIDGE_DIR_REMEDIATION,
+  PROTOLEARN_LAB_ENDPOINTS_REMEDIATION,
+  PROTOLEARN_PYTHON_ENV_REMEDIATION,
+} from "../domain/protolearn/protolearnLimits.js";
 import { DEFAULT_CALL_RELATIONSHIP_DIRECTION } from "../contracts/enhancedInputs.js";
 import { FIRMWARE_TOOL_REQUIREMENTS } from "../contracts/firmware/firmwareToolRequirements.js";
 import { CALL_RELATIONSHIP_TRAVERSALS } from "./CallRelationshipTraversal.js";
@@ -44,10 +58,22 @@ import {
   NO_CLIENT_FEATURES,
 } from "./CapabilityClientRequirements.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
+import { LAB_VM_COMMAND_REMEDIATION } from "../domain/vmlab/labVm.js";
+import { BENCH_LIMA_PROFILE_REMEDIATION } from "../domain/bench/benchLimits.js";
+import { REPLAY_ALLOWED_ORIGINS_REMEDIATION } from "../domain/replay/replayOrigins.js";
+import { MITM_TOOL_REMEDIATION } from "../domain/mitm/mitmLimits.js";
+import { FUZZING_TOOL_REMEDIATION } from "../domain/fuzzing/fuzzingEngine.js";
 
 const FRIDA_OPERATION_NAMES: ReadonlySet<string> = new Set(
   FRIDA_TOOL_CONTRACTS.map(({ name }) => name),
 );
+
+/** Session tools owned by the caller-supplied Lima lab-VM lane. */
+const LAB_VM_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "start_lab_vm",
+  "run_lab_vm_command",
+  "stop_lab_vm",
+]);
 
 const statusSchema = z.object({
   open: z.boolean(),
@@ -73,6 +99,7 @@ export const HOST_RESTRICTED_FEATURES = [
   "firmwareInspection",
   "firmwareExtraction",
   "javascriptRecovery",
+  "bleGatt",
 ] as const;
 export type HostRestrictedFeature = (typeof HOST_RESTRICTED_FEATURES)[number];
 
@@ -95,6 +122,24 @@ export type AvailabilityPolicy = {
   readonly firmwareExtractionEnabled?: boolean;
   readonly androidAnalysisAvailability?: ProviderAvailability;
   readonly adbAnalysisAvailability?: ProviderAvailability;
+  readonly ipswAnalysisAvailability?: ProviderAvailability;
+  readonly capaAnalysisAvailability?: ProviderAvailability;
+  readonly yaraAnalysisAvailability?: ProviderAvailability;
+  readonly goresymAnalysisAvailability?: ProviderAvailability;
+  readonly rustfiltAnalysisAvailability?: ProviderAvailability;
+  readonly dumpSymsAnalysisAvailability?: ProviderAvailability;
+  readonly dotnetDecompilerAvailability?: ProviderAvailability;
+  readonly pythonDecompilerAvailability?: ProviderAvailability;
+  readonly jvmDecompilerAvailability?: ProviderAvailability;
+  readonly v8BytecodeAvailability?: ProviderAvailability;
+  readonly protobufRecoveryAvailability?: ProviderAvailability;
+  readonly grpcReflectionAvailability?: ProviderAvailability;
+  readonly bindiffDiffAvailability?: ProviderAvailability;
+  readonly bindiffExportAvailability?: ProviderAvailability;
+  /** Fresh lab-VM owner observation: host support and the limactl selection. */
+  readonly labVmAvailability?: ProviderAvailability;
+  /** Fresh benchmark-harness observation: profile selection and lab-VM readiness. */
+  readonly benchAvailability?: ProviderAvailability;
   readonly apktoolAnalysisAvailability?: ProviderAvailability;
   readonly jebAnalysisAvailability?: JebAnalysisAvailability;
   readonly javascriptRecoveryEnabled?: boolean;
@@ -104,6 +149,30 @@ export type AvailabilityPolicy = {
   readonly electronObservationEnabled?: boolean;
   readonly electronAutomationEnabled?: boolean;
   readonly v8InspectorObservationEnabled?: boolean;
+  /** The active request plane is configured with at least one allowed origin. */
+  readonly replayEnabled?: boolean;
+  /** A mitmdump binary and a generated addon are selected. */
+  readonly mitmInterceptionEnabled?: boolean;
+  /** A Python interpreter and the Unicorn/Keystone bridge script are selected. */
+  readonly emuEmulationEnabled?: boolean;
+  /** A Python interpreter and the angr bridge script are selected. */
+  readonly angrSymbolicEnabled?: boolean;
+  /** At least one caller-supplied fuzzing engine is selected. */
+  readonly fuzzingCampaignEnabled?: boolean;
+  /** Fresh owner observation of the caller-selected objection launcher. */
+  readonly objectionAvailability?: ProviderAvailability;
+  /** Fresh owner observation of the caller-selected androguard interpreter. */
+  readonly androguardAvailability?: ProviderAvailability;
+  /** Fresh owner observation of the caller-selected iLEAPP/ALEAPP launcher. */
+  readonly ileAppAvailability?: ProviderAvailability;
+  /** A CoreBluetooth GATT helper or the bundled bleak bridge is selected. */
+  readonly bleGattEnabled?: boolean;
+  /** The probe interpreter, runner script, and lab allowlist are selected. */
+  readonly probeLearnedModelEnabled?: boolean;
+  /** The durable hunting queue is composed; it needs no external tool. */
+  readonly huntingQueueEnabled?: boolean;
+  /** A directory watcher is composed for watch sessions. */
+  readonly watchSessionEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -458,7 +527,8 @@ const workflowAvailabilityFor = ({
     name === "inspect_python_pyc" ||
     name === "inspect_apple_ips" ||
     name === "inspect_erlang_beam" ||
-    name === "inspect_electron_fuses"
+    name === "inspect_electron_fuses" ||
+    name === "inspect_asar_integrity"
   )
     return { reason: "available", remediation: null };
   if (name === "inspect_sqlite_database") {
@@ -498,6 +568,13 @@ const workflowAvailabilityFor = ({
             },
       ],
     };
+  if (BLE_GATT_TOOL_NAMES.has(name))
+    return hostRestrictedAvailability(
+      policy,
+      "bleGatt",
+      policy.bleGattEnabled,
+      BLE_GATT_REMEDIATION,
+    );
   if (name === "recover_javascript_sources")
     return hostRestrictedAvailability(
       policy,
@@ -597,6 +674,79 @@ const workflowAvailabilityFor = ({
       policy.adbAnalysisAvailability,
       "Set REA_ADB_PATH to a caller-supplied adb executable or make adb available on PATH. This checks the client version only; device and serial availability depend on the request.",
     );
+  if (kind === "ipsw-provider")
+    return ownerProbeAvailability(
+      policy.ipswAnalysisAvailability,
+      "Set REA_IPSW_COMMAND to a caller-supplied blacktop/ipsw binary (absolute path). This checks the CLI version only; an archive, shared cache, and output directory are still required per request.",
+    );
+  if (kind === "capa-provider")
+    return ownerProbeAvailability(
+      policy.capaAnalysisAvailability,
+      "Set REA_CAPA_COMMAND to a caller-supplied capa binary (absolute path). This checks the CLI version only; an executable path is still required per request.",
+    );
+  if (kind === "yara-provider")
+    return ownerProbeAvailability(
+      policy.yaraAnalysisAvailability,
+      "Set REA_YARAX_COMMAND to a caller-supplied YARA-X `yr` binary (absolute path). This checks the CLI version only; a target and rule file or directory are still required per request.",
+    );
+  if (kind === "symbol-provider") {
+    if (name === "recover_go_symbols")
+      return ownerProbeAvailability(
+        policy.goresymAnalysisAvailability,
+        "Set REA_GORESYM_COMMAND to a caller-supplied GoReSym binary (absolute path). This checks the selection only; a binary path is still required per request.",
+      );
+    if (name === "demangle_rust_name")
+      return ownerProbeAvailability(
+        policy.rustfiltAnalysisAvailability,
+        "Set REA_RUSTFILT_COMMAND to a caller-supplied rustfilt binary (absolute path) or make rustfilt available on PATH. This checks the selection only.",
+      );
+    return ownerProbeAvailability(
+      policy.dumpSymsAnalysisAvailability,
+      "Set REA_DUMP_SYMS_COMMAND to a caller-supplied dump_syms binary (absolute path). This checks the selection only; a binary path is still required per request.",
+    );
+  }
+  if (kind === "managed-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.dotnetDecompilerAvailability,
+      "Set REA_ILSPY_CMD_PATH to a caller-supplied ilspycmd executable (absolute path). This checks the CLI version only; an assembly path is still required per request.",
+    );
+  if (kind === "python-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.pythonDecompilerAvailability,
+      "Set REA_PYLINGUAL_COMMAND or REA_PYCDC_COMMAND to a caller-supplied Python decompiler (absolute path). This checks the selection only; a bytecode path is still required per request.",
+    );
+  if (kind === "jvm-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.jvmDecompilerAvailability,
+      "Set REA_VINEFLOWER_JAR to a caller-supplied Vineflower JAR (absolute path) and provide JDK 11 or newer through JAVA_HOME or PATH. This checks the JAR and Java version only; a container path is still required per request.",
+    );
+  if (kind === "v8-decompiler-provider")
+    return ownerProbeAvailability(
+      policy.v8BytecodeAvailability,
+      "Build View8 with its patched V8 disassembler for this host and set REA_VIEW8_COMMAND to an absolute path to the launcher. This checks the selection only; a cached-data path is still required per request.",
+    );
+  if (kind === "protobuf-provider") {
+    if (name === "enumerate_grpc_reflection")
+      return ownerProbeAvailability(
+        policy.grpcReflectionAvailability,
+        "Set REA_GRPCURL_COMMAND to a caller-supplied grpcurl binary (absolute path). This checks the selection only; a caller-declared endpoint is still required per request.",
+      );
+    return ownerProbeAvailability(
+      policy.protobufRecoveryAvailability,
+      "Set REA_PBTK_COMMAND or REA_PROTODUMP_COMMAND to a caller-supplied recovery tool (absolute path). This checks the selection only; an artifact path and output directory are still required per request.",
+    );
+  }
+  if (kind === "bindiff-provider") {
+    if (name === "diff_binaries")
+      return ownerProbeAvailability(
+        policy.bindiffDiffAvailability,
+        "Set REA_BINDIFF_COMMAND to a caller-supplied BinDiff adapter (absolute path). This checks the selection only; two retained artifact observations are still required per request.",
+      );
+    return ownerProbeAvailability(
+      policy.bindiffExportAvailability,
+      "Set REA_BINEXPORT_COMMAND to a caller-supplied BinExport exporter (absolute path). This checks the selection only; a binary path and output directory are still required per request.",
+    );
+  }
   if (kind === "apktool-provider")
     return ownerProbeAvailability(
       policy.apktoolAnalysisAvailability,
@@ -618,6 +768,8 @@ const workflowAvailabilityFor = ({
       "Start a JEB client serving MCP (GUI client, or headless via its programmatic launcher) and point REA_JEB_MCP_URL at it (default http://127.0.0.1:8425/mcp). REA does not install or launch JEB.",
     );
   }
+  const mobile = mobileToolchainAvailability(name, kind, policy);
+  if (mobile !== null) return mobile;
   const browser = browserProviderAvailability(name, kind, policy);
   if (browser !== null) return browser;
   if (name === "capture_process_scenario" && !policy.processCaptureEnabled)
@@ -645,6 +797,83 @@ const workflowAvailabilityFor = ({
           remediation:
             "Start REA with its JavaScript runtime provider available.",
         };
+  if (LAB_VM_TOOL_NAMES.has(name))
+    return ownerProbeAvailability(
+      policy.labVmAvailability,
+      LAB_VM_COMMAND_REMEDIATION,
+    );
+  if (kind === "benchmark-harness")
+    return ownerProbeAvailability(
+      policy.benchAvailability,
+      BENCH_LIMA_PROFILE_REMEDIATION,
+    );
+  if (kind === "mitm-provider") {
+    if (name === "proxy_replay_send")
+      return policy.replayEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+          };
+    return policy.mitmInterceptionEnabled === true
+      ? { reason: "available", remediation: null }
+      : { reason: "provider_missing", remediation: MITM_TOOL_REMEDIATION };
+  }
+  if (kind === "replay-provider")
+    return policy.replayEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
+        };
+  if (kind === "emulator")
+    return policy.emuEmulationEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: `${EMU_BRIDGE_DIR_REMEDIATION} ${EMU_PYTHON_ENV_REMEDIATION}`,
+        };
+  if (kind === "protocol-learning") {
+    if (name === "probe_learned_model")
+      return policy.probeLearnedModelEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation: `${PROTOLEARN_PYTHON_ENV_REMEDIATION} ${PROTOLEARN_BRIDGE_DIR_REMEDIATION} ${PROTOLEARN_LAB_ENDPOINTS_REMEDIATION}`,
+          };
+    return { reason: "available", remediation: null };
+  }
+  if (kind === "symbolic-engine")
+    return policy.angrSymbolicEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: `${ANGR_BRIDGE_DIR_REMEDIATION} ${ANGR_PYTHON_ENV_REMEDIATION} ${ANGR_JOBS_ENV} caps concurrent jobs in the same environment.`,
+        };
+  if (kind === "fuzzing-provider")
+    return policy.fuzzingCampaignEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: FUZZING_TOOL_REMEDIATION,
+        };
+  if (kind === "hunting-queue") {
+    if (name === "start_watch_session" || name === "stop_watch_session")
+      return policy.watchSessionEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation:
+              "Start REA with its directory watcher composed. This release watches no other source kind.",
+          };
+    return policy.huntingQueueEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation:
+            "The durable hunting queue could not be composed; check that the REA home state directory is writable.",
+        };
+  }
   if (kind === "session") return { reason: "available", remediation: null };
   return null;
 };
@@ -708,6 +937,42 @@ const electronProviderAvailability = (
       };
 };
 
+/** BLE GATT session operations, gated on a selected helper and this host. */
+const BLE_GATT_TOOL_NAMES: ReadonlySet<string> = new Set([
+  "connect_ble_gatt",
+  "read_gatt_characteristic",
+  "write_gatt_characteristic",
+  "observe_gatt_notifications",
+  "enumerate_gatt_services",
+  "subscribe_characteristic",
+  "close_ble_gatt",
+]);
+
+const BLE_GATT_REMEDIATION =
+  "BLE GATT sessions need macOS CoreBluetooth (the peripheral identifiers, delegate callbacks, and permission prompts this lane drives are macOS-only) plus a selected helper: an absolute REA_BLE_GATT_PATH CoreBluetooth helper or an absolute REA_BLEAK_PYTHON interpreter for the bundled bleak bridge. REA never installs, builds, pairs, or retries.";
+
+const mobileToolchainAvailability = (
+  name: string,
+  kind: ToolKind,
+  policy: AvailabilityPolicy,
+): Availability | null => {
+  if (kind !== "mobile-toolchain-provider") return null;
+  if (name === "run_objection_recipe")
+    return ownerProbeAvailability(
+      policy.objectionAvailability,
+      "Set REA_OBJECTION_COMMAND to a caller-installed objection launcher (absolute path). objection is GPL-3.0 and runs as a subprocess only.",
+    );
+  if (name === "run_mobile_forensics_report")
+    return ownerProbeAvailability(
+      policy.ileAppAvailability,
+      "Set REA_ILEAPP_COMMAND to a caller-installed iLEAPP or ALEAPP launcher (absolute path) and pass an existing output directory.",
+    );
+  return ownerProbeAvailability(
+    policy.androguardAvailability,
+    "Set REA_ANDROGUARD_PYTHON to a Python 3 interpreter that imports androguard 5.x, or select another bridge directory with REA_ANDROGUARD_BRIDGE_DIR.",
+  );
+};
+
 const browserProviderAvailability = (
   name: string,
   kind: ToolKind,
@@ -720,6 +985,13 @@ const browserProviderAvailability = (
           reason: "provider_missing",
           remediation:
             "Start REA with its browser scenario provider available.",
+        };
+  if (name === "browser_fetch")
+    return policy.replayEnabled === true
+      ? { reason: "available", remediation: null }
+      : {
+          reason: "provider_missing",
+          remediation: REPLAY_ALLOWED_ORIGINS_REMEDIATION,
         };
   if (kind !== "browser-provider") return null;
   return policy.browserObservationEnabled === true

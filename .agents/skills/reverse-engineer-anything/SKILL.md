@@ -336,6 +336,40 @@ explicit path or endpoint and do not need it.
 - Native executable, library, or analysis database: `open_binary`, then
   use focused analysis tools directly; call `binary_overview` when metadata or
   inventory context is useful and available from the selected provider.
+- Saved capture of an unknown protocol: `learn_protocol_model` with an explicit
+  pcap/pcapng path (through the packet-capture lane) or an aioquic JSON qlog 0.3
+  path (through the owned capture decoder). Keep `model_directory` so the probe
+  and export operations can read the model back. The result names message
+  classes with field-type sketches, states that are bounded suffixes of the
+  observed class sequence, and counted transitions; no payload value appears.
+  Then `probe_learned_model` against one operator-allowlisted **loopback** lab
+  socket (`REA_PROTOLEARN_LAB_ENDPOINTS`, `REA_PROTOLEARN_PYTHON`,
+  `REA_PROTOLEARN_BRIDGE_DIR`) for consistent, divergent, unmodeled, or unstable
+  verdicts, or `export_protocol_grammar` for structure-aware seeds and the
+  `rea.fuzzing.campaign-seeds/v1` handoff. Treat a learned state as observed,
+  never as required. See the
+  [protocol learning guide](https://github.com/morluto/rea/blob/main/docs/protocol-learning.md).
+- Several targets and a long analysis plan: `schedule_investigation_batch` with
+  each target's completion ledger and residual-unknown identities, then
+  `run_scheduled_batch` once per unit inside a budget. Ordering comes from those
+  facts, so pass the ledger you already have instead of a hand-written priority.
+  `re-analysis` units run over the server's **admitted** target, so open that
+  target first; `fuzz-campaign`, `probe`, and `replay` units need the campaign,
+  lab allowlist, or live session they name. A unit that reaches its deadline or
+  a batch that reaches its budget reports a typed stop and stays queued — read
+  `read_hunting_queue` and admit it again instead of rescheduling. Watch a build
+  directory with `start_watch_session` when the artifact changes under you; it
+  queues re-analysis rather than analyzing inside the watch, and
+  `stop_watch_session` releases it. See the
+  [hunting queue guide](https://github.com/morluto/rea/blob/main/docs/hunting-queue.md).
+- A benchmark or CTF task: `run_bench_task` boots the lab-VM profile named by
+  `REA_BENCH_LIMA_PROFILE` (`nyu-ctf-bench` or `cybench`), runs your containerized
+  task in `/workspace`, and reports whether the flag digest or recorded POV bit
+  matched. Pass `expected_flag_sha256`, never the flag value, and keep the harness
+  writing `/workspace/.rea-bench/outcome.json`. A missing outcome or a command
+  stopped at `budget_seconds` is unknown, not unsolved; a result with
+  `vm.stopped: false` means retry `stop_lab_vm` before another run. See the
+  [benchmark harness guide](https://github.com/morluto/rea/blob/main/docs/benchmark-harness.md).
 
 For an existing IDA MCP configuration, use `open_binary` with the original
 input binary and `provider_id: "ida"`; do not pass an `.idb` or `.i64` database.

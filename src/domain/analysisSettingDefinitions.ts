@@ -26,6 +26,23 @@ import {
   DEFAULT_WASM_COMMAND_TIMEOUT_MS,
   MAX_WASM_COMMAND_TIMEOUT_MS,
 } from "./wasm/wasmArtifact.js";
+import { DEFAULT_ANGR_OPERATION_TIMEOUT_MS } from "./angr/angrLimits.js";
+import {
+  FUZZING_DEFAULT_MAX_CAMPAIGN_SECONDS,
+  FUZZING_PROVIDER,
+} from "./fuzzing/fuzzingEngine.js";
+import { CRASH_TRIAGE_MAX_SECONDS } from "./crashTriage/fuzzingCampaign.js";
+import {
+  HUNTING_DEFAULT_BATCH_SECONDS,
+  HUNTING_DEFAULT_UNIT_SECONDS,
+  HUNTING_LIMITS,
+  HUNTING_PROVIDER,
+} from "./hunting/huntingLimits.js";
+import {
+  DEFAULT_PROTOLEARN_PROBE_TIMEOUT_MS,
+  PROTOLEARN_LIMITS,
+  PROTOLEARN_PROBE_TIMEOUT_ENV,
+} from "./protolearn/protolearnLimits.js";
 interface SettingDefinition {
   readonly environment?: string;
   readonly defaultValue: number | null;
@@ -137,6 +154,25 @@ export const ANALYSIS_SETTINGS = {
       "trace_android_references",
     ],
   },
+  "angr.operation_timeout_ms": {
+    ...timer,
+    environment: "REA_ANGR_OPERATION_TIMEOUT_MS",
+    defaultValue: DEFAULT_ANGR_OPERATION_TIMEOUT_MS,
+    provider: "angr",
+    operations: [
+      "find_paths_to_target",
+      "run_symbolic_function_exploration",
+      "recover_control_flow_angr",
+    ],
+  },
+  "protolearn.probe_timeout_ms": {
+    ...timer,
+    environment: PROTOLEARN_PROBE_TIMEOUT_ENV,
+    defaultValue: DEFAULT_PROTOLEARN_PROBE_TIMEOUT_MS,
+    maximum: PROTOLEARN_LIMITS.maxProbeTimeoutMs,
+    provider: "protolearn",
+    operations: ["probe_learned_model"],
+  },
   "regex.matching_deadline_ms": {
     ...timer,
     environment: "REA_REGEX_MATCHING_DEADLINE_MS",
@@ -191,6 +227,33 @@ export const ANALYSIS_SETTINGS = {
     provider: "wabt-artifact",
     operations: ["inspect_wasm_artifact"],
     parameter: "command_timeout_ms",
+  },
+  "fuzzing.max_campaign_seconds": {
+    defaultValue: FUZZING_DEFAULT_MAX_CAMPAIGN_SECONDS,
+    minimum: 1,
+    maximum: CRASH_TRIAGE_MAX_SECONDS,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: FUZZING_PROVIDER.id,
+    operations: ["start_fuzzing_campaign"],
+  },
+  "hunting.max_unit_seconds": {
+    defaultValue: HUNTING_DEFAULT_UNIT_SECONDS,
+    minimum: 1,
+    maximum: HUNTING_LIMITS.maxUnitSeconds,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: HUNTING_PROVIDER.id,
+    operations: ["run_scheduled_batch"],
+  },
+  "hunting.max_batch_seconds": {
+    defaultValue: HUNTING_DEFAULT_BATCH_SECONDS,
+    minimum: 1,
+    maximum: HUNTING_LIMITS.maxBatchSeconds,
+    unit: "seconds",
+    appliesAt: "next_operation",
+    provider: HUNTING_PROVIDER.id,
+    operations: ["schedule_investigation_batch", "start_watch_session"],
   },
 } as const satisfies Record<AnalysisSettingId, SettingDefinition>;
 export const analysisSettingIds = Object.keys(

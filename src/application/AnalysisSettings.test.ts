@@ -157,3 +157,36 @@ it("exposes shared provider controls and preserves the explicit unbounded decomp
   ).toBe(true);
   expect(config.ghidraDecompileTimeoutSeconds).toBe(7);
 });
+
+it("admits the fuzzing campaign wall-clock cap as an editable budget", () => {
+  const store = new AnalysisSettings({});
+  const inspect = () =>
+    store.inspect({ settings: ["fuzzing.max_campaign_seconds"] });
+  expect(inspect().settings[0]).toMatchObject({
+    value: 900,
+    source: "default",
+    unit: "seconds",
+    minimum: 1,
+    maximum: 2_419_200,
+    applies_at: "next_operation",
+    provider: "rea-fuzzing-campaign",
+    operations: ["start_fuzzing_campaign"],
+  });
+  expect(
+    store.update({
+      changes: [
+        { setting: "fuzzing.max_campaign_seconds", action: "set", value: 60 },
+      ],
+    }),
+  ).toMatchObject({
+    ok: true,
+    value: { changed: true, settings: [{ value: 60, source: "runtime" }] },
+  });
+  expect(
+    store.update({
+      changes: [
+        { setting: "fuzzing.max_campaign_seconds", action: "set", value: 0 },
+      ],
+    }),
+  ).toMatchObject({ ok: false });
+});

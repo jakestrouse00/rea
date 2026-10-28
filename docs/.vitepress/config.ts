@@ -56,7 +56,53 @@ export default defineConfig({
           { text: "Agent environments", link: "/agent-environments" },
           { text: "Electron observation", link: "/electron-observation" },
           { text: "Electron fuses", link: "/electron-fuses" },
+          { text: "ASAR integrity", link: "/asar-integrity" },
           { text: "Process capture", link: "/process-capture" },
+          { text: "Lab VMs", link: "/lab-vms" },
+          { text: "Crash triage", link: "/crash-triage" },
+          { text: "Fuzzing campaigns", link: "/fuzzing-campaigns" },
+          { text: "libFuzzer adapter", link: "/fuzzing-libfuzzer" },
+          { text: "AFL++ FRIDA adapter", link: "/fuzzing-aflpp-frida" },
+          { text: "Jackalope adapter", link: "/fuzzing-jackalope" },
+          { text: "HTTP replay", link: "/replay-client" },
+          {
+            text: "mitmproxy interception",
+            link: "/mitm-interception",
+          },
+          { text: "Isolated emulation", link: "/emulation" },
+          {
+            text: "Symbolic execution",
+            link: "/angr-symbolic-execution",
+          },
+          {
+            text: "LIEF deep parse",
+            link: "/lief-deep-parse",
+          },
+          { text: "Frida script presets", link: "/frida-script-presets" },
+          {
+            text: "Mobile runtime and forensics toolchain",
+            link: "/mobile-runtime-toolchain",
+          },
+          {
+            text: "Protocol learning",
+            link: "/protocol-learning",
+          },
+          {
+            text: "Hunting queue",
+            link: "/hunting-queue",
+          },
+          {
+            text: "Benchmark harness",
+            link: "/benchmark-harness",
+          },
+          {
+            text: "Autonomous execution policy",
+            link: "/autonomous-execution",
+          },
+          {
+            text: "Autonomy walkthrough",
+            link: "/autonomy-walkthrough",
+          },
           { text: ".NET assemblies", link: "/managed-code-analysis" },
           {
             text: "Python packaged applications",

@@ -54,6 +54,26 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
     "reads an embedded dependency list without executing the target",
   inspect_python_pyc:
     "states that it does not execute bytecode or invoke CPython",
+  analyze_binary_capabilities:
+    "runs a caller-selected capa binary over the file, not target code",
+  scan_artifact_with_rules:
+    "runs a caller-selected YARA-X binary, not the scanned bytes",
+  recover_go_symbols: "runs a caller-selected GoReSym binary, not the target",
+  demangle_rust_name: "runs a caller-selected rustfilt binary, not a target",
+  generate_symbol_table:
+    "runs a caller-selected dump_syms binary, not the target",
+  decompile_dotnet_assembly:
+    "runs a caller-selected ilspycmd binary over the assembly, not its code",
+  decompile_python_bytecode:
+    "runs a caller-selected decompiler over bytecode, not the recovered module",
+  decompile_jar_class:
+    "runs a caller-selected Vineflower JAR over one class, not the class code",
+  decompile_jar_archive:
+    "runs a caller-selected Vineflower JAR over a container, not its classes",
+  decompile_v8_bytecode:
+    "runs a caller-selected View8 build over cached data, not the disassembled code",
+  recover_proto_definitions:
+    "runs a caller-selected recovery tool over the artifact, not its code",
   inspect_erlang_beam: "states that it does not execute bytecode",
   inspect_sqlite_database:
     "uses a trusted inspector worker without executing application code or caller SQL",
@@ -133,6 +153,30 @@ const EXECUTION_WORDING_EXCEPTIONS: Readonly<Record<string, string>> = {
   list_ios_apps: "states it performs no install, removal, or data access",
   inspect_ios_provisioning: "states it has no install or removal path at all",
   inspect_apk_signature: "states that no Android code executes",
+  analyze_apk_structure:
+    "runs a caller-supplied androguard bridge over the file, never the application",
+  run_mobile_forensics_report:
+    "runs a caller-supplied forensics launcher over a caller-held extraction; no target code executes",
+  start_lab_vm:
+    "launches a caller-selected limactl that boots an isolated guest; no target code runs on this host",
+  register_fuzzing_campaign:
+    "states it starts no engine and executes no target; it records caller-supplied identity only",
+  read_campaign_status:
+    "states this release starts no engine, so counters describe retained records rather than a run outcome",
+  list_crash_dedups:
+    "states grouping observes stored frames; no engine runs and no target executes",
+  emulate_function_isolated:
+    "states the selected bytes run only inside Unicorn's CPU and memory model; no instruction executes natively on the host",
+  find_paths_to_target:
+    "states one angr job runs in REA's own sidecar over angr's memory model; no instruction executes on or is written to the target",
+  run_symbolic_function_exploration:
+    "states one angr job runs in REA's own sidecar over angr's memory model; no instruction executes on or is written to the target",
+  recover_control_flow_angr:
+    "states angr loads the artifact in REA's own sidecar for static recovery; no target instruction runs and no live process is driven",
+  inspect_binary_deep:
+    "runs only the caller-supplied interpreter with the copied bridge script; the selected artifact is parsed, never executed",
+  extract_pdb_dwarf_info:
+    "states REA never installs LIEF; the same caller-supplied interpreter runs the copied bridge script and no target code executes",
 };
 
 const declaresForeignAuthority = (name: string): boolean => {
@@ -191,6 +235,8 @@ describe("tool effects", () => {
       ({ effects }) => effects.executesForeignCode || effects.mutatesDevice,
     );
     expect(destructive.map(({ name }) => name).sort()).toEqual([
+      "browser_evaluate",
+      "browser_fetch",
       "capture_browser_scenario",
       "capture_electron_scenario",
       "capture_native_ui_scenario",
@@ -200,17 +246,24 @@ describe("tool effects", () => {
       "close_rizin_debug_session",
       "cutter_command",
       "execute_rizin_command",
+      "frida_rpc_call",
       "gdb_console",
       "install_adb_package",
       "instrument_with_frida",
       "load_frida_script",
+      "load_frida_script_preset",
       "observe_native_calls",
       "observe_serial_port",
       "push_adb_file",
       "resume_frida_session",
       "rizin_debug_command",
+      "run_bench_task",
+      "run_lab_vm_command",
+      "run_objection_recipe",
+      "run_scheduled_batch",
       "start_adb_activity",
       "start_adb_app",
+      "start_fuzzing_campaign",
       "start_rizin_debug_session",
       "stop_adb_app",
       "uninstall_adb_package",
@@ -254,6 +307,22 @@ describe("tool effects", () => {
         idempotentHint: true,
         openWorldHint: false,
       });
+  });
+
+  it("never advertises a retrying replay close as a safe no-op", () => {
+    for (const name of [
+      "http_replay_session_start",
+      "http_replay_send",
+      "http_replay_session_close",
+    ] as const) {
+      expect(TOOL_EFFECTS[name]?.idempotent, name).toBe(false);
+      expect(
+        TOOL_CONTRACTS.find((contract) => contract.name === name)?.annotations
+          .idempotentHint,
+        name,
+      ).toBe(false);
+    }
+    expect(TOOL_EFFECTS["http_replay_session_status"]?.idempotent).toBe(true);
   });
 
   it("marks automatic GDB detach as destructive target execution", () => {

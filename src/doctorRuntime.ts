@@ -13,6 +13,7 @@ import { inspectIdeviceProvider } from "./idevice/IdeviceDoctor.js";
 import { inspectDiscoveryProvider } from "./discovery/DiscoveryDoctor.js";
 import { inspectWindowsArtifacts } from "./windows/WindowsArtifactsDoctor.js";
 import { inspectLlvmPdbutil } from "./pdb/PdbDoctor.js";
+import { inspectLiefProvider } from "./lief/LiefDoctor.js";
 import { readIdaConfiguration } from "./ida/IdaConfiguration.js";
 import { parseJebMcpEndpoint } from "./jeb/JebMcpEndpoint.js";
 import { selectLinuxPrivateDisplayStrategy } from "./hopper/LinuxPrivateDisplayProbe.js";
@@ -121,6 +122,7 @@ export const createSystemDoctorHost = (
       }),
       await inspectLlvmPdbutil(environment),
       await inspectWindowsArtifacts(),
+      await inspectLiefProvider(environment),
     ],
     linuxDemoRuntimeCheck: (resourceScope, inspectionSignal) =>
       inspectLinuxHopperDemoRuntime(

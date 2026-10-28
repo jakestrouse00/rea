@@ -195,31 +195,7 @@ describe("GattSessionManager.open", () => {
   });
 });
 
-describe("GattSessionManager.command", () => {
-  it("collects one read digest and drops the payload hex unless opted in", async () => {
-    const gattChild = new FakeChild();
-    const { manager, opened } = await openFixture(gattChild);
-    const readPromise = manager.command(
-      opened.session_id,
-      "read_gatt_characteristic",
-      { op: "read", service: "180A", characteristic: "2A29" },
-      commandLimits,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(gattChild.written.at(-1)).toContain('"op":"read"');
-    gattChild.emit('{"event":"value","payload_hex":"31302f"}');
-    const value = await readPromise;
-    expect(value.ok).toBe(true);
-    if (!value.ok) return;
-    expect(value.value.payload).toMatchObject({
-      len: 3,
-      payload_hex: null,
-    });
-    expect(value.value.payload?.sha256).toEqual(
-      expect.stringMatching(/^[0-9a-f]{64}$/u),
-    );
-  });
-
+describe("GattSessionManager notification rows", () => {
   it("collects notification rows up to the window's end", async () => {
     const gattChild = new FakeChild();
     const { manager, opened } = await openFixture(gattChild);
@@ -258,6 +234,64 @@ describe("GattSessionManager.command", () => {
     expect(window.value.unparsed_lines).toEqual([
       '{"event":"stray","payload_hex":"zz"}',
     ]);
+    // The row's framing survives; its bytes reach Evidence only through the
+    // opted-in payload_hex field, never through raw.
+    expect(window.value.notifications.map((row) => row.raw)).toEqual([
+      '{"event":"notification","ts":"2026-10-28T05:00:00.000Z"}',
+      '{"event":"notification","ts":"2026-10-28T05:00:01.000Z"}',
+    ]);
+  });
+
+  it("withholds notification bytes from raw when the caller did not opt in", async () => {
+    const gattChild = new FakeChild();
+    const { manager, opened } = await openFixture(gattChild);
+    const observePromise = manager.command(
+      opened.session_id,
+      "observe_gatt_notifications",
+      { op: "observe", service: "180A", characteristic: "2A29", seconds: 2 },
+      {
+        deadlineMs: 10_000,
+        signal: undefined,
+        includePayloadHex: false,
+        collectNotifications: true,
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    gattChild.emit(
+      '{"event":"notification","ts":"2026-10-28T05:00:00.000Z","payload_hex":"c0ffee"}',
+    );
+    gattChild.emit('{"event":"window_end"}');
+    const window = await observePromise;
+    expect(window.ok).toBe(true);
+    if (!window.ok) return;
+    expect(window.value.notifications[0]!.payload_hex).toBeNull();
+    expect(JSON.stringify(window.value)).not.toContain("c0ffee");
+  });
+});
+
+describe("GattSessionManager.command", () => {
+  it("collects one read digest and drops the payload hex unless opted in", async () => {
+    const gattChild = new FakeChild();
+    const { manager, opened } = await openFixture(gattChild);
+    const readPromise = manager.command(
+      opened.session_id,
+      "read_gatt_characteristic",
+      { op: "read", service: "180A", characteristic: "2A29" },
+      commandLimits,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(gattChild.written.at(-1)).toContain('"op":"read"');
+    gattChild.emit('{"event":"value","payload_hex":"31302f"}');
+    const value = await readPromise;
+    expect(value.ok).toBe(true);
+    if (!value.ok) return;
+    expect(value.value.payload).toMatchObject({
+      len: 3,
+      payload_hex: null,
+    });
+    expect(value.value.payload?.sha256).toEqual(
+      expect.stringMatching(/^[0-9a-f]{64}$/u),
+    );
   });
 
   it("maps the helper's refusal of a command to a structured failure", async () => {

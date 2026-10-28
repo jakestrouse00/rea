@@ -69,6 +69,13 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
     timeout_ms: 30_000,
     finalization_ms: 1_500,
   },
+  start_lab_vm: { workspace_path: "/tmp/rea-lab-workspace" },
+  run_lab_vm_command: {
+    session_id: "00000000-0000-4000-8000-000000000001",
+    command: "uname -a && cc --version",
+    command_timeout_ms: 30_000,
+  },
+  stop_lab_vm: { session_id: "00000000-0000-4000-8000-000000000001" },
   compare_process_captures: {
     left: PROCESS_CAPTURE_REFERENCE,
     right: PROCESS_CAPTURE_RECONSTRUCTION,
@@ -84,6 +91,10 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
   compare_functions: {
     left: FUNCTION_COMPARISON_EXAMPLE.left,
     right: FUNCTION_COMPARISON_EXAMPLE.right,
+  },
+  diff_binaries: {
+    left: { kind: "retained-evidence", evidence_id: `ev_${"1".repeat(64)}` },
+    right: { kind: "retained-evidence", evidence_id: `ev_${"2".repeat(64)}` },
   },
   compare_bundles: {
     left_bundle_path: "/tmp/left-evidence.json",

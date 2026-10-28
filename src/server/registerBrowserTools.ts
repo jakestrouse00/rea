@@ -24,6 +24,12 @@ import {
   listBrowserTargets,
   observeWebSession,
 } from "../application/BrowserObservationService.js";
+import {
+  armBrowserRequestRule,
+  clearBrowserRequestRule,
+  evaluateBrowserPage,
+  fetchBrowserPage,
+} from "../application/BrowserMutationService.js";
 import type { ProgressReporter } from "../application/ProgressReporter.js";
 import { toolContract } from "../contracts/toolContracts.js";
 import type { ToolContract } from "../contracts/toolContractTypes.js";
@@ -67,6 +73,10 @@ export const registerBrowserTools = (
   const captureDiffContract = toolContract("compare_web_captures");
   const screenshotContract = toolContract("capture_web_screenshot");
   const screenshotDiffContract = toolContract("compare_web_screenshots");
+  const evaluateContract = toolContract("browser_evaluate");
+  const ruleSetContract = toolContract("browser_request_rule_set");
+  const ruleClearContract = toolContract("browser_request_rule_clear");
+  const fetchContract = toolContract("browser_fetch");
 
   server.registerTool(
     listContract.name,
@@ -189,6 +199,57 @@ export const registerBrowserTools = (
         screenshotDiffContract,
         { input, context },
         (parsed) => compareWebScreenshotEvidence(options.browser, parsed),
+      ),
+  );
+  server.registerTool(
+    evaluateContract.name,
+    toolRegistrationOptions(evaluateContract),
+    (input, context) =>
+      runBrowserTool(
+        registration,
+        evaluateContract,
+        { input, context },
+        (parsed, { signal, progress }) =>
+          evaluateBrowserPage(options.browser, parsed, { signal, progress }),
+      ),
+  );
+  server.registerTool(
+    ruleSetContract.name,
+    toolRegistrationOptions(ruleSetContract),
+    (input, context) =>
+      runBrowserTool(
+        registration,
+        ruleSetContract,
+        { input, context },
+        (parsed, { signal, progress }) =>
+          armBrowserRequestRule(options.browser, parsed, { signal, progress }),
+      ),
+  );
+  server.registerTool(
+    ruleClearContract.name,
+    toolRegistrationOptions(ruleClearContract),
+    (input, context) =>
+      runBrowserTool(
+        registration,
+        ruleClearContract,
+        { input, context },
+        (parsed, { signal, progress }) =>
+          clearBrowserRequestRule(options.browser, parsed, {
+            signal,
+            progress,
+          }),
+      ),
+  );
+  server.registerTool(
+    fetchContract.name,
+    toolRegistrationOptions(fetchContract),
+    (input, context) =>
+      runBrowserTool(
+        registration,
+        fetchContract,
+        { input, context },
+        (parsed, { signal, progress }) =>
+          fetchBrowserPage(options.browser, parsed, { signal, progress }),
       ),
   );
 };

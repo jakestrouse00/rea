@@ -10,6 +10,40 @@ import { FRIDA_TOOL_CONTRACTS } from "../../../src/contracts/fridaToolContracts.
 import type { FridaInstrumentationPort } from "../../../src/application/frida/FridaInstrumentationPort.js";
 import { AnalysisCapabilityUnavailableError } from "../../../src/domain/analysisErrorCore.js";
 import { FridaInstrumentationManager } from "../../../src/frida/FridaInstrumentationManager.js";
+import { FRIDA_RPC_INVENTORY_EPILOGUE } from "../../../src/frida/fridaRpcInventory.js";
+
+/** The one-shot CLI lane never reaches the remote-export tools. */
+const unusedRpcPort = () => ({
+  rpcInventory() {
+    return {
+      ok: true as const,
+      value: {
+        state: "unreported" as const,
+        exports: [],
+        exportsTruncated: false,
+      },
+    };
+  },
+  async callRpc(
+    sessionId: string,
+    scriptId: string,
+    request: { method: string },
+  ) {
+    return {
+      ok: true as const,
+      value: {
+        sessionId,
+        scriptId,
+        method: request.method,
+        mode: "attach" as const,
+        value: null,
+        valueTruncated: false,
+        valueCaptureLimit: null,
+        durationMs: 0,
+      },
+    };
+  },
+});
 
 it.each([
   { devices: [], cleanupError: null },
@@ -161,6 +195,7 @@ it("maps one-shot Frida CLI target, script, duration, and remote options", async
     async unloadScript() {
       return { ok: true, value: null };
     },
+    ...unusedRpcPort(),
     status(sessionId) {
       return {
         sessionId,
@@ -354,7 +389,9 @@ it("keeps Frida script-file identity in original bytes when UTF-8 decoding repla
       const bytes = files.find((file) => file.name === name)?.bytes;
       if (bytes === undefined) throw new Error(`Missing fixture ${name}`);
       const decodedSource = bytes.toString("utf8");
-      expect(loadedSources.at(-1)).toBe(decodedSource);
+      expect(loadedSources.at(-1)).toBe(
+        `${decodedSource}${FRIDA_RPC_INVENTORY_EPILOGUE}`,
+      );
       const rawDigest = createHash("sha256").update(bytes).digest("hex");
       const loadedSourceDigest = createHash("sha256")
         .update(decodedSource, "utf8")

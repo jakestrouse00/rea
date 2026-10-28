@@ -26,6 +26,7 @@ export interface DiscoveryInstallation {
     readonly bleScanner: string | null;
     readonly wifiScanner: string | null;
     readonly bleGatt: string | null;
+    readonly bleakPython: string | null;
     readonly stty: string | null;
     readonly packetCapture: string | null;
   };
@@ -111,6 +112,12 @@ export const inspectDiscoveryInstallation = async (
     if (await probeExecutable(value.bleGatt)) bleGatt = value.bleGatt;
   }
 
+  let bleakPython: string | null = null;
+  if (value.bleakPython !== null) {
+    if (await probeExecutable(value.bleakPython))
+      bleakPython = value.bleakPython;
+  }
+
   let stty: string | null = null;
   if (value.stty !== null) {
     if (await probeExecutable(value.stty)) stty = value.stty;
@@ -135,6 +142,7 @@ export const inspectDiscoveryInstallation = async (
       bleScanner,
       wifiScanner,
       bleGatt,
+      bleakPython,
       stty,
       packetCapture,
     },

@@ -43,10 +43,32 @@ import { GDB_TOOL_CONTRACTS } from "./gdbToolContracts.js";
 import { RIZIN_DEBUG_TOOL_CONTRACTS } from "./rizinDebugToolContracts.js";
 import { FRIDA_TOOL_CONTRACTS } from "./fridaToolContracts.js";
 import { WINDOWS_ARTIFACTS_TOOL_CONTRACTS } from "./windowsArtifacts/windowsArtifactsToolContracts.js";
+import { LIEF_TOOL_CONTRACTS } from "./lief/liefToolContracts.js";
 import { NATIVE_AOT_TOOL_CONTRACTS } from "./managed/nativeAotToolContracts.js";
 import { GAME_DATA_TOOL_CONTRACTS } from "./gamedata/gamedataToolContracts.js";
 import { CONTAINER_TOOL_CONTRACTS } from "./containers/containersToolContracts.js";
 import { IDEVICE_TOOL_CONTRACTS } from "./idevice/ideviceToolContracts.js";
+import { IPSW_TOOL_CONTRACTS } from "./iosipsw/IpswToolContracts.js";
+import { CAPA_TOOL_CONTRACTS } from "./capa/capaToolContracts.js";
+import { YARA_TOOL_CONTRACTS } from "./yara/yaraToolContracts.js";
+import { SYMBOL_TOOL_CONTRACTS } from "./symbols/symbolToolContracts.js";
+import { DOTNET_DECOMPILER_TOOL_CONTRACTS } from "./manageddecomp/dotnetDecompilerToolContracts.js";
+import { PYTHON_DECOMPILER_TOOL_CONTRACTS } from "./pysrc/pythonDecompilerToolContracts.js";
+import { JVM_DECOMPILER_TOOL_CONTRACTS } from "./jvmdecomp/jvmDecompilerToolContracts.js";
+import { V8_BYTECODE_TOOL_CONTRACTS } from "./javascript/v8BytecodeToolContracts.js";
+import { ASAR_INTEGRITY_TOOL_CONTRACTS } from "./electron/asarIntegrityToolContracts.js";
+import { PROTOBUF_RECOVERY_TOOL_CONTRACTS } from "./protobufrecovery/protobufRecoveryToolContracts.js";
+import { BINDIFF_TOOL_CONTRACTS } from "./bindiff/bindiffToolContracts.js";
+import { CRASH_TRIAGE_TOOL_CONTRACTS } from "./crashTriage/crashTriageToolContracts.js";
+import { FUZZING_TOOL_CONTRACTS } from "./fuzzing/fuzzingToolContracts.js";
+import { REPLAY_TOOL_CONTRACTS } from "./replay/ReplayToolContracts.js";
+import { MITM_TOOL_CONTRACTS } from "./mitm/MitmToolContracts.js";
+import { EMU_TOOL_CONTRACTS } from "./emu/emuToolContracts.js";
+import { ANGR_TOOL_CONTRACTS } from "./angr/angrToolContracts.js";
+import { MOBILE_TOOLCHAIN_TOOL_CONTRACTS } from "./mobile/mobileToolchainToolContracts.js";
+import { PROTOLEARN_TOOL_CONTRACTS } from "./protolearn/protolearnToolContracts.js";
+import { HUNTING_TOOL_CONTRACTS } from "./hunting/huntingToolContracts.js";
+import { BENCH_TOOL_CONTRACTS } from "./bench/benchToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -69,9 +91,31 @@ export const TOOL_CONTRACTS = [
   ...RUST_TOOL_CONTRACTS,
   ...NATIVE_AOT_TOOL_CONTRACTS,
   ...WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
+  ...LIEF_TOOL_CONTRACTS,
   ...GAME_DATA_TOOL_CONTRACTS,
   ...CONTAINER_TOOL_CONTRACTS,
   ...IDEVICE_TOOL_CONTRACTS,
+  ...IPSW_TOOL_CONTRACTS,
+  ...CAPA_TOOL_CONTRACTS,
+  ...YARA_TOOL_CONTRACTS,
+  ...SYMBOL_TOOL_CONTRACTS,
+  ...DOTNET_DECOMPILER_TOOL_CONTRACTS,
+  ...PYTHON_DECOMPILER_TOOL_CONTRACTS,
+  ...JVM_DECOMPILER_TOOL_CONTRACTS,
+  ...V8_BYTECODE_TOOL_CONTRACTS,
+  ...ASAR_INTEGRITY_TOOL_CONTRACTS,
+  ...PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+  ...BINDIFF_TOOL_CONTRACTS,
+  ...CRASH_TRIAGE_TOOL_CONTRACTS,
+  ...FUZZING_TOOL_CONTRACTS,
+  ...REPLAY_TOOL_CONTRACTS,
+  ...MITM_TOOL_CONTRACTS,
+  ...EMU_TOOL_CONTRACTS,
+  ...ANGR_TOOL_CONTRACTS,
+  ...MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
+  ...PROTOLEARN_TOOL_CONTRACTS,
+  ...HUNTING_TOOL_CONTRACTS,
+  ...BENCH_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,

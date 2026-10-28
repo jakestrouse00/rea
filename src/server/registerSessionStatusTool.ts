@@ -29,6 +29,48 @@ export interface SessionAvailabilityProbes {
   readonly adbAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
+  readonly ipswAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => Promise<ProviderAvailability>;
+  readonly capaAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly yaraAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly goresymAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly rustfiltAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly dumpSymsAnalysisAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly dotnetDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly pythonDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly jvmDecompilerAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly v8BytecodeAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly protobufRecoveryAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly grpcReflectionAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly bindiffDiffAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly bindiffExportAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
   readonly apktoolAnalysisAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability>;
@@ -38,6 +80,21 @@ export interface SessionAvailabilityProbes {
   readonly evmLimiterAvailability?: (
     signal: AbortSignal,
   ) => Promise<ProviderAvailability | undefined>;
+  readonly labVmAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly benchAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly objectionAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly androguardAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
+  readonly ileAppAvailability?: (
+    signal: AbortSignal,
+  ) => ProviderAvailability | Promise<ProviderAvailability>;
 }
 
 /** Inputs required to register the binary session status tool. */
@@ -55,23 +112,107 @@ const probeSessionAvailability = (
 ): Promise<{
   readonly android: ProviderAvailability;
   readonly adb: ProviderAvailability | undefined;
+  readonly ipsw: ProviderAvailability | undefined;
+  readonly capa: ProviderAvailability | undefined;
+  readonly yara: ProviderAvailability | undefined;
+  readonly goresym: ProviderAvailability | undefined;
+  readonly rustfilt: ProviderAvailability | undefined;
+  readonly dumpSyms: ProviderAvailability | undefined;
+  readonly dotnetDecompiler: ProviderAvailability | undefined;
+  readonly pythonDecompiler: ProviderAvailability | undefined;
+  readonly jvmDecompiler: ProviderAvailability | undefined;
+  readonly v8Bytecode: ProviderAvailability | undefined;
+  readonly protobufRecovery: ProviderAvailability | undefined;
+  readonly grpcReflection: ProviderAvailability | undefined;
+  readonly bindiffDiff: ProviderAvailability | undefined;
+  readonly bindiffExport: ProviderAvailability | undefined;
   readonly apktool: ProviderAvailability | undefined;
   readonly jeb: JebAnalysisAvailability | undefined;
   readonly evmLimiter: ProviderAvailability | undefined;
+  readonly labVm: ProviderAvailability | undefined;
+  readonly bench: ProviderAvailability | undefined;
+  readonly objection: ProviderAvailability | undefined;
+  readonly androguard: ProviderAvailability | undefined;
+  readonly ileApp: ProviderAvailability | undefined;
 }> =>
   Promise.all([
     probes.androidAnalysisAvailability(signal),
     probes.adbAnalysisAvailability?.(signal) ?? undefined,
+    probes.ipswAnalysisAvailability?.(signal) ?? undefined,
+    probes.capaAnalysisAvailability?.(signal) ?? undefined,
+    probes.yaraAnalysisAvailability?.(signal) ?? undefined,
+    probes.goresymAnalysisAvailability?.(signal) ?? undefined,
+    probes.rustfiltAnalysisAvailability?.(signal) ?? undefined,
+    probes.dumpSymsAnalysisAvailability?.(signal) ?? undefined,
+    probes.dotnetDecompilerAvailability?.(signal) ?? undefined,
+    probes.pythonDecompilerAvailability?.(signal) ?? undefined,
+    probes.jvmDecompilerAvailability?.(signal) ?? undefined,
+    probes.v8BytecodeAvailability?.(signal) ?? undefined,
+    probes.protobufRecoveryAvailability?.(signal) ?? undefined,
+    probes.grpcReflectionAvailability?.(signal) ?? undefined,
+    probes.bindiffDiffAvailability?.(signal) ?? undefined,
+    probes.bindiffExportAvailability?.(signal) ?? undefined,
     probes.apktoolAnalysisAvailability?.(signal) ?? undefined,
     probes.jebAnalysisAvailability?.(signal) ?? undefined,
     probes.evmLimiterAvailability?.(signal) ?? undefined,
-  ] as const).then(([android, adb, apktool, jeb, evmLimiter]) => ({
-    android,
-    adb,
-    apktool,
-    jeb,
-    evmLimiter,
-  }));
+    probes.labVmAvailability?.(signal) ?? undefined,
+    probes.benchAvailability?.(signal) ?? undefined,
+    probes.objectionAvailability?.(signal) ?? undefined,
+    probes.androguardAvailability?.(signal) ?? undefined,
+    probes.ileAppAvailability?.(signal) ?? undefined,
+  ] as const).then(
+    ([
+      android,
+      adb,
+      ipsw,
+      capa,
+      yara,
+      goresym,
+      rustfilt,
+      dumpSyms,
+      dotnetDecompiler,
+      pythonDecompiler,
+      jvmDecompiler,
+      v8Bytecode,
+      protobufRecovery,
+      grpcReflection,
+      bindiffDiff,
+      bindiffExport,
+      apktool,
+      jeb,
+      evmLimiter,
+      labVm,
+      bench,
+      objection,
+      androguard,
+      ileApp,
+    ]) => ({
+      android,
+      adb,
+      ipsw,
+      capa,
+      yara,
+      goresym,
+      rustfilt,
+      dumpSyms,
+      dotnetDecompiler,
+      pythonDecompiler,
+      jvmDecompiler,
+      v8Bytecode,
+      protobufRecovery,
+      grpcReflection,
+      bindiffDiff,
+      bindiffExport,
+      apktool,
+      jeb,
+      evmLimiter,
+      labVm,
+      bench,
+      objection,
+      androguard,
+      ileApp,
+    }),
+  );
 
 /** Register the read-only provider and target status operation. */
 export const registerSessionStatusTool = (
@@ -109,6 +250,53 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.adb === undefined
             ? {}
             : { adbAnalysisAvailability: availabilityResults.adb }),
+          ...(availabilityResults.ipsw === undefined
+            ? {}
+            : { ipswAnalysisAvailability: availabilityResults.ipsw }),
+          ...(availabilityResults.capa === undefined
+            ? {}
+            : { capaAnalysisAvailability: availabilityResults.capa }),
+          ...(availabilityResults.yara === undefined
+            ? {}
+            : { yaraAnalysisAvailability: availabilityResults.yara }),
+          ...(availabilityResults.goresym === undefined
+            ? {}
+            : { goresymAnalysisAvailability: availabilityResults.goresym }),
+          ...(availabilityResults.rustfilt === undefined
+            ? {}
+            : { rustfiltAnalysisAvailability: availabilityResults.rustfilt }),
+          ...(availabilityResults.dumpSyms === undefined
+            ? {}
+            : { dumpSymsAnalysisAvailability: availabilityResults.dumpSyms }),
+          ...(availabilityResults.dotnetDecompiler === undefined
+            ? {}
+            : {
+                dotnetDecompilerAvailability:
+                  availabilityResults.dotnetDecompiler,
+              }),
+          ...(availabilityResults.pythonDecompiler === undefined
+            ? {}
+            : {
+                pythonDecompilerAvailability:
+                  availabilityResults.pythonDecompiler,
+              }),
+          ...(availabilityResults.jvmDecompiler === undefined
+            ? {}
+            : { jvmDecompilerAvailability: availabilityResults.jvmDecompiler }),
+          ...(availabilityResults.v8Bytecode === undefined
+            ? {}
+            : { v8BytecodeAvailability: availabilityResults.v8Bytecode }),
+          ...(availabilityResults.protobufRecovery === undefined
+            ? {}
+            : {
+                protobufRecoveryAvailability:
+                  availabilityResults.protobufRecovery,
+              }),
+          ...(availabilityResults.grpcReflection === undefined
+            ? {}
+            : {
+                grpcReflectionAvailability: availabilityResults.grpcReflection,
+              }),
           ...(availabilityResults.apktool === undefined
             ? {}
             : { apktoolAnalysisAvailability: availabilityResults.apktool }),
@@ -118,6 +306,21 @@ export const registerSessionStatusTool = (
           ...(availabilityResults.evmLimiter === undefined
             ? {}
             : { evmLimiterAvailability: availabilityResults.evmLimiter }),
+          ...(availabilityResults.labVm === undefined
+            ? {}
+            : { labVmAvailability: availabilityResults.labVm }),
+          ...(availabilityResults.bench === undefined
+            ? {}
+            : { benchAvailability: availabilityResults.bench }),
+          ...(availabilityResults.objection === undefined
+            ? {}
+            : { objectionAvailability: availabilityResults.objection }),
+          ...(availabilityResults.androguard === undefined
+            ? {}
+            : { androguardAvailability: availabilityResults.androguard }),
+          ...(availabilityResults.ileApp === undefined
+            ? {}
+            : { ileAppAvailability: availabilityResults.ileApp }),
         },
         clientFeatures,
       );

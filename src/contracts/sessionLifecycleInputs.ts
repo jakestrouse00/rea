@@ -1,10 +1,17 @@
 import { executableFormatHintSchema } from "../domain/dosCom.js";
-import { absoluteLocalPathStringSchema } from "../domain/localPath.js";
+import {
+  absoluteLocalPathStringSchema,
+  nulFreeStringSchema,
+} from "../domain/localPath.js";
 import {
   binaryArchitectureSchema,
   rawBinaryEntryPointSchema,
   rawBinarySelectionError,
 } from "../domain/rawBinary.js";
+import {
+  LAB_VM_MAX_COMMAND_BYTES,
+  labVmCommandTimeoutField,
+} from "../domain/vmlab/labVm.js";
 import { z } from "zod";
 import { analysisProviderSelectorSchema } from "./providerSelection.js";
 
@@ -74,4 +81,53 @@ export const openBundleResourcesInputSchema = z.strictObject({
 export const closeBinaryInputSchema = z.strictObject({
   snapshot_path: snapshotPathSchema.optional(),
   overwrite: z.boolean().default(false),
+});
+
+/** Session identity issued by `start_lab_vm`; not a binary target identity. */
+export const labVmSessionIdSchema = z.string().uuid();
+
+/** Session identity issued by `http_replay_session_start`. */
+export const replaySessionIdSchema = z
+  .string()
+  .uuid()
+  .describe(
+    "Replay session identity issued by http_replay_session_start for this REA server's lifetime.",
+  );
+
+/** Session identity issued by `start_interception_session`. */
+export const mitmSessionIdSchema = z
+  .string()
+  .uuid()
+  .describe(
+    "Interception session identity issued by start_interception_session for this REA server's lifetime.",
+  );
+
+/** Start one lab VM on the caller's workspace mount. */
+export const startLabVmInputSchema = z.strictObject({
+  workspace_path: absoluteLocalPathStringSchema.describe(
+    "Existing absolute host directory mounted read-write at /workspace in the guest; artifacts the guest writes there are visible to the caller after the VM stops.",
+  ),
+});
+
+const utf8Bytes = (value: string): number =>
+  new TextEncoder().encode(value).byteLength;
+
+/** Run one shell command line through the guest exec channel. */
+export const runLabVmCommandInputSchema = z.strictObject({
+  session_id: labVmSessionIdSchema,
+  command: nulFreeStringSchema
+    .min(1)
+    .refine(
+      (value) => utf8Bytes(value) <= LAB_VM_MAX_COMMAND_BYTES,
+      `A guest command line travels as one argv element to limactl, so it is limited to ${String(LAB_VM_MAX_COMMAND_BYTES)} UTF-8 bytes. Pass a script path instead of an inline script when the line is longer.`,
+    )
+    .describe(
+      `Command line passed to /bin/sh -lc inside the guest, with the workspace as the working directory. Limited to ${String(LAB_VM_MAX_COMMAND_BYTES)} UTF-8 bytes because the line is one argv element.`,
+    ),
+  command_timeout_ms: labVmCommandTimeoutField,
+});
+
+/** Stop and remove one lab VM by its issued session identity. */
+export const stopLabVmInputSchema = z.strictObject({
+  session_id: labVmSessionIdSchema,
 });

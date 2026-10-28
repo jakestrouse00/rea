@@ -103,6 +103,11 @@ export const toolFamilyCatalog = (sources) => {
         sources.windowsArtifactsContracts.WINDOWS_ARTIFACTS_TOOL_CONTRACTS,
     },
     {
+      id: "lief",
+      surface: "lief-provider",
+      contracts: sources.liefContracts.LIEF_TOOL_CONTRACTS,
+    },
+    {
       id: "gamedata",
       surface: "gamedata-provider",
       contracts: sources.gamedataContracts.GAME_DATA_TOOL_CONTRACTS,
@@ -116,6 +121,58 @@ export const toolFamilyCatalog = (sources) => {
       id: "idevice",
       surface: "ios-device-provider",
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
+    },
+    {
+      id: "ipsw",
+      surface: "ipsw-provider",
+      contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
+    },
+    {
+      id: "capa",
+      surface: "capa-provider",
+      contracts: sources.capaContracts.CAPA_TOOL_CONTRACTS,
+    },
+    {
+      id: "yara",
+      surface: "yara-provider",
+      contracts: sources.yaraContracts.YARA_TOOL_CONTRACTS,
+    },
+    {
+      id: "symbols",
+      surface: "symbol-provider",
+      contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
+    },
+    {
+      id: "dotnet-decompiler",
+      surface: "managed-decompiler-provider",
+      contracts:
+        sources.dotnetDecompilerContracts.DOTNET_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      id: "python-decompiler",
+      surface: "python-decompiler-provider",
+      contracts:
+        sources.pythonDecompilerContracts.PYTHON_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      id: "jvm-decompiler",
+      surface: "jvm-decompiler-provider",
+      contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      id: "v8-decompiler",
+      surface: "v8-decompiler-provider",
+      contracts: sources.v8BytecodeContracts.V8_BYTECODE_TOOL_CONTRACTS,
+    },
+    {
+      id: "protobuf",
+      surface: "protobuf-provider",
+      contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+    },
+    {
+      id: "bindiff",
+      surface: "bindiff-provider",
+      contracts: sources.bindiffContracts.BINDIFF_TOOL_CONTRACTS,
     },
     {
       id: "discovery",
@@ -136,7 +193,10 @@ export const toolFamilyCatalog = (sources) => {
     {
       id: "electron",
       surface: "electron-provider",
-      contracts: sources.electronContracts.ELECTRON_TOOL_CONTRACTS,
+      contracts: [
+        ...sources.electronContracts.ELECTRON_TOOL_CONTRACTS,
+        ...sources.asarIntegrityContracts.ASAR_INTEGRITY_TOOL_CONTRACTS,
+      ],
     },
     {
       id: "javascript-runtime",
@@ -158,6 +218,57 @@ export const toolFamilyCatalog = (sources) => {
         ...sources.environmentContracts.ENVIRONMENT_TOOL_CONTRACTS,
         ...sources.correlationContracts.CORRELATION_TOOL_CONTRACTS,
       ],
+    },
+    {
+      id: "replay",
+      surface: "replay-provider",
+      contracts: sources.replayContracts.REPLAY_TOOL_CONTRACTS,
+    },
+    {
+      id: "mitm",
+      surface: "mitm-provider",
+      contracts: sources.mitmContracts.MITM_TOOL_CONTRACTS,
+    },
+    {
+      id: "emulator",
+      surface: "emulator",
+      contracts: sources.emuContracts.EMU_TOOL_CONTRACTS,
+    },
+    {
+      id: "symbolic-engine",
+      surface: "symbolic-engine",
+      contracts: sources.angrContracts.ANGR_TOOL_CONTRACTS,
+    },
+    {
+      id: "protocol-learning",
+      surface: "protocol-learning",
+      contracts: sources.protolearnContracts.PROTOLEARN_TOOL_CONTRACTS,
+    },
+    {
+      id: "crash-triage",
+      surface: "crash-triage",
+      contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
+    },
+    {
+      id: "fuzzing",
+      surface: "fuzzing-provider",
+      contracts: sources.fuzzingContracts.FUZZING_TOOL_CONTRACTS,
+    },
+    {
+      id: "hunting",
+      surface: "hunting-queue",
+      contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
+    },
+    {
+      id: "bench",
+      surface: "benchmark-harness",
+      contracts: sources.benchContracts.BENCH_TOOL_CONTRACTS,
+    },
+    {
+      id: "mobile-toolchain",
+      surface: "mobile-toolchain-provider",
+      contracts:
+        sources.mobileToolchainContracts.MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
     },
     {
       id: "session",
@@ -479,6 +590,10 @@ export const providerCatalog = (sources) => {
         ),
     },
     {
+      identity: sources.liefProvider.LIEF_PROVIDER_IDENTITY,
+      contracts: sources.liefContracts.LIEF_TOOL_CONTRACTS,
+    },
+    {
       identity: sources.nativeAotProvider.NATIVE_AOT_PROVIDER_IDENTITY,
       contracts: sources.nativeAotContracts.NATIVE_AOT_TOOL_CONTRACTS,
     },
@@ -495,8 +610,90 @@ export const providerCatalog = (sources) => {
       contracts: sources.ideviceContracts.IDEVICE_TOOL_CONTRACTS,
     },
     {
+      identity: sources.ipswProvider.IPSW_PROVIDER_IDENTITY,
+      contracts: sources.ipswContracts.IPSW_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.capaProvider.CAPA_PROVIDER_IDENTITY,
+      contracts: sources.capaContracts.CAPA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.yaraProvider.YARA_PROVIDER_IDENTITY,
+      contracts: sources.yaraContracts.YARA_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.emuProvider.EMU_PROVIDER_IDENTITY,
+      contracts: sources.emuContracts.EMU_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.angrProvider.ANGR_PROVIDER_IDENTITY,
+      contracts: sources.angrContracts.ANGR_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.protolearnProvider.PROTOLEARN_PROVIDER_IDENTITY,
+      contracts: sources.protolearnContracts.PROTOLEARN_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.symbolProvider.SYMBOL_PROVIDER_IDENTITY,
+      contracts: sources.symbolContracts.SYMBOL_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.dotnetDecompilerProvider.DOTNET_DECOMPILER_PROVIDER_IDENTITY,
+      contracts:
+        sources.dotnetDecompilerContracts.DOTNET_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.pythonDecompilerProvider.PYTHON_DECOMPILER_PROVIDER_IDENTITY,
+      contracts:
+        sources.pythonDecompilerContracts.PYTHON_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.jvmDecompilerProvider.JVM_DECOMPILER_PROVIDER_IDENTITY,
+      contracts: sources.jvmDecompilerContracts.JVM_DECOMPILER_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.v8BytecodeProvider.VIEW8_PROVIDER_IDENTITY,
+      contracts: sources.v8BytecodeContracts.V8_BYTECODE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.asarIntegrityProvider.ASAR_INTEGRITY_PROVIDER_IDENTITY,
+      contracts: sources.asarIntegrityContracts.ASAR_INTEGRITY_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.protobufProvider.PROTOBUF_RECOVERY_PROVIDER_IDENTITY,
+      contracts: sources.protobufContracts.PROTOBUF_RECOVERY_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.bindiffProvider.BINDIFF_PROVIDER_IDENTITY,
+      contracts: sources.bindiffContracts.BINDIFF_TOOL_CONTRACTS,
+    },
+    {
+      identity:
+        sources.mobileToolchainProvider.MOBILE_TOOLCHAIN_PROVIDER_IDENTITY,
+      contracts:
+        sources.mobileToolchainContracts.MOBILE_TOOLCHAIN_TOOL_CONTRACTS,
+    },
+    {
       identity: sources.discoveryProvider.DISCOVERY_PROVIDER_IDENTITY,
       contracts: sources.discoveryContracts.DISCOVERY_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.crashTriageProvider.CRASH_TRIAGE_PROVIDER,
+      contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.fuzzingProvider.FUZZING_PROVIDER,
+      contracts: sources.fuzzingContracts.FUZZING_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.huntingProvider.HUNTING_PROVIDER,
+      contracts: sources.huntingContracts.HUNTING_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.benchProvider.BENCH_PROVIDER,
+      contracts: sources.benchContracts.BENCH_TOOL_CONTRACTS,
     },
     {
       identity: sources.webNetworkCaptureProvider.HAR_CAPTURE_PROVIDER_IDENTITY,

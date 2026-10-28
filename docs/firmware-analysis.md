@@ -5,6 +5,17 @@ explicit extraction. The report parsers are verified with Binwalk 3.1.0 and
 Unblob 26.6.4. Another build on those lines is accepted, the observed version
 is reported, and a limitation records that the parser was not verified against
 that build. This first firmware milestone is verified on Linux x64.
+
+Binwalk 2.x is end of life and is not supported. Its banner, its command line and
+its report shape all differ: `--search-all`, `--log` report writing and the
+`Analysis.file_map` JSON this lane parses belong to the Rust Binwalk 3 series.
+A 2.x binary pointed at `REA_BINWALK_COMMAND` fails closed at the version check
+with `capability_unavailable`, naming the accepted releases; REA does not retry
+with 2.x flags and does not translate its text output. Install Binwalk 3.1.x —
+the same `binwalk` executable name — and re-run the request. The banner
+classification is covered offline everywhere; the end-to-end check that only
+the `--version` probe reaches a 2.x binary lives in the Linux-only integration
+suite.
 No device, root privilege, mount, emulation or execution of extracted programs
 is needed. Arbitrary firmware bytes do not pass native executable admission;
 select a returned ELF separately for supported Ghidra analysis.

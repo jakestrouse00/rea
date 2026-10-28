@@ -28,6 +28,15 @@ export interface SessionAvailabilityDefaults {
     | "recordedCrashEnabled"
     | "firmwareInspectionEnabled"
     | "firmwareExtractionEnabled"
+    | "replayEnabled"
+    | "mitmInterceptionEnabled"
+    | "emuEmulationEnabled"
+    | "angrSymbolicEnabled"
+    | "fuzzingCampaignEnabled"
+    | "bleGattEnabled"
+    | "probeLearnedModelEnabled"
+    | "huntingQueueEnabled"
+    | "watchSessionEnabled"
   >;
 }
 
@@ -68,6 +77,22 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.firmwareInspectionEnabled ?? false,
       firmwareExtractionEnabled:
         defaults.optionalFeatures?.firmwareExtractionEnabled ?? false,
+      replayEnabled: defaults.optionalFeatures?.replayEnabled ?? false,
+      mitmInterceptionEnabled:
+        defaults.optionalFeatures?.mitmInterceptionEnabled ?? false,
+      emuEmulationEnabled:
+        defaults.optionalFeatures?.emuEmulationEnabled ?? false,
+      angrSymbolicEnabled:
+        defaults.optionalFeatures?.angrSymbolicEnabled ?? false,
+      fuzzingCampaignEnabled:
+        defaults.optionalFeatures?.fuzzingCampaignEnabled ?? false,
+      bleGattEnabled: defaults.optionalFeatures?.bleGattEnabled ?? false,
+      probeLearnedModelEnabled:
+        defaults.optionalFeatures?.probeLearnedModelEnabled ?? false,
+      huntingQueueEnabled:
+        defaults.optionalFeatures?.huntingQueueEnabled ?? true,
+      watchSessionEnabled:
+        defaults.optionalFeatures?.watchSessionEnabled ?? true,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

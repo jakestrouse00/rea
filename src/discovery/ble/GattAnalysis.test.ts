@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  gattLineWithoutPayload,
   gattPayloadAccounting,
   parseGattLine,
   parseGattLines,
@@ -20,6 +21,7 @@ describe("parseGattLine", () => {
       ts: "2026-10-28T04:41:56.315Z",
       message: null,
       code: null,
+      stopReason: null,
     });
   });
 
@@ -63,8 +65,27 @@ describe("parseGattLine", () => {
         ts: null,
         message: null,
         code: null,
+        stopReason: null,
       },
     ]);
+  });
+});
+
+describe("gattLineWithoutPayload", () => {
+  it("keeps the helper's framing but drops the payload bytes", () => {
+    const line =
+      '{"event":"notification","id":"aabb","ts":"2026-10-28T04:41:56.315Z","payload_hex":"3310"}';
+    const redacted = gattLineWithoutPayload(line);
+    expect(JSON.parse(redacted)).toEqual({
+      event: "notification",
+      id: "aabb",
+      ts: "2026-10-28T04:41:56.315Z",
+    });
+    expect(redacted).not.toContain("3310");
+  });
+
+  it("returns a line it cannot parse unchanged", () => {
+    expect(gattLineWithoutPayload("not json")).toBe("not json");
   });
 });
 

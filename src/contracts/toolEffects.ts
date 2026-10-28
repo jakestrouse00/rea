@@ -128,6 +128,122 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     idempotent: false,
   }),
   inspect_desktop_application: evidence,
+  http_replay_session_start: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  http_replay_send: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  http_replay_session_status: effects(),
+  http_replay_session_close: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  start_interception_session: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  read_interception_inventory: effects({ mutatesSession: true }),
+  export_endpoint_inventory: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+  }),
+  proxy_rule_set: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  proxy_rule_clear: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  proxy_replay_send: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  stop_interception_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  register_fuzzing_campaign: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  read_campaign_status: evidence,
+  list_crash_dedups: evidence,
+  fetch_crash_evidence: evidence,
+  schedule_investigation_batch: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  // A unit delegates to a composed capability, so it can launch a child,
+  // reach a lab socket, run foreign code, or discard engine output.
+  run_scheduled_batch: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  read_hunting_queue: effects(),
+  cancel_hunting_batch: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  start_watch_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  stop_watch_session: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  // A benchmark task boots a VM, runs caller-selected containerized code, and
+  // reads back whatever the harness wrote into the mounted workspace.
+  run_bench_task: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  start_fuzzing_campaign: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   inspect_go_binary: evidence,
   inspect_go_procedure_table: evidence,
   inspect_il2cpp_metadata: evidence,
@@ -202,6 +318,8 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_windows_minidump: evidence,
   inspect_wer_report: evidence,
   inspect_pdb_symbols: nativeEvidence,
+  inspect_binary_deep: nativeEvidence,
+  extract_pdb_dwarf_info: nativeEvidence,
   inspect_nativeaot_types: evidence,
   inspect_godot_pck: effects({
     mutatesSession: true,
@@ -250,6 +368,16 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     executesForeignCode: true,
     idempotent: false,
   }),
+  // Loading a shipped preset is the same target-mutating load, but the
+  // source is REA's own reference agent rather than caller-authored code.
+  load_frida_script_preset: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   resume_frida_session: effects({
     mutatesTarget: true,
     mutatesSession: true,
@@ -263,6 +391,15 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     launchesProcess: true,
     accessesNetwork: true,
+    idempotent: false,
+  }),
+  frida_rpc_list: evidence,
+  frida_rpc_call: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
     idempotent: false,
   }),
   frida_session_status: evidence,
@@ -288,6 +425,120 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   inspect_pe_imports: evidence,
   inspect_native_exports: evidence,
   inspect_elf_notes: evidence,
+  inspect_ipsw: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  extract_dyld_shared_cache_images: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  dump_ios_class_metadata: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  symbolicate_ios_crash: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  inspect_macho_entitlements: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  analyze_binary_capabilities: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_artifact_with_rules: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_for_crypto_constants: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  emulate_function_isolated: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  assemble_bytes: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  find_paths_to_target: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  run_symbolic_function_exploration: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  recover_control_flow_angr: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  learn_protocol_model: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+  }),
+  probe_learned_model: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  export_protocol_grammar: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+  }),
+  recover_go_symbols: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  demangle_rust_name: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  generate_symbol_table: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  decompile_dotnet_assembly: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  decompile_python_bytecode: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  decompile_jar_class: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  decompile_jar_archive: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
+  decompile_v8_bytecode: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  recover_proto_definitions: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
+  enumerate_grpc_reflection: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+  }),
   inspect_apple_ips: evidence,
   inspect_devicetree: evidence,
   inspect_kernel_module: evidence,
@@ -514,6 +765,31 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     accessesNetwork: true,
     idempotent: false,
   }),
+  // Mobile toolchain: each tool runs a caller-selected launcher as a
+  // subprocess. objection attaches to the application's runtime, androguard
+  // parses an APK statically, and the forensics launcher reads an extraction.
+  run_objection_recipe: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  analyze_apk_structure: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  scan_apk_vulnerabilities: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+  }),
+  run_mobile_forensics_report: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   // Discovery lane: reads host-provided tables and devices; the mDNS browse,
   // Bluetooth inquiry and the gated subnet sweep emit packets this host
   // originates.
@@ -566,6 +842,18 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   // Subscribing writes the peer's CCCD descriptor on this session's own
   // connection; the window itself is receive-only.
   observe_gatt_notifications: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  // Enumerating re-reads the live tree over the session's own connection.
+  enumerate_gatt_services: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+  }),
+  // Subscribing writes the peer's CCCD descriptor; the window is receive-only
+  // and the retained rows are bounded by the caller's max_notifications.
+  subscribe_characteristic: effects({
     mutatesSession: true,
     accessesNetwork: true,
     idempotent: false,
@@ -838,6 +1126,35 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   compare_web_captures: sessionEvidence,
   capture_web_screenshot: browserEvidence,
   compare_web_screenshots: sessionEvidence,
+  browser_evaluate: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  browser_request_rule_set: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
+  browser_request_rule_clear: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  browser_fetch: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    writesFilesystem: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
   capture_browser_scenario: effects({
     mutatesTarget: true,
     mutatesSession: true,
@@ -870,6 +1187,7 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
   }),
   inspect_electron_fuses: evidence,
+  inspect_asar_integrity: evidence,
   export_web_scripts: effects({
     mutatesSession: true,
     writesFilesystem: true,
@@ -921,10 +1239,40 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     executesForeignCode: true,
     idempotent: false,
   }),
+  start_lab_vm: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  run_lab_vm_command: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    executesForeignCode: true,
+    idempotent: false,
+  }),
+  stop_lab_vm: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
   compare_process_captures: sessionEvidence,
   compare_artifacts: sessionEvidence,
   compare_wasm_interfaces: sessionEvidence,
   compare_functions: sessionEvidence,
+  diff_binaries: sessionEvidence,
+  export_binexport_protobuf: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+    idempotent: false,
+  }),
   match_native_functions: sessionEvidence,
   compare_bundles: effects({ mutatesSession: true }),
   find_changed_behavior: sessionEvidence,

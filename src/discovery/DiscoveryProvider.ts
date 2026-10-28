@@ -43,7 +43,6 @@ import {
   DISCOVERY_CAPTURE_REMEDIATION,
   DISCOVERY_LANE_NOTE,
   DISCOVERY_PROVIDER_ID,
-  DISCOVERY_BLE_GATT_REMEDIATION,
 } from "./DiscoveryRelease.js";
 import {
   executeBleScan,
@@ -62,6 +61,17 @@ import {
   GATT_READ_OPERATION,
   GATT_WRITE_OPERATION,
 } from "./ble/GattOperations.js";
+import {
+  executeGattEnumerate,
+  executeGattSubscribe,
+  GATT_ENUMERATE_OPERATION,
+  GATT_SUBSCRIBE_OPERATION,
+} from "./ble/GattSessionOperations.js";
+import {
+  gattHelperRemediation,
+  selectGattHelper,
+  type GattHelperSelection,
+} from "./ble/BleakBridge.js";
 import {
   GattSessionManager,
   type GattProcessSpawner,
@@ -146,6 +156,19 @@ const toolsOf = (tools: DiscoveryToolset) => ({
   ble_gatt: tools.bleGatt,
   stty: tools.stty,
   packet_capture: tools.packetCapture,
+});
+
+/**
+ * GATT results also name the bundled bridge's interpreter when that transport
+ * is the one this session spawned; a CoreBluetooth helper leaves it null.
+ */
+const gattToolsOf = (
+  installation: ResolvedInstallation,
+  helper: GattHelperSelection,
+) => ({
+  ...toolsOf(installation.tools),
+  bleak_python:
+    helper.transport === "bleak" ? installation.tools.bleakPython : null,
 });
 
 export class DiscoveryProvider {
@@ -292,6 +315,18 @@ export class DiscoveryProvider {
           );
         case "observe_gatt_notifications":
           return await this.#observeGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "enumerate_gatt_services":
+          return await this.#enumerateGatt(
+            resolvedInstallation,
+            request.input,
+            signal,
+          );
+        case "subscribe_characteristic":
+          return await this.#subscribeGatt(
             resolvedInstallation,
             request.input,
             signal,
@@ -722,20 +757,21 @@ export class DiscoveryProvider {
 
   async #requireGattHelper(
     installation: ResolvedInstallation,
-  ): Promise<Result<string, AnalysisError>> {
-    const helper = installation.tools.bleGatt;
+    operation = GATT_CONNECT_OPERATION,
+  ): Promise<Result<GattHelperSelection, AnalysisError>> {
+    const helper = selectGattHelper(installation.tools);
     if (helper === null) {
       const refusal = new Error(
-        "The GATT session lane requires a caller-compiled CoreBluetooth helper",
+        "The GATT session lane requires a caller-compiled CoreBluetooth helper or an interpreter for the bundled bleak bridge",
       );
       return err(
         providerConfigurationRefusal(
           DISCOVERY_PROVIDER_ID,
-          GATT_CONNECT_OPERATION,
+          operation,
           Object.assign(refusal, {
             diagnostics: {
               setting: "REA_BLE_GATT_PATH",
-              remediation: DISCOVERY_BLE_GATT_REMEDIATION,
+              remediation: gattHelperRemediation(),
             },
           }) as Error,
         ),
@@ -752,9 +788,9 @@ export class DiscoveryProvider {
     },
     signal: AbortSignal | undefined,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    const helper = await this.#requireGattHelper(installation);
-    if (!helper.ok) return helper;
     const operation = GATT_CONNECT_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
     return await this.#runGattOperation(operation, signal, async () => {
       // The schema types the authorization as literal true; the provider
       // re-checks it so no execution path skips the gate.
@@ -777,7 +813,7 @@ export class DiscoveryProvider {
       return ok(
         createAnalysisExecution(
           {
-            tools: toolsOf(installation.tools),
+            tools: gattToolsOf(installation, helper.value),
             session_id: ran.value.session_id,
             peripheral_id: ran.value.peripheral_id,
             name: ran.value.name,
@@ -803,9 +839,9 @@ export class DiscoveryProvider {
     },
     signal: AbortSignal | undefined,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    const helper = await this.#requireGattHelper(installation);
-    if (!helper.ok) return helper;
     const operation = GATT_READ_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
     return await this.#runGattOperation(operation, signal, async () => {
       const ran = await executeGattRead(
         this.#gattSessions,
@@ -817,7 +853,7 @@ export class DiscoveryProvider {
       return ok(
         createAnalysisExecution(
           {
-            tools: toolsOf(installation.tools),
+            tools: gattToolsOf(installation, helper.value),
             ...ran.value,
             coverage: "complete" as const,
           },
@@ -839,9 +875,9 @@ export class DiscoveryProvider {
     },
     signal: AbortSignal | undefined,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    const helper = await this.#requireGattHelper(installation);
-    if (!helper.ok) return helper;
     const operation = GATT_WRITE_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
     return await this.#runGattOperation(operation, signal, async () => {
       // Writes change device state; the per-call authorization is re-checked
       // so no execution path skips the gate.
@@ -865,7 +901,7 @@ export class DiscoveryProvider {
       return ok(
         createAnalysisExecution(
           {
-            tools: toolsOf(installation.tools),
+            tools: gattToolsOf(installation, helper.value),
             ...ran.value,
             coverage: "complete" as const,
           },
@@ -893,16 +929,16 @@ export class DiscoveryProvider {
     },
     signal: AbortSignal | undefined,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    const helper = await this.#requireGattHelper(installation);
-    if (!helper.ok) return helper;
     const operation = GATT_OBSERVE_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
     return await this.#runGattOperation(operation, signal, async () => {
       const ran = await executeGattObserve(this.#gattSessions, input, signal);
       if (!ran.ok) return ran;
       return ok(
         createAnalysisExecution(
           {
-            tools: toolsOf(installation.tools),
+            tools: gattToolsOf(installation, helper.value),
             ...ran.value,
             coverage: ran.value.window_exhausted
               ? ("complete" as const)
@@ -921,21 +957,104 @@ export class DiscoveryProvider {
     });
   }
 
+  async #enumerateGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly session_id: string;
+      readonly max_services: number;
+      readonly max_characteristics_per_service: number;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const operation = GATT_ENUMERATE_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
+    return await this.#runGattOperation(operation, signal, async () => {
+      const ran = await executeGattEnumerate(
+        this.#gattSessions,
+        input,
+        signal,
+        installation.operationTimeoutMs,
+      );
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: gattToolsOf(installation, helper.value),
+            ...ran.value,
+            coverage: ran.value.services_truncated
+              ? ("partial" as const)
+              : ("complete" as const),
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          {
+            limitations: [
+              DISCOVERY_LANE_NOTE,
+              ...gattLimitations(),
+              "The tree is what this peripheral published to this session's own connection at this call; a service it publishes later is absent here",
+            ],
+          },
+        ),
+      );
+    });
+  }
+
+  async #subscribeGatt(
+    installation: ResolvedInstallation,
+    input: {
+      readonly session_id: string;
+      readonly service_uuid: string;
+      readonly characteristic_uuid: string;
+      readonly observe_seconds: number;
+      readonly max_notifications: number;
+      readonly include_payload_hex: boolean;
+    },
+    signal: AbortSignal | undefined,
+  ): Promise<Result<AnalysisExecution, AnalysisError>> {
+    const operation = GATT_SUBSCRIBE_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
+    return await this.#runGattOperation(operation, signal, async () => {
+      const ran = await executeGattSubscribe(this.#gattSessions, input, signal);
+      if (!ran.ok) return ran;
+      return ok(
+        createAnalysisExecution(
+          {
+            tools: gattToolsOf(installation, helper.value),
+            ...ran.value,
+            coverage: ran.value.buffer_full
+              ? ("partial" as const)
+              : ("complete" as const),
+          },
+          DISCOVERY_PROVIDER_IDENTITY,
+          {
+            limitations: [
+              DISCOVERY_LANE_NOTE,
+              ...gattLimitations(),
+              `The subscription collects at most ${String(input.max_notifications)} notification rows; buffer_full means the peer kept sending past that bound and those rows were counted, not retained`,
+              "Values are digests by default: a digest identifies the bytes this window observed and does not claim they are the only values the characteristic publishes",
+            ],
+          },
+        ),
+      );
+    });
+  }
+
   async #closeGatt(
     installation: ResolvedInstallation,
     input: { readonly session_id: string },
     signal: AbortSignal | undefined,
   ): Promise<Result<AnalysisExecution, AnalysisError>> {
-    const helper = await this.#requireGattHelper(installation);
-    if (!helper.ok) return helper;
     const operation = GATT_CLOSE_OPERATION;
+    const helper = await this.#requireGattHelper(installation, operation);
+    if (!helper.ok) return helper;
     return await this.#runGattOperation(operation, signal, async () => {
       const ran = await executeGattClose(this.#gattSessions, input, signal);
       if (!ran.ok) return ran;
       return ok(
         createAnalysisExecution(
           {
-            tools: toolsOf(installation.tools),
+            tools: gattToolsOf(installation, helper.value),
             ...ran.value,
             coverage: ran.value.clean
               ? ("complete" as const)

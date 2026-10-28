@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { BrowserObservationPort } from "../application/BrowserObservationPort.js";
 import type {
   ProviderIdentity,
@@ -80,6 +82,25 @@ import { discoverWebMcp } from "./CdpWebMcpDiscovery.js";
 import { captureCdpScreenshot } from "./CdpScreenshot.js";
 import { comparePngScreenshots } from "./PngVisualDiff.js";
 
+import type {
+  BrowserEvaluateInput,
+  BrowserEvaluateResult,
+  BrowserFetchInput,
+  BrowserFetchResult,
+  BrowserRequestRuleClearInput,
+  BrowserRequestRuleClearResult,
+  BrowserRequestRuleSetInput,
+  BrowserRequestRuleSetResult,
+} from "../domain/browserMutation.js";
+import { authorizedMainFrame } from "./CdpAuthorizedMainFrame.js";
+import {
+  classifyCdpFrameUrl,
+  observeMainFrameUrl,
+} from "./CdpCaptureDocuments.js";
+import { evaluateCdpMainFrame } from "./CdpPageEvaluate.js";
+import { fetchFromPage } from "./CdpPageFetch.js";
+import { BrowserRequestRuleRegistry } from "./BrowserRequestRuleRegistry.js";
+import type { CdpConnection } from "./CdpConnection.js";
 import { CDP_BROWSER_PROVIDER_IDENTITY } from "./providerIdentities.js";
 import { compareUnicodeCodePoints } from "../domain/unicodeCodePointOrder.js";
 import {
@@ -96,19 +117,45 @@ const CLEANUP_DOMAINS = [
 /** Domains a stealth-safe attach enabled; never-enabled domains get no disables. */
 const STEALTH_SAFE_CLEANUP_DOMAINS = ["Network", "Page"] as const;
 
-/** Passive browser observation through a selected user-owned CDP endpoint. */
+export interface CdpBrowserProviderOptions {
+  /**
+   * Operator-approved origins for page-context dispatch. Empty leaves the
+   * plane disabled; a request can never widen this set.
+   */
+  readonly mutationOrigins?: readonly string[];
+}
+
+/**
+ * Browser observation and caller-authorized mutation through a selected
+ * user-owned CDP endpoint.
+ */
 export class CdpBrowserProvider implements BrowserObservationPort {
   readonly #owner = new CdpTargetSessionOwner();
   readonly #bundleAnalyzer = new IsolatedWebBundleAnalyzer();
+  readonly #rules = new BrowserRequestRuleRegistry(this.#owner);
+  readonly #mutationOrigins: readonly string[];
+
+  constructor(options: CdpBrowserProviderOptions = {}) {
+    this.#mutationOrigins = options.mutationOrigins ?? [];
+  }
 
   async close(): Promise<void> {
+    // Armed rules own attached sessions, so they release before the transport
+    // owner stops waiting on active sessions.
+    const ruleFailure = await this.#rules.closeAll().then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
     const outcomes = await Promise.allSettled([
       this.#owner.close(),
       this.#bundleAnalyzer.close(),
     ]);
-    const failures = outcomes.flatMap((outcome) =>
-      outcome.status === "rejected" ? [outcome.reason as unknown] : [],
-    );
+    const failures = [
+      ...(ruleFailure === undefined ? [] : [ruleFailure]),
+      ...outcomes.flatMap((outcome) =>
+        outcome.status === "rejected" ? [outcome.reason as unknown] : [],
+      ),
+    ];
     if (failures.length === 1) throw failures[0];
     if (failures.length > 1) {
       const typed = failures.filter(
@@ -356,6 +403,190 @@ export class CdpBrowserProvider implements BrowserObservationPort {
           ]),
         );
       return err(providerError(cause, "compare_web_screenshots"));
+    }
+  }
+
+  async evaluatePage(
+    input: BrowserEvaluateInput,
+    options: ExecutionOptions = {},
+  ): Promise<Result<BrowserEvaluateResult, AnalysisError>> {
+    try {
+      return ok(
+        await withTargetSession(
+          input,
+          "browser_evaluate",
+          options,
+          evaluateCdpMainFrame,
+          this.#owner,
+        ),
+      );
+    } catch (cause: unknown) {
+      return err(providerError(cause, "browser_evaluate", options.signal));
+    }
+  }
+
+  async armRequestRule(
+    input: BrowserRequestRuleSetInput,
+    options: ExecutionOptions = {},
+  ): Promise<Result<BrowserRequestRuleSetResult, AnalysisError>> {
+    try {
+      return ok(await this.#armRequestRule(input, options));
+    } catch (cause: unknown) {
+      return err(
+        providerError(cause, "browser_request_rule_set", options.signal),
+      );
+    }
+  }
+
+  async clearRequestRule(
+    input: BrowserRequestRuleClearInput,
+    options: ExecutionOptions = {},
+  ): Promise<Result<BrowserRequestRuleClearResult, AnalysisError>> {
+    try {
+      return ok(await this.#rules.clear(input.rule_id, options.signal));
+    } catch (cause: unknown) {
+      return err(
+        providerError(cause, "browser_request_rule_clear", options.signal),
+      );
+    }
+  }
+
+  async fetchPage(
+    input: BrowserFetchInput,
+    options: ExecutionOptions = {},
+  ): Promise<Result<BrowserFetchResult, AnalysisError>> {
+    try {
+      return ok(
+        await withTargetSession(
+          input,
+          "browser_fetch",
+          options,
+          async (session) =>
+            await fetchFromPage({
+              ...session,
+              operatorOrigins: this.#mutationOrigins,
+            }),
+          this.#owner,
+        ),
+      );
+    } catch (cause: unknown) {
+      return err(providerError(cause, "browser_fetch", options.signal));
+    }
+  }
+
+  /**
+   * Arm one rule on an authorized main frame and hand its session to the
+   * registry, which releases it on clear, deadline, or shutdown.
+   */
+  async #armRequestRule(
+    input: BrowserRequestRuleSetInput,
+    options: ExecutionOptions,
+  ): Promise<BrowserRequestRuleSetResult> {
+    const operation = "browser_request_rule_set";
+    const commandTimeoutMs = selectedCdpCommandTimeoutMs(
+      input.command_timeout_ms,
+    );
+    const endpoint = await openCdpEndpoint(
+      input.cdp_endpoint,
+      operation,
+      options.signal,
+      undefined,
+      this.#owner,
+      commandTimeoutMs,
+    );
+    let targetSession: CdpTargetSession | undefined;
+    try {
+      const { target, allowedOrigins } = authorizeCdpTarget(
+        endpoint.discovery,
+        input,
+        operation,
+      );
+      targetSession =
+        endpoint.connection === undefined
+          ? await openCdpTargetSession(
+              endpoint.discovery,
+              target,
+              operation,
+              options.signal,
+              { commandTimeoutMs },
+              this.#owner,
+            )
+          : await attachCdpTargetSession(
+              endpoint.connection,
+              target,
+              operation,
+              options.signal,
+              this.#owner,
+            );
+      const scope =
+        input.allowed_origins.length > 0
+          ? input.allowed_origins
+          : [...allowedOrigins];
+      const frameTree = await authorizedMainFrame({
+        connection: targetSession.connection,
+        sessionId: targetSession.sessionId,
+        signal: options.signal,
+        allowedOrigins: new Set(scope),
+        operation,
+      });
+      const facts = classifyCdpFrameUrl(
+        observeMainFrameUrl(frameTree),
+        new Set(scope),
+      );
+      if (
+        facts.scope !== "approved" ||
+        facts.url === undefined ||
+        facts.origin === null
+      )
+        throw new BrowserObservationError(operation, "target_not_allowed", {
+          detail:
+            "The selected target's main frame is not inside the rule origin scope.",
+        });
+      await targetSession.connection.send(
+        "Fetch.enable",
+        { patterns: [{ urlPattern: "*", requestStage: "Request" }] },
+        targetSession.sessionId,
+        options.signal,
+      );
+      const armed = this.#rules.arm(
+        {
+          ruleId: input.rule_id ?? randomUUID(),
+          target: {
+            target_id: target.id,
+            url: sanitizeBrowserUrl(facts.url),
+            origin: facts.origin,
+          },
+          match: input.match,
+          action: input.action,
+          session: targetSession,
+        },
+        input.ttl_ms,
+      );
+      targetSession = undefined;
+      return armed;
+    } catch (cause: unknown) {
+      await this.#disarm(targetSession, endpoint.connection, cause, operation);
+      throw cause;
+    }
+  }
+
+  async #disarm(
+    session: CdpTargetSession | undefined,
+    endpointConnection: CdpConnection | undefined,
+    primary: unknown,
+    operation: BrowserObservationOperation,
+  ): Promise<void> {
+    try {
+      if (session !== undefined)
+        await closeCdpTargetSession(session, ["Fetch"], undefined, this.#owner);
+      else if (endpointConnection !== undefined)
+        await this.#owner.finish(endpointConnection);
+    } catch (cause: unknown) {
+      throw new AggregateError(
+        [primary, cause],
+        `CDP operation ${operation} failed and its interception cleanup is incomplete.`,
+        { cause: primary },
+      );
     }
   }
 

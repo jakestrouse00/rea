@@ -16,6 +16,19 @@ import {
   fridaDeviceListSchema,
   fridaProcessListSchema,
 } from "../domain/fridaDiscovery.js";
+import { jsonValueSchema } from "../domain/jsonValue.js";
+import {
+  fridaScriptPresetNameSchema,
+  loadFridaScriptPresetResultSchema,
+} from "../domain/fridaScriptPreset.js";
+import {
+  FRIDA_RPC_DEFAULT_TIMEOUT_MS,
+  FRIDA_RPC_MAX_ARGUMENTS,
+  FRIDA_RPC_MAX_TIMEOUT_MS,
+  FRIDA_RPC_METHOD_MAX_CHARACTERS,
+  fridaRpcCallResultSchema,
+  fridaRpcListResultSchema,
+} from "../domain/fridaRpc.js";
 
 export const FRIDA_KEEPALIVE_INTERVAL_DESCRIPTION =
   "Remote keepalive interval in seconds";
@@ -168,6 +181,27 @@ export const FRIDA_TOOL_CONTRACTS = [
     ],
   },
   {
+    name: "load_frida_script_preset",
+    ...toolContractMetadata("load_frida_script_preset"),
+    kind: "native-provider",
+    description:
+      "Load one named REA Frida preset into a live session: ssl-unpinning (certificate pinning), jail-root-detect-bypass, or keystore-dump-structure. The preset is REA's own minimal reference agent over publicly documented checks, not a vendored upstream script, and it hooks only the surfaces this release documents. The preset can read or change target behavior exactly as any loaded script can. Evidence carries the loaded source's SHA-256 and the preset's declared detection surfaces; the script text and any payload the target emits are never returned or recorded.",
+    inputSchema: z.strictObject({
+      session_id: sessionId,
+      preset: fridaScriptPresetNameSchema,
+    }),
+    outputSchema: evidenceResultOf(loadFridaScriptPresetResultSchema),
+    examples: [
+      {
+        title: "Load the TLS pinning bypass preset",
+        input: {
+          session_id: "00000000-0000-4000-8000-000000000001",
+          preset: "ssl-unpinning",
+        },
+      },
+    ],
+  },
+  {
     name: "resume_frida_session",
     ...toolContractMetadata("resume_frida_session"),
     kind: "native-provider",
@@ -290,6 +324,67 @@ export const FRIDA_TOOL_CONTRACTS = [
           source_kind: "inline",
           source: "send(Process.id);",
           duration_ms: 1_000,
+        },
+      },
+    ],
+  },
+  {
+    name: "frida_rpc_list",
+    ...toolContractMetadata("frida_rpc_list"),
+    kind: "native-provider",
+    description:
+      "Report the remote-export surface a loaded Frida script declared to its target, with each export name and declared parameter count. The target reports this inventory once the script's own top-level code has finished, so state=unreported means the exports are unknown rather than an observed empty surface. Reads REA's recorded observation; it does not contact the target.",
+    inputSchema: z.strictObject({
+      session_id: sessionId,
+      script_id: z.string().uuid(),
+    }),
+    outputSchema: evidenceResultOf(fridaRpcListResultSchema),
+    examples: [
+      {
+        title: "List a loaded script's reported exports",
+        input: {
+          session_id: "00000000-0000-4000-8000-000000000001",
+          script_id: "00000000-0000-4000-8000-000000000002",
+        },
+      },
+    ],
+  },
+  {
+    name: "frida_rpc_call",
+    ...toolContractMetadata("frida_rpc_call"),
+    kind: "native-provider",
+    description:
+      "Invoke one remote export of a loaded Frida script and return its bounded JSON reply. The call inherits only the mutation authority established by start_frida_session: attach acts inside the selected process and spawn acts inside the process REA created. REA spawns, resumes, or attaches to nothing here, so this operation never widens that grant. Both the arguments and the reply are caller- and target-derived data, and a returned reply is marked untrusted. timeout_ms bounds how long REA waits for a reply; REA cannot cancel the call inside the target, so a later reply is discarded rather than reported. Invoking an export after its script was unloaded fails with a typed ownership error.",
+    inputSchema: z.strictObject({
+      session_id: sessionId,
+      script_id: z.string().uuid(),
+      method: z
+        .string()
+        .min(1)
+        .max(FRIDA_RPC_METHOD_MAX_CHARACTERS)
+        .describe("One export name the script reported through frida_rpc_list"),
+      arguments: z
+        .array(jsonValueSchema)
+        .max(FRIDA_RPC_MAX_ARGUMENTS)
+        .default([])
+        .describe("Positional JSON arguments passed to that export"),
+      timeout_ms: z
+        .int()
+        .min(1)
+        .max(FRIDA_RPC_MAX_TIMEOUT_MS)
+        .default(FRIDA_RPC_DEFAULT_TIMEOUT_MS)
+        .describe("How long REA waits for a reply"),
+    }),
+    outputSchema: evidenceResultOf(fridaRpcCallResultSchema),
+    examples: [
+      {
+        title: "Call a reported export",
+        input: {
+          session_id: "00000000-0000-4000-8000-000000000001",
+          script_id: "00000000-0000-4000-8000-000000000002",
+          method: "snapshot",
+          arguments: [],
+          timeout_ms: 5_000,
         },
       },
     ],

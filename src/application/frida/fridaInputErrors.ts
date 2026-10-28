@@ -25,3 +25,20 @@ export const unknownFridaScript = (
       message: `No loaded Frida script ${scriptId} in this session.`,
     },
   ]);
+
+/**
+ * REA owns a script handle only while the load that created it is retained.
+ * A script_id that was unloaded, or whose session closed or detached, names no
+ * live owner, so its identity alone cannot authorize another target call.
+ */
+export const unownedFridaScript = (
+  operation: string,
+  scriptId: string,
+): AnalysisInputError =>
+  new AnalysisInputError(operation, undefined, [
+    {
+      path: ["script_id"],
+      reason: "invalid_value",
+      message: `Frida script ${scriptId} is not owned by this session: it was unloaded, released, or its session closed. A script_id alone does not establish ownership after unload; load the script again to invoke its exports.`,
+    },
+  ]);

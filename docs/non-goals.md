@@ -48,8 +48,17 @@ pwntools/pwndbg offline lanes.
 Actively maintained upstream but build is archaeologically painful (LLVM version pinning
 dominates the dependency graph). Ghidra's p-code already provides the semantics
 representation REA consumes; direct lifting adds an extra fragile toolchain for marginal
-coverage gain. Re-evaluate if p-code-based emulation (planned prototype) proves
-insufficient.
+coverage gain.
+
+Decision (2026-10-28, this fork): the semantics half is answered by the
+[isolated emulation lane](emulation.md), which runs one function body inside a pinned
+Unicorn 2.1.x CPU and memory model instead of lifting it. The earlier "p-code-based
+emulation planned prototype" note is closed by that choice: a small bring-your-own
+interpreter with real CPU semantics covers "what did this code change?" without
+LLVM pinning and without depending on a provider's p-code cache. P-code emulation through
+Ghidra is no longer planned; it may be re-proposed as its own lane if Unicorn's
+unmapped-memory model proves insufficient for an analyst question that needs mapped
+provider semantics.
 
 ## Fork decision on upstream category exclusions
 

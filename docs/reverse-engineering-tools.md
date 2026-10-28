@@ -71,6 +71,190 @@ gdb_session_status {"session_id":"…"}
 close_gdb_session {"session_id":"…"}
 ```
 
+## Lima lab VMs
+
+MCP registers `start_lab_vm`, `run_lab_vm_command`, and `stop_lab_vm` for an
+ephemeral Linux VM on Apple silicon macOS. Select the caller-supplied CLI with
+an absolute `REA_LIMACTL_COMMAND`; the lane is fail-closed, never installs or
+upgrades Lima, and reports `unsupported_host` where the `vz` driver is not
+available. Guest command output is not published: Evidence keeps the exit type,
+exit code, byte counts, truncation, and the workspace paths the command
+produced, modified, or removed. One REA server owns at most one lab VM. See
+[lab VMs](./lab-vms.md) and the [autonomous execution
+policy](./autonomous-execution.md).
+
+## mitmproxy interception
+
+MCP registers `start_interception_session`, `read_interception_inventory`,
+`export_endpoint_inventory`, `proxy_rule_set`, `proxy_rule_clear`,
+`proxy_replay_send`, and `stop_interception_session` for one per-application
+mitmproxy session. Select the caller-supplied engine with an absolute
+`REA_MITMDUMP_COMMAND` and the generated addon with `REA_MITM_ADDON_DIR`
+(`node bridge/mitm/generate_addon.ts --out <directory>`). The addon streams
+structure only — origins, methods, path templates, parameter names and type
+classes, status counts, header names, and a response-shape sketch — while bodies
+stay as owner-only files in a private capture directory. Rewrite rules are
+arming, value-free decisions are counted, and replay goes through the same
+one-shot send core as `http_replay_send`. No trust store, device-wide proxy, or
+pinning bypass is changed. See [mitmproxy interception](./mitm-interception.md).
+
+## LIEF deep parse
+
+MCP registers `inspect_binary_deep` and `extract_pdb_dwarf_info` for a
+caller-supplied LIEF release. Select the interpreter with an absolute
+`REA_LIEF_COMMAND` and the released bridge script with `REA_LIEF_BRIDGE_DIR`
+(copy `bridge/lief/lief_bridge.py` into a directory you own). Both tools run
+one bounded JSON-framed bridge process per call: REA hashes the artifact first,
+the bridge re-hashes it before parsing, and the report carries structure only —
+dynamic tags, load commands, data-directory declarations, CodeView identity,
+DWARF inventory and bounded symbol/address lookups. Section layout, exports,
+imports, notes, certificates and Mach-O detail stay with the tools that own
+them. See [LIEF deep parse](./lief-deep-parse.md).
+
+## Isolated emulation
+
+MCP registers `emulate_function_isolated` and `assemble_bytes` for one bounded
+job against REA's own Unicorn/Keystone sidecar. Select the interpreter that
+carries Unicorn 2.1.x and Keystone with an absolute `REA_UNICORN_PYTHON` and the
+bridge directory with `REA_UNICORN_BRIDGE_DIR`. Each request owns one sidecar
+process: the selected code runs only inside Unicorn's CPU and memory model, no
+instruction executes natively, and no OS, loader, import, or syscall is modelled.
+Evidence carries typed register values, memory-window digests, executed address
+pairs, call counts, and the exit reason; code bytes and memory content never
+appear. There is no disassembler here, because rizin and objdump already cover
+it. See [isolated emulation](./emulation.md).
+
+## Symbolic execution
+
+MCP registers `find_paths_to_target`, `run_symbolic_function_exploration`, and
+`recover_control_flow_angr` for one bounded angr job each. Select the interpreter
+that carries angr 9.2.x with an absolute `REA_ANGR_PYTHON` and the bridge
+directory with `REA_ANGR_BRIDGE_DIR`; `REA_ANGR_JOBS` caps concurrent jobs and
+`angr.operation_timeout_ms` (or `REA_ANGR_OPERATION_TIMEOUT_MS`) sets the
+deadline. Callers constrain symbolic registers or a symbolic stdin window, and
+the answer reports path conditions as an operator tree and every model value as
+a SHA-256 digest, so no symbolic solution can be read back out of Evidence. The
+CFG recovery exists to cross-check rizin or Ghidra rather than to replace them.
+See [symbolic execution](./angr-symbolic-execution.md).
+
+## Frida script presets
+
+MCP registers `load_frida_script_preset` beside the free-form
+`load_frida_script`: one named REA-authored reference agent (`ssl-unpinning`,
+`jail-root-detect-bypass`, `keystore-dump-structure`) loads into an open session
+and reports its source SHA-256 plus the declared pinning/detection surfaces it
+addresses. No script text or target payload reaches Evidence, and no upstream
+project's agent is vendored; the AGPL-3.0 reference project is documented in
+`third_party/frida-presets/README.md`. See
+[Frida script presets](./frida-script-presets.md).
+
+## Mobile runtime and forensics toolchain
+
+MCP registers `run_objection_recipe`, `analyze_apk_structure`,
+`scan_apk_vulnerabilities`, and `run_mobile_forensics_report` for
+caller-supplied objection, androguard 5.x, and iLEAPP/ALEAPP launchers. objection
+runs only whitelisted read-only recipes and its printed text is reduced to
+structural rows; androguard parses an APK statically and reports structure or
+fixed structure-rule findings as ids and locations; the forensics lane parses the
+tool's TSV tables from a caller-owned directory. Each lane is a subprocess and is
+never installed, linked, or upgraded by REA. See
+[mobile runtime and forensic toolchain](./mobile-runtime-toolchain.md).
+
+## Protocol learning
+
+MCP registers `learn_protocol_model`, `probe_learned_model`, and
+`export_protocol_grammar`. The first learns a finite-state model from one saved
+capture — a pcap or pcapng read through the packet-capture lane, or an aioquic
+JSON qlog 0.3 file read through the owned capture decoder — and reports message
+classes with field-type sketches, states that are bounded suffixes of the
+observed class sequence, and counted transitions. The second sends
+caller-authored steps to one operator-allowlisted lab socket
+(`REA_PROTOLEARN_LAB_ENDPOINTS`) from a deny-default sandboxed child
+(`REA_PROTOLEARN_PYTHON`, `REA_PROTOLEARN_BRIDGE_DIR`), and reports each reply as
+a length, a digest, and a type sketch with a consistent, divergent, unmodeled, or
+unstable verdict. The third writes structure-aware seeds and the
+`rea.fuzzing.campaign-seeds/v1` handoff for a later fuzz campaign. Payload values
+never become Evidence. See [protocol learning](./protocol-learning.md).
+
+## Hunting queue
+
+MCP registers `schedule_investigation_batch`, `run_scheduled_batch`,
+`read_hunting_queue`, `cancel_hunting_batch`, `start_watch_session`, and
+`stop_watch_session`. The first queues every target × recipe pair into a durable
+owner-only SQLite queue, ordered by each target's completion ledger and residual
+unknowns. The second admits exactly one unit within the tighter of the call's and
+`hunting.max_unit_seconds`; a unit that reaches its deadline, or a batch that
+reaches its unit or wall-clock budget, ends with a typed stop and stays queued.
+Recipes delegate to the lanes that own the work — re-analysis over the admitted
+analysis target, a registered fuzz campaign, a protocol probe against one
+loopback lab socket, or a captured replay — and a recipe whose owner is not
+composed reports a typed `blocked` unit instead of a fabricated result. Every
+unit and its composed observation are recorded as Evidence, and an unfinished
+unit also records one residual unknown. Watch sessions observe one directory
+tree (names, sizes, modification times; no content) and enqueue re-analysis for
+changes; device and endpoint sources are refused this release. See
+[hunting queue](./hunting-queue.md).
+
+## Benchmark harness
+
+MCP registers `run_bench_task`. One call boots a lab VM from the profile named
+by `REA_BENCH_LIMA_PROFILE` (`nyu-ctf-bench` or `cybench`), runs the caller's
+containerized task command with its workspace mounted at `/workspace`, reads the
+harness outcome from `.rea-bench/outcome.json`, and removes the instance. A
+`flag` task succeeds only when the recovered flag hashes to the declared digest;
+a `pov` task succeeds only when the harness recorded a proof-of-vulnerability
+bit, optionally naming the expected sanitizer class. Flag values never become
+Evidence, only digests and the metric bit. A command stopped at
+`budget_seconds`, and a missing, oversized, or malformed outcome, is reported as
+unknown rather than unsolved, and a failed VM removal reports `vm.stopped:
+false` with the `stop_lab_vm` retry it needs. REA downloads no benchmark corpus,
+container image, or container runtime. See
+[benchmark harness](./benchmark-harness.md).
+
+## Crash triage
+
+MCP registers `register_fuzzing_campaign`, `read_campaign_status`,
+`list_crash_dedups`, and `fetch_crash_evidence` for fuzzing-campaign
+bookkeeping. Registration digests an absolute target and up to 32 seed paths,
+records a stop condition and a crash-state window, and issues a server-lifetime
+`campaign_id`; the reads report stored counters, deduplicated crash groups, and
+one crash's structural facts. Reports are parsed for ASan, TSan, UBSan, LSan,
+MSan, and macOS crash reports, and the crash-state hash covers a bounded window
+of de-symbolized top frames, so addresses, module offsets, build paths, and line
+numbers do not split one defect into many groups. Report bodies stay on disk
+(mode `0600`) inside a private runtime root that the owning server removes when
+it closes; only a 200-character sanitizer summary is inlined, and frame text is
+clipped to 512 characters with a `text_truncated` flag rather than passing
+report bytes through as structure. These four tools start no engine and execute
+no target; the fuzz loop below does that.
+
+## Fuzzing campaigns
+
+MCP registers `start_fuzzing_campaign` for the fuzz loop over one registered
+campaign. Select exactly one caller-supplied engine — `REA_LFZ_FUZZER_COMMAND`
+(libFuzzer target), `REA_AFLFRIDA_FUZZER_COMMAND` (afl-fuzz in FRIDA mode,
+macOS arm64),
+or `REA_JACKALOPE_DIR` (a Jackalope/TinyInst build directory) — and REA copies
+the campaign's seeds into a private corpus, launches the engine under a
+deny-default seatbelt profile (or inside an existing lab VM), enforces the
+declared run, seconds, and crash budgets plus the agent-editable
+`fuzzing.max_campaign_seconds` cap, and returns a bounded series of the engine's
+own execs/sec, coverage, and corpus counters. Every crash artifact is
+reproduced before it counts: only candidates whose repetitions agree on the
+crash-state hash and name an accepted sanitizer class are recorded, so
+`list_crash_dedups` and `fetch_crash_evidence` describe validated POVs rather
+than raw artifacts. Engines and targets are never installed or modified. See
+[fuzzing campaigns](./fuzzing-campaigns.md), the
+[libFuzzer](./fuzzing-libfuzzer.md), [AFL++ FRIDA](./fuzzing-aflpp-frida.md),
+and [Jackalope](./fuzzing-jackalope.md) adapter guides, and
+[lab VMs](./lab-vms.md) for the Linux route.
+
+The minimizer adapters take caller-supplied binaries and fail closed:
+`REA_LFZ_MINIMIZE_COMMAND` selects the libFuzzer-instrumented target used with
+`-minimize_crash=1`, and `REA_AFLTMIN_COMMAND` selects `afl-tmin`. Each minimizer
+run has a 600000 ms default deadline and a 4 MiB retained-output budget per
+stream; neither has a runtime override. See [crash triage](./crash-triage.md).
+
 ## Rizin
 
 `start_rizin_debug_session` and `rea debug-with-rizin` require an explicit `inferior_tty` on Linux. Rizin launches the target with stdout and stderr routed to that caller-selected TTY and `dbg.exitkills=false`; the target can therefore continue running and writing to the TTY after REA closes the debugger. This is a visible target output effect, and the caller is responsible for selecting a suitable terminal that remains available. Before closing, REA serializes after the active command, parses the structured `olj` descriptor list, detaches only a unique `ptrace://` descriptor, confirms its absence, reads back `dbg.exitkills=false`, and verifies `/proc/<pid>/fd/1` and `/proc/<pid>/fd/2` still identify the selected TTY by device and inode. If a previously identified inferior exits after Rizin confirms detach, REA verifies that the original process has ended instead of requiring output descriptors from an exited process. Unresolved identity or ambiguous readback keeps the Rizin session owned for retry. After output limits or a failed command interval, cleanup first waits up to 1000 ms for a fresh private NUL-delimited marker, discarding earlier frames before obtaining that new inferior readback. Synchronization never reopens user command admission. A missing marker, unavailable transport, or unknown inferior identity retains the cleanup owner. Caller cancellation keeps its exact reason and typed cancellation outcome even when cleanup remains incomplete; a successful retry resolves that retained cleanup state. Cancellation during final cleanup retains the captured observation and cleanup owner. An already observed startup or protocol failure remains primary and retains a later cancellation as a secondary failure; recovering the transport does not erase that original diagnosis. Persistent Rizin debugger sessions are unavailable outside Linux because this verification depends on `/proc`.
@@ -169,5 +353,27 @@ generation error.
 ## Configuration and coverage
 
 The optional `REA_OBJDUMP_COMMAND`, `REA_GDB_COMMAND`, and `REA_RIZIN_COMMAND` values select executable names or paths; otherwise REA searches `PATH`. Values are passed directly to process spawning, not expanded as shell command lines. A host executable launch refusal preserves the selected command and host error code, with recovery through the corresponding command setting, PATH, or execute/search permissions. GDB does not retry that refusal with MI2; its MI2 fallback applies to protocol initialization failures. Provider versions and capabilities remain unknown until observed from the installed tool and verified in the corresponding real-provider lane.
+
+The iOS static-image lane selects its binary only through an absolute `REA_IPSW_COMMAND` (no `PATH` fallback); `REA_IPSW_DSC_PATH` names the dyld shared cache file or directory and defaults to the macOS cryptex directory, probed read-only. An unset or unusable value is a typed configuration refusal with the exact setting and remediation. REA never downloads firmware or shared caches and never installs the tool. See [iOS static analysis](./ipsw-analysis.md).
+
+The signature lane is caller-supplied and fail-closed. `REA_CAPA_COMMAND` selects the capa binary, `REA_YARAX_COMMAND` the YARA-X `yr` binary, and `REA_GORESYM_COMMAND`, `REA_RUSTFILT_COMMAND`, and `REA_DUMP_SYMS_COMMAND` the symbol-recovery tools; only rustfilt has a `PATH` fallback. REA never installs or downloads a toolchain, and the crypto-constant YARA pack is bundled and verified against its pinned SHA-256. See [capa](./capa-analysis.md), [YARA-X](./yara-scanning.md), and [symbol recovery](./symbol-recovery.md).
+
+The decompiler lane is likewise caller-supplied. `REA_ILSPY_CMD_PATH` selects ilspycmd, `REA_PYLINGUAL_COMMAND` or `REA_PYCDC_COMMAND` selects the Python decompiler, and `REA_VINEFLOWER_JAR` plus `JAVA_HOME` or `PATH` selects the JVM decompiler. Only declaration structure reaches Evidence; recovered source text stays out. See [.NET](./dotnet-decompilation.md), [Python](./python-decompilation.md), and [JVM](./jvm-decompilation.md).
+
+V8 disassembly is caller-supplied and fail-closed. `REA_VIEW8_COMMAND` selects a locally built View8 launcher by absolute path; REA never builds, downloads, or installs it, so the patched V8 revision remains operator-owned. Only the cached-data header, the artifact digest, and the disassembly's digest and size reach Evidence; disassembly text stays out. See [V8 bytecode](./v8-bytecode.md).
+
+ASAR packed-integrity inspection needs no external tool. It reuses the ASAR header admission selected for static JavaScript analysis (`REA_ASAR_MAX_HEADER_BYTES` or `asar.max_header_bytes`) and lists V8 bytecode candidates for the launcher above. See [ASAR integrity](./asar-integrity.md).
+
+Protobuf recovery selects pbtk or protodump through `REA_PBTK_COMMAND` / `REA_PROTODUMP_COMMAND`, and gRPC reflection selects grpcurl through `REA_GRPCURL_COMMAND`; all three require absolute paths. Recovered `.proto` files are published with digests and only their structure reaches Evidence. See [protobuf recovery](./protobuf-recovery.md).
+
+The LIEF lane is caller-supplied and fail-closed: `REA_LIEF_COMMAND` names an
+absolute interpreter that has LIEF >= 0.14 and < 0.17 installed and
+`REA_LIEF_BRIDGE_DIR` names the directory holding an unmodified
+`lief_bridge.py` from this release. Neither falls back to `PATH`, REA installs
+nothing, and a report from a release outside that range is refused typed. The
+declared range is an API-target range; each patch release inside it is not
+separately verified.
+
+The binary-comparison lane selects a BinDiff adapter with `REA_BINDIFF_COMMAND` and a BinExport exporter with `REA_BINEXPORT_COMMAND`, both absolute and fail-closed. `diff_binaries` composes with `find_changed_behavior` as static candidates and remains a provider-backed alternative to `compare_functions`, not a replacement; `export_binexport_protobuf` publishes one `.BinExport` file with a digest. See [binary diffing](./binary-diffing.md).
 
 Provider capture limits are separate from the MCP response budget. A result that fits the provider limit may still exceed the default 10 MiB MCP response budget and return a transport `resource_constraint`. Configure `REA_MCP_MAX_RESPONSE_BYTES` to match a larger client receive buffer when that client supports one; otherwise use retained Evidence/export or complete CLI JSON output. See [MCP response limits](./mcp-contracts.md#tool-results).
