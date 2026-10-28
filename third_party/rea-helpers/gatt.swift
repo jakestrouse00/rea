@@ -66,6 +66,11 @@ func shortUuid(_ uuid: CBUUID) -> String {
   return text.uppercased()
 }
 
+/// Case- and hyphen-insensitive keying for GATT UUID lookups.
+func normalizeGatt(_ text: String) -> String {
+  text.uppercased().replacingOccurrences(of: "-", with: "")
+}
+
 final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   static var handshake = HandshakeState()
   static var maxOutputBytes = 2 * 1024 * 1024
@@ -82,41 +87,54 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   var observerCharacteristic: CBCharacteristic? = nil
 
   init(peripheralIdentifier: UUID, timeoutMs: Int) {
+    self.central = CBCentralManager(delegate: nil, queue: ioQueue)
     self.peripheralIdentifier = peripheralIdentifier
-    central = CBCentralManager(delegate: nil, queue: ioQueue)
     super.init()
     central.delegate = self
+    // Cover the theoretical race where the power-state callback enqueued
+    // before the delegate landed: re-dispatch the current state once.
+    if central.state != .unknown {
+      ioQueue.async { [weak self] in
+        if let self = self, !Session.handshake.done {
+          self.centralManagerDidUpdateState(self.central)
+        }
+      }
+    }
 
-    // Connect once the radio reports its power state; the deadline is
-    // armed before the request so a silent peer is reported on time.
+    // The power-state callback drives everything after the radio reports;
+    // the deadline is armed before the request so a silent peer is
+    // reported on time.
     ioQueue.asyncAfter(deadline: .now() + .milliseconds(timeoutMs)) {
       if !Session.handshake.done {
         Session.handshake.fail(
           code: "timeout", message: "the peer did not connect in time")
       }
     }
-    ioQueue.async { [weak self] in
-      guard let self = self else { return }
-      while self.central.state == .unknown { Thread.sleep(forTimeInterval: 0.02) }
-      if self.central.state == .unauthorized {
-        FileHandle.standardError.write(
-          Data("{\"event\":\"authorization_denied\"}\n".utf8))
-        exit(AUTH_DENIED_EXIT)
-      }
-      guard self.central.state == .poweredOn else {
-        Session.handshake.fail(
-          code: "refused",
-          message: "Bluetooth is not powered on (state \(self.central.state.rawValue))")
-      }
-      let found = self.central.retrievePeripherals(withIdentifiers: [self.peripheralIdentifier])
+  }
+
+  func centralManagerDidUpdateState(_ central: CBCentralManager) {
+    guard !Session.handshake.done else { return }
+    switch central.state {
+    case .unauthorized:
+      FileHandle.standardError.write(
+        Data("{\"event\":\"authorization_denied\"}\n".utf8))
+      exit(AUTH_DENIED_EXIT)
+    case .poweredOn:
+      let found = central.retrievePeripherals(withIdentifiers: [peripheralIdentifier])
       guard let target = found.first else {
         Session.handshake.fail(
           code: "refused",
           message: "peripheral identifier not known to this host")
       }
       target.delegate = self
-      self.peripheral = target
-      self.central.connect(target, options: nil)
+      peripheral = target
+      central.connect(target, options: nil)
+    case .poweredOff:
+      Session.handshake.fail(code: "refused", message: "Bluetooth radio is powered off")
+    default:
+      Session.handshake.fail(
+        code: "refused",
+        message: "Bluetooth is not available (state \(central.state.rawValue))")
     }
   }
 
@@ -132,18 +150,18 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
   }
 
   func characteristic(named json: [String: Any], id: String) -> CBCharacteristic? {
-    let serviceText = (json["service"] as? String ?? "").uppercased()
-    let characteristicText = (json["characteristic"] as? String ?? "").uppercased()
+    let serviceText = normalizeGatt(json["service"] as? String ?? "")
+    let characteristicText = normalizeGatt(json["characteristic"] as? String ?? "")
     guard let service = serviceIndex[serviceText] ?? serviceIndex.values.first(
-      where: { shortUuid($0.uuid).uppercased() == serviceText || $0.uuid.uuidString.uppercased() == serviceText })
+      where: { normalizeGatt($0.uuid.uuidString) == serviceText })
     else {
-      emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"service \(escape(serviceText)) is not in this session's discovery\"}")
+      emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"service \(escape(json["service"] as? String ?? "")) is not in this session's discovery\"}")
       return nil
     }
     guard let characteristic = (service.characteristics ?? []).first(
-      where: { shortUuid($0.uuid).uppercased() == characteristicText })
+      where: { normalizeGatt($0.uuid.uuidString) == characteristicText })
     else {
-      emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"characteristic \(escape(characteristicText)) is not in \(escape(serviceText))'s discovery\"}")
+      emit("{\"event\":\"error\",\"id\":\"\(id)\",\"message\":\"characteristic \(escape(json["characteristic"] as? String ?? "")) is not in this session's discovery\"}")
       return nil
     }
     return characteristic
@@ -165,16 +183,10 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
   // CBCentralManagerDelegate
 
-  func centralManagerDidUpdateState(_ central: CBCentralManager) {
-    // The startup block above drives state handling; nothing to do here.
-  }
-
   func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
     peripheral.delegate = self
-    pendingServiceDiscovery = (peripheral.services ?? []).count
-    let discovered = pendingServiceDiscovery
+    pendingServiceDiscovery = 0
     peripheral.discoverServices(nil)
-    if discovered == 0 { completeConnection() }
   }
 
   func centralManager(_ central: CBCentralManager,
@@ -209,8 +221,10 @@ final class Session: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
 
   func peripheral(_ peripheral: CBPeripheral,
                   didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-    serviceIndex[shortUuid(service.uuid).uppercased()] = service
-    serviceIndex[service.uuid.uuidString.uppercased()] = service
+    serviceIndex[normalizeGatt(service.uuid.uuidString)] = service
+    if let error = error {
+      emit("{\"event\":\"error\",\"message\":\"\(escape(error.localizedDescription))\"}")
+    }
     pendingServiceDiscovery -= 1
     if pendingServiceDiscovery <= 0 { completeConnection() }
   }
@@ -371,8 +385,10 @@ let commandThread = Thread {
     session.ioQueue.async { session.handle(json) }
   }
 }
+
+// Commands start only after the handshake, so requests over stdin can never
+// race the service tree.
+Session.handshake.gate.wait()
 commandThread.name = "gatt-commands"
 commandThread.start()
-
-Session.handshake.gate.wait()
 dispatchMain()
