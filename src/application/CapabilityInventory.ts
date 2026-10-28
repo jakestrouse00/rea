@@ -8,6 +8,11 @@ import {
   ANGR_JOBS_ENV,
   ANGR_PYTHON_ENV_REMEDIATION,
 } from "../domain/angr/angrLimits.js";
+import {
+  PROTOLEARN_BRIDGE_DIR_REMEDIATION,
+  PROTOLEARN_LAB_ENDPOINTS_REMEDIATION,
+  PROTOLEARN_PYTHON_ENV_REMEDIATION,
+} from "../domain/protolearn/protolearnLimits.js";
 import { DEFAULT_CALL_RELATIONSHIP_DIRECTION } from "../contracts/enhancedInputs.js";
 import { FIRMWARE_TOOL_REQUIREMENTS } from "../contracts/firmware/firmwareToolRequirements.js";
 import { CALL_RELATIONSHIP_TRAVERSALS } from "./CallRelationshipTraversal.js";
@@ -147,6 +152,8 @@ export type AvailabilityPolicy = {
   readonly emuEmulationEnabled?: boolean;
   /** A Python interpreter and the angr bridge script are selected. */
   readonly angrSymbolicEnabled?: boolean;
+  /** The probe interpreter, runner script, and lab allowlist are selected. */
+  readonly probeLearnedModelEnabled?: boolean;
 };
 
 type AvailabilityFacts = {
@@ -793,6 +800,16 @@ const workflowAvailabilityFor = ({
           reason: "provider_missing",
           remediation: `${EMU_BRIDGE_DIR_REMEDIATION} ${EMU_PYTHON_ENV_REMEDIATION}`,
         };
+  if (kind === "protocol-learning") {
+    if (name === "probe_learned_model")
+      return policy.probeLearnedModelEnabled === true
+        ? { reason: "available", remediation: null }
+        : {
+            reason: "provider_missing",
+            remediation: `${PROTOLEARN_PYTHON_ENV_REMEDIATION} ${PROTOLEARN_BRIDGE_DIR_REMEDIATION} ${PROTOLEARN_LAB_ENDPOINTS_REMEDIATION}`,
+          };
+    return { reason: "available", remediation: null };
+  }
   if (kind === "symbolic-engine")
     return policy.angrSymbolicEnabled === true
       ? { reason: "available", remediation: null }

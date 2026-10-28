@@ -36,8 +36,8 @@ import {
 import {
   parseCapinfosOutput,
   parseTsharkJsonOutput,
-  TSHARK_JSON_MAX_BYTES,
 } from "./PcapOutput.js";
+import { TSHARK_JSON_MAX_BYTES } from "./TsharkJson.js";
 import { TLS_FINGERPRINT_LIMITATIONS } from "../domain/pcap/tlsFingerprint.js";
 import {
   runPcapCommand,

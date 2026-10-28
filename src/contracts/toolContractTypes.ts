@@ -50,6 +50,7 @@ export const TOOL_KINDS = [
   "mitm-provider",
   "emulator",
   "symbolic-engine",
+  "protocol-learning",
   "session",
 ] as const;
 

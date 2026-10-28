@@ -235,6 +235,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.angrContracts.ANGR_TOOL_CONTRACTS,
     },
     {
+      id: "protocol-learning",
+      surface: "protocol-learning",
+      contracts: sources.protolearnContracts.PROTOLEARN_TOOL_CONTRACTS,
+    },
+    {
       id: "crash-triage",
       surface: "crash-triage",
       contracts: sources.crashTriageContracts.CRASH_TRIAGE_TOOL_CONTRACTS,
@@ -593,6 +598,10 @@ export const providerCatalog = (sources) => {
     {
       identity: sources.angrProvider.ANGR_PROVIDER_IDENTITY,
       contracts: sources.angrContracts.ANGR_TOOL_CONTRACTS,
+    },
+    {
+      identity: sources.protolearnProvider.PROTOLEARN_PROVIDER_IDENTITY,
+      contracts: sources.protolearnContracts.PROTOLEARN_TOOL_CONTRACTS,
     },
     {
       identity: sources.symbolProvider.SYMBOL_PROVIDER_IDENTITY,

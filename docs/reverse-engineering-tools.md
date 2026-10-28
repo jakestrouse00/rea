@@ -124,6 +124,22 @@ a SHA-256 digest, so no symbolic solution can be read back out of Evidence. The
 CFG recovery exists to cross-check rizin or Ghidra rather than to replace them.
 See [symbolic execution](./angr-symbolic-execution.md).
 
+## Protocol learning
+
+MCP registers `learn_protocol_model`, `probe_learned_model`, and
+`export_protocol_grammar`. The first learns a finite-state model from one saved
+capture — a pcap or pcapng read through the packet-capture lane, or an aioquic
+JSON qlog 0.3 file read through the owned capture decoder — and reports message
+classes with field-type sketches, states that are bounded suffixes of the
+observed class sequence, and counted transitions. The second sends
+caller-authored steps to one operator-allowlisted lab socket
+(`REA_PROTOLEARN_LAB_ENDPOINTS`) from a deny-default sandboxed child
+(`REA_PROTOLEARN_PYTHON`, `REA_PROTOLEARN_BRIDGE_DIR`), and reports each reply as
+a length, a digest, and a type sketch with a consistent, divergent, unmodeled, or
+unstable verdict. The third writes structure-aware seeds and the
+`rea.fuzzing.campaign-seeds/v1` handoff for a later fuzz campaign. Payload values
+never become Evidence. See [protocol learning](./protocol-learning.md).
+
 ## Crash triage
 
 MCP registers `register_fuzzing_campaign`, `read_campaign_status`,

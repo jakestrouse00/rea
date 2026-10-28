@@ -27,6 +27,11 @@ import {
   MAX_WASM_COMMAND_TIMEOUT_MS,
 } from "./wasm/wasmArtifact.js";
 import { DEFAULT_ANGR_OPERATION_TIMEOUT_MS } from "./angr/angrLimits.js";
+import {
+  DEFAULT_PROTOLEARN_PROBE_TIMEOUT_MS,
+  PROTOLEARN_LIMITS,
+  PROTOLEARN_PROBE_TIMEOUT_ENV,
+} from "./protolearn/protolearnLimits.js";
 interface SettingDefinition {
   readonly environment?: string;
   readonly defaultValue: number | null;
@@ -148,6 +153,14 @@ export const ANALYSIS_SETTINGS = {
       "run_symbolic_function_exploration",
       "recover_control_flow_angr",
     ],
+  },
+  "protolearn.probe_timeout_ms": {
+    ...timer,
+    environment: PROTOLEARN_PROBE_TIMEOUT_ENV,
+    defaultValue: DEFAULT_PROTOLEARN_PROBE_TIMEOUT_MS,
+    maximum: PROTOLEARN_LIMITS.maxProbeTimeoutMs,
+    provider: "protolearn",
+    operations: ["probe_learned_model"],
   },
   "regex.matching_deadline_ms": {
     ...timer,

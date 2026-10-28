@@ -71,6 +71,10 @@ export default defineConfig({
             link: "/angr-symbolic-execution",
           },
           {
+            text: "Protocol learning",
+            link: "/protocol-learning",
+          },
+          {
             text: "Autonomous execution policy",
             link: "/autonomous-execution",
           },

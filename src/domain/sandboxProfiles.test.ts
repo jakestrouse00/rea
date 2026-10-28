@@ -42,8 +42,10 @@ describe("deny-default sandbox profiles", () => {
       mach_lookup: ["com.apple.system.logger"],
       readable_paths: ["/tmp/rea-fixtures"],
     });
+    // The kernel's profile grammar names only `localhost`, so an exact loopback
+    // destination is written that way; a numeric literal is refused at launch.
     expect(source).toContain(
-      '(allow network-outbound (remote ip "127.0.0.1:8080") (remote ip "::1:8081"))',
+      '(allow network-outbound (remote ip "localhost:8080") (remote ip "localhost:8081"))',
     );
     expect(source).toContain(
       '(allow mach-lookup (global-name "com.apple.system.logger"))',
@@ -77,6 +79,13 @@ describe("deny-default sandbox profiles", () => {
         sandboxProfileSource({
           ...base,
           network_allowlist: [{ host: "127.0.0.1", port: 0 }],
+        }),
+      // `sandbox-exec` refuses a numeric host in a network address, so a
+      // non-loopback destination is not expressible as an exact one.
+      () =>
+        sandboxProfileSource({
+          ...base,
+          network_allowlist: [{ host: "192.0.2.10", port: 9000 }],
         }),
     ];
     for (const reject of rejections)

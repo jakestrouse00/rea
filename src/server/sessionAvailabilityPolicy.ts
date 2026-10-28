@@ -32,6 +32,7 @@ export interface SessionAvailabilityDefaults {
     | "mitmInterceptionEnabled"
     | "emuEmulationEnabled"
     | "angrSymbolicEnabled"
+    | "probeLearnedModelEnabled"
   >;
 }
 
@@ -79,6 +80,8 @@ export const sessionAvailabilityPolicy = (
         defaults.optionalFeatures?.emuEmulationEnabled ?? false,
       angrSymbolicEnabled:
         defaults.optionalFeatures?.angrSymbolicEnabled ?? false,
+      probeLearnedModelEnabled:
+        defaults.optionalFeatures?.probeLearnedModelEnabled ?? false,
       javascriptRecoveryEnabled:
         defaults.optionalFeatures?.javascriptRecoveryEnabled ?? false,
       webModuleResolutionEnabled:

@@ -297,6 +297,12 @@ import {
   createAngrAnalysisProvider,
 } from "../composition/angr.js";
 import { registerAngrTools } from "./registerAngrTools.js";
+import type { ProtocolLearningPort } from "../application/protolearn/ProtocolLearningPort.js";
+import {
+  createProtocolLearningProvider,
+  protocolLearningProbeEnabled,
+} from "../composition/protolearn.js";
+import { registerProtolearnTools } from "./registerProtolearnTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import { registerGdbTools } from "./registerGdbTools.js";
 import { RizinDebugSessionManager } from "../rizin/RizinDebugSessionManager.js";
@@ -368,6 +374,8 @@ export interface CreateServerOptions {
   readonly emu?: EmuAnalysisPort;
   /** Bounded angr symbolic lane; omitted means the lane is selected from the environment. */
   readonly angr?: AngrAnalysisPort;
+  /** Protocol learning lane; omitted means the lane is selected from the environment. */
+  readonly protocolLearning?: ProtocolLearningPort;
   readonly discoveryAnalysis?: DiscoveryAnalysisPort;
   readonly windowsArtifacts?: WindowsArtifactsService;
   readonly nativeAot?: NativeAotArtifactService;
@@ -513,6 +521,10 @@ const installSessionToolAvailability = (
       angrSymbolicEnabled: angrLaneEnabled(
         environment,
         options.angr !== undefined,
+      ),
+      probeLearnedModelEnabled: protocolLearningProbeEnabled(
+        environment,
+        options.protocolLearning !== undefined,
       ),
     },
   });
@@ -738,6 +750,9 @@ export const createServer = (
   const angr =
     options.angr ??
     createAngrAnalysisProvider(environment, analysisSettings.read);
+  const protocolLearning =
+    options.protocolLearning ??
+    createProtocolLearningProvider(environment, analysisSettings.read);
   const discovery =
     options.discoveryAnalysis ?? createDiscoveryAnalysisProvider(environment);
   const windowsArtifacts =
@@ -786,6 +801,7 @@ export const createServer = (
       }),
       emu.close(),
       angr.close(),
+      protocolLearning.close(),
       discovery.close(),
       windowsArtifacts.close(),
       nativeAot.close(),
@@ -1185,6 +1201,13 @@ export const createServer = (
   registerAngrTools(
     server,
     angr,
+    toolLogger,
+    recordEvidence,
+    analysisAdmission,
+  );
+  registerProtolearnTools(
+    server,
+    protocolLearning,
     toolLogger,
     recordEvidence,
     analysisAdmission,

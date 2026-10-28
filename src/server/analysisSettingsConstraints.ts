@@ -28,6 +28,17 @@ import {
   EMU_PYTHON_ENV,
   EMU_PYTHON_ENV_REMEDIATION,
 } from "../domain/emu/emuLimits.js";
+import {
+  PROTOLEARN_BRIDGE_DIR_ENV,
+  PROTOLEARN_BRIDGE_DIR_REMEDIATION,
+  PROTOLEARN_LAB_ENDPOINTS_ENV,
+  PROTOLEARN_LAB_ENDPOINTS_REMEDIATION,
+  PROTOLEARN_LIMITS,
+  PROTOLEARN_PROBE_TIMEOUT_SETTING,
+  PROTOLEARN_PYTHON_ENV,
+  PROTOLEARN_PYTHON_ENV_REMEDIATION,
+} from "../domain/protolearn/protolearnLimits.js";
+import { PROTOCOL_MODEL_FILE_MAX_BYTES } from "../protolearn/ProtocolModelStore.js";
 import type { ToolResultDelivery } from "./ToolResultDelivery.js";
 
 /** Transport and host facts stay distinct from the agent-editable policy registry. */
@@ -305,6 +316,62 @@ export const analysisSettingsConstraints = (delivery: ToolResultDelivery) => [
     unit: "ms",
     observation: "known" as const,
     recovery: `A proxy_rule_set rule stays armed for its ttl_ms, default ${String(MITM_LIMITS.defaultRuleTtlMs)} ms and at most ${String(MITM_LIMITS.maxRuleTtlMs)} ms, then REA releases it and the addon drops it past its expires_at. At most ${String(MITM_LIMITS.maxArmedRules)} rules stay armed on one session. This release has no runtime override.`,
+  },
+  {
+    control: PROTOLEARN_PYTHON_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: PROTOLEARN_PYTHON_ENV_REMEDIATION,
+  },
+  {
+    control: PROTOLEARN_BRIDGE_DIR_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "path",
+    observation: "unknown" as const,
+    recovery: PROTOLEARN_BRIDGE_DIR_REMEDIATION,
+  },
+  {
+    control: PROTOLEARN_LAB_ENDPOINTS_ENV,
+    authority: "operator" as const,
+    value: null,
+    unit: "endpoints",
+    observation: "unknown" as const,
+    recovery: PROTOLEARN_LAB_ENDPOINTS_REMEDIATION,
+  },
+  {
+    control: PROTOLEARN_PROBE_TIMEOUT_SETTING,
+    authority: "fixed" as const,
+    value: PROTOLEARN_LIMITS.maxProbeTimeoutMs,
+    unit: "ms",
+    observation: "known" as const,
+    recovery: `One probe connection waits for its timeout_ms, default ${String(PROTOLEARN_LIMITS.defaultProbeTimeoutMs)} ms and at most ${String(PROTOLEARN_LIMITS.maxProbeTimeoutMs)} ms, then ${String(PROTOLEARN_LIMITS.stopGraceMs)} ms of stop grace before REA stops the owned runner. Raising the host tool-call deadline past that total does not make a blocked lab service answer.`,
+  },
+  {
+    control: "protolearn.max_messages",
+    authority: "fixed" as const,
+    value: PROTOLEARN_LIMITS.maxMessages,
+    unit: "messages",
+    observation: "known" as const,
+    recovery: `One learned model retains at most ${String(PROTOLEARN_LIMITS.maxMessages)} messages and ${String(PROTOLEARN_LIMITS.maxStates)} states. Later messages are counted as omitted and mark coverage partial rather than replacing retained ones. This release has no runtime override.`,
+  },
+  {
+    control: "protolearn.probe_response_bytes",
+    authority: "fixed" as const,
+    value: PROTOLEARN_LIMITS.maxProbeConnectionBytes,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `One probe connection retains at most ${String(PROTOLEARN_LIMITS.maxProbeConnectionBytes)} response bytes in total and ${String(PROTOLEARN_LIMITS.maxProbeResponseBytes)} per step; a longer reply is truncated and the step reports it. Response bytes are hashed and sketched, never echoed. This release has no runtime override.`,
+  },
+  {
+    control: "protolearn.model_file_bytes",
+    authority: "fixed" as const,
+    value: PROTOCOL_MODEL_FILE_MAX_BYTES,
+    unit: "bytes",
+    observation: "known" as const,
+    recovery: `probe_learned_model and export_protocol_grammar read a model file up to ${String(PROTOCOL_MODEL_FILE_MAX_BYTES)} bytes. A larger file is refused rather than parsed. This release has no runtime override; learn the model with fewer retained messages.`,
   },
   {
     control: "mitm.stream_line_bytes",
