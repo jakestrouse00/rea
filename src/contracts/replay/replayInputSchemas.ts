@@ -89,10 +89,10 @@ export const httpReplaySessionStartInputSchema = z
       ),
     target_origins: z
       .array(replayOriginSchema)
-      .min(1)
       .max(16)
+      .optional()
       .describe(
-        "Origins this session may dispatch to. Each must also appear in the operator allowlist; REA never widens either set.",
+        'Origins this session may dispatch to. Each must also appear in the operator allowlist; REA never widens either set. Omit it only when the operator set REA_REPLAY_ALLOWED_ORIGINS to "*": every http or https origin is then in scope for this session.',
       ),
   })
   .superRefine((value, context) => {

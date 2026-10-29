@@ -38,6 +38,7 @@ import {
   REPLAY_PROVIDER_ID,
   ReplayConfigurationFailure,
   parseReplayAllowedOrigins,
+  REPLAY_ORIGINS_WILDCARD,
   replayDeclaredOrigin,
   replayUrlApproval,
 } from "../domain/replay/replayOrigins.js";
@@ -171,7 +172,7 @@ export class ReplayService implements ReplayPort {
         ),
       );
     const declared: string[] = [];
-    for (const [index, value] of request.targetOrigins.entries()) {
+    for (const [index, value] of (request.targetOrigins ?? []).entries()) {
       const origin = replayDeclaredOrigin(value);
       if (origin === undefined)
         return err(
@@ -184,7 +185,10 @@ export class ReplayService implements ReplayPort {
             },
           ]),
         );
-      if (!approved.value.includes(origin))
+      if (
+        !approved.value.includes(origin) &&
+        !approved.value.includes(REPLAY_ORIGINS_WILDCARD)
+      )
         return err(
           providerConfigurationRefusal(
             REPLAY_PROVIDER_ID,
@@ -202,6 +206,20 @@ export class ReplayService implements ReplayPort {
         );
       if (!declared.includes(origin)) declared.push(origin);
     }
+    if (
+      declared.length === 0 &&
+      !approved.value.includes(REPLAY_ORIGINS_WILDCARD)
+    )
+      return err(
+        this.#inputError(operation, [
+          {
+            path: ["target_origins"],
+            reason: "missing_argument",
+            message: `Declare target_origins for this session, or open the whole plane at operator level by setting ${REPLAY_ALLOWED_ORIGINS_ENV} to "*".`,
+          },
+        ]),
+      );
+    if (declared.length === 0) declared.push(REPLAY_ORIGINS_WILDCARD);
 
     const loaded =
       request.source.kind === "har"

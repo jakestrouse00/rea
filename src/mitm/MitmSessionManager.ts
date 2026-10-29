@@ -63,6 +63,7 @@ import {
   ReplayConfigurationFailure,
   normalizedReplayOrigin,
   parseReplayAllowedOrigins,
+  replayOperatorPlaneOpen,
   replayUrlApproval,
 } from "../domain/replay/replayOrigins.js";
 import {
@@ -837,9 +838,11 @@ export class MitmSessionManager implements MitmInterceptionPort {
           approved.error,
         ),
       );
-    const allowedOrigins = session.targetOrigins.filter((origin) =>
-      approved.value.includes(origin),
-    );
+    const allowedOrigins = replayOperatorPlaneOpen(approved.value)
+      ? session.targetOrigins
+      : session.targetOrigins.filter((origin) =>
+          approved.value.includes(origin),
+        );
     const approval = replayUrlApproval(composed.value.url, allowedOrigins);
     if (!approval.approved)
       return err(

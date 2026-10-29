@@ -10,6 +10,7 @@ import {
 import { sanitizeBrowserUrl } from "../domain/browserObservation.js";
 import { BrowserObservationError } from "../domain/browserObservationError.js";
 import { REPLAY_RETRY_LIMITATION } from "../domain/replay/replayObservation.js";
+import { REPLAY_ORIGINS_WILDCARD } from "../domain/replay/replayOrigins.js";
 import type { ReplayRequest } from "../domain/replay/replayRequest.js";
 import { ReplaySendCore } from "../replay/ReplaySendCore.js";
 import { authorizedMainFrame } from "./CdpAuthorizedMainFrame.js";
@@ -135,6 +136,8 @@ const pageRequest = (input: BrowserFetchInput): ReplayRequest => ({
  * inside the send core rather than a page-context dispatch.
  */
 const approvedPageOrigins = (context: PageFetchContext): readonly string[] => {
+  if (context.operatorOrigins.includes(REPLAY_ORIGINS_WILDCARD))
+    return context.input.allowed_origins;
   const operator = new Set(context.operatorOrigins);
   return context.input.allowed_origins.filter((origin) => operator.has(origin));
 };

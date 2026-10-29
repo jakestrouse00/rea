@@ -3,8 +3,6 @@ import type { AnalysisError } from "../../domain/analysisErrorBase.js";
 import type { Evidence } from "../../domain/evidence.js";
 import type { ReplayDumpTarget } from "../../domain/replay/replayObservation.js";
 import type {
-  ReplayBody,
-  ReplayHeader,
   ReplayMutation,
   ReplayRequest,
 } from "../../domain/replay/replayRequest.js";
@@ -22,8 +20,9 @@ export type ReplaySessionSource =
 
 export interface StartReplaySessionRequest {
   readonly source: ReplaySessionSource;
-  /** Origins this session may dispatch to; each must be operator-approved. */
-  readonly targetOrigins: readonly string[];
+  /** Origins this session may dispatch to; each must be operator-approved.
+   * Omit only when the operator list is open (the "*" wildcard marker). */
+  readonly targetOrigins: readonly string[] | undefined;
 }
 
 export interface SendReplayRequest {

@@ -70,6 +70,20 @@ describe("replay operator allowlist", () => {
       "https://a.test",
     );
   });
+
+  it("opens the whole plane only for the exact wildcard marker", () => {
+    const opened = parseReplayAllowedOrigins('"*"');
+    expect(opened.ok).toBe(true);
+    expect(opened.ok ? opened.value : []).toEqual(["*"]);
+    const openedByEntry = parseReplayAllowedOrigins(
+      JSON.stringify(["https://api.example.test", "*"]),
+    );
+    expect(openedByEntry.ok).toBe(true);
+    expect(openedByEntry.ok ? openedByEntry.value : []).toEqual(["*"]);
+    // A lookalike is still an invalid origin, never a partial opening.
+    expect(codes(JSON.stringify(["*.example.test"]))).toBe("invalid_origin");
+    expect(codes(JSON.stringify(["*example.test"]))).toBe("invalid_origin");
+  });
 });
 
 describe("replay URL approval", () => {
@@ -100,6 +114,24 @@ describe("replay URL approval", () => {
       approved: false,
     });
     expect(replayUrlApproval("file:///etc/passwd", allowed)).toMatchObject({
+      approved: false,
+    });
+  });
+
+  it("approves every http(s) origin under the operator wildcard, never userinfo", () => {
+    const open = ["*"];
+    expect(replayUrlApproval("https://any.where.test/x", open)).toEqual({
+      approved: true,
+      url: "https://any.where.test/x",
+      origin: "https://any.where.test",
+    });
+    expect(replayUrlApproval("http://10.0.0.8:8081/", open)).toMatchObject({
+      approved: true,
+    });
+    expect(
+      replayUrlApproval("https://user:pw@any.where.test/", open),
+    ).toMatchObject({ approved: false });
+    expect(replayUrlApproval("file:///etc/passwd", open)).toMatchObject({
       approved: false,
     });
   });

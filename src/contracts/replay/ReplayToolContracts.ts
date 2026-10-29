@@ -29,7 +29,7 @@ export const REPLAY_TOOL_CONTRACTS = [
   {
     name: "http_replay_session_start",
     ...toolContractMetadata("http_replay_session_start"),
-    description: `Open one replay session over a HAR 1.2 capture entry or a caller-drafted request. Declare the exact origins this session may dispatch to; every one must also appear in ${REPLAY_ALLOWED_ORIGINS_ENV}, so the plane stays disabled until an operator approves origins. Returns the session_id, a bounded list of capture entries that can be replayed verbatim (each with its origin, header names, credential-header disclosure and body size), the selection, and the owner-only session record path. Entries that cannot be replayed verbatim are listed with the reason. No request is sent here.`,
+    description: `Open one replay session over a HAR 1.2 capture entry or a caller-drafted request. Declare the exact origins this session may dispatch to (target_origins); every one must also appear in ${REPLAY_ALLOWED_ORIGINS_ENV}, so the plane stays disabled until an operator approves origins — unless the operator set ${REPLAY_ALLOWED_ORIGINS_ENV} to "*", in which case target_origins may be omitted and every http or https origin is in scope for this session. Returns the session_id, a bounded list of capture entries that can be replayed verbatim (each with its origin, header names, credential-header disclosure and body size), the selection, and the owner-only session record path. Entries that cannot be replayed verbatim are listed with the reason. No request is sent here.`,
     kind: "replay-provider",
     inputSchema: httpReplaySessionStartInputSchema,
     outputSchema: evidenceResultOf(replaySessionStartResultSchema),

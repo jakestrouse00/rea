@@ -6,6 +6,13 @@ import { err, ok, type Result } from "../result.js";
 /** Operator allowlist for the active request plane; unset means disabled. */
 export const REPLAY_ALLOWED_ORIGINS_ENV = "REA_REPLAY_ALLOWED_ORIGINS";
 
+/**
+ * The operator open-everything marker. A setting (or an entry) of exactly this
+ * value approves every http or https origin for the plane, at the operator's
+ * authority; it is never derivable from a caller request.
+ */
+export const REPLAY_ORIGINS_WILDCARD = "*";
+
 /** Provider identity reported by the active request plane. */
 export const REPLAY_PROVIDER_ID = "rea-replay";
 export const REPLAY_PROVIDER = {
@@ -37,7 +44,7 @@ export class ReplayConfigurationFailure extends Error {
 }
 
 /** Operator remediation for every default-disabled refusal. */
-export const REPLAY_ALLOWED_ORIGINS_REMEDIATION = `Set ${REPLAY_ALLOWED_ORIGINS_ENV} to a JSON array of exact http or https origins (for example ["https://api.example.test"]) in the REA launch environment, restart REA, then declare those origins again in http_replay_session_start. REA never enables the request plane or approves an origin on its own.`;
+export const REPLAY_ALLOWED_ORIGINS_REMEDIATION = `Set ${REPLAY_ALLOWED_ORIGINS_ENV} to a JSON array of exact http or https origins (for example ["https://api.example.test"]) in the REA launch environment, restart REA, then declare those origins again in http_replay_session_start. Setting it to the literal "*" opens the whole plane to every http or https origin at operator authority, and sessions may then omit target_origins. REA never enables the request plane or approves an origin on its own.`;
 
 const originSchema = z.string().min(1);
 
@@ -60,6 +67,8 @@ export const parseReplayAllowedOrigins = (
         },
       ),
     );
+  if (encoded.trim() === REPLAY_ORIGINS_WILDCARD)
+    return ok([REPLAY_ORIGINS_WILDCARD]);
   let decoded: unknown;
   try {
     decoded = JSON.parse(encoded);
@@ -76,6 +85,7 @@ export const parseReplayAllowedOrigins = (
       ),
     );
   }
+  if (decoded === REPLAY_ORIGINS_WILDCARD) return ok([REPLAY_ORIGINS_WILDCARD]);
   const parsed = z.array(originSchema).safeParse(decoded);
   if (!parsed.success)
     return err(
@@ -91,6 +101,8 @@ export const parseReplayAllowedOrigins = (
     );
   const origins: string[] = [];
   for (const [index, value] of parsed.data.entries()) {
+    if (value.trim() === REPLAY_ORIGINS_WILDCARD)
+      return ok([REPLAY_ORIGINS_WILDCARD]);
     const origin = normalizedReplayOrigin(value);
     if (origin === undefined)
       return err(
@@ -119,6 +131,11 @@ export const parseReplayAllowedOrigins = (
     );
   return ok(origins);
 };
+
+/** Whether the operator opened the whole plane via the wildcard marker. */
+export const replayOperatorPlaneOpen = (
+  allowedOrigins: readonly string[],
+): boolean => allowedOrigins.includes(REPLAY_ORIGINS_WILDCARD);
 
 /** Canonical origin for an exact scheme/host/port triple, else undefined. */
 export const normalizedReplayOrigin = (value: string): string | undefined => {
@@ -172,12 +189,15 @@ export const replayUrlApproval = (
       reason:
         "the request URL carries userinfo; replay credentials belong in headers",
     };
-  if (!allowedOrigins.includes(parsed.origin))
-    return {
-      approved: false,
-      reason: `the request origin ${parsed.origin} is outside this session's approved origins`,
-    };
-  return { approved: true, url: parsed.href, origin: parsed.origin };
+  if (
+    allowedOrigins.includes(parsed.origin) ||
+    allowedOrigins.includes(REPLAY_ORIGINS_WILDCARD)
+  )
+    return { approved: true, url: parsed.href, origin: parsed.origin };
+  return {
+    approved: false,
+    reason: `the request origin ${parsed.origin} is outside this session's approved origins`,
+  };
 };
 
 /** Normalize one declared session origin, reusing the operator grammar. */

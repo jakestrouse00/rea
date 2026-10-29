@@ -17,11 +17,13 @@ what it reports.
 | `http_replay_session_close`  | Drain admitted sends, then remove the owner-only session record         |
 
 `http_replay_session_start` accepts exactly one source: `capture_path` (plus an
-optional `entry_ordinal`) or a drafted `request`. It always requires
-`target_origins`, the exact origins the session may reach. Entries that cannot
-be replayed verbatim are still listed, with the reason: a body that the capture
-stored only as form parameters, a URL that is not `http`/`https`, or an entry
-whose request facts are missing.
+optional `entry_ordinal`) or a drafted `request`. It requires `target_origins`
+— the exact origins the session may reach — except when the operator set the
+plane open (below), in which case `target_origins` may be omitted and every
+http or https origin is in scope. Entries that cannot be replayed verbatim are
+still listed, with the reason: a body that the capture stored only as form
+parameters, a URL that is not `http`/`https`, or an entry whose request facts
+are missing.
 
 `http_replay_send` applies a structured mutation in a fixed order: replace
 `method` and `url`, remove `remove_headers`, set `set_headers` (a set replaces
@@ -36,11 +38,15 @@ REA_REPLAY_ALLOWED_ORIGINS='["https://api.example.test","https://api.example.tes
 ```
 
 The value is a JSON array of **exact origins**: scheme, host, and optional port,
-with no path, query, fragment, userinfo, or wildcard. An unset, empty,
+with no path, query, fragment, userinfo, or wildcard. Setting it to the literal
+`*` (or an array entry that is exactly `*`) opens the whole plane: every http or
+https origin is operator-approved, `browser_fetch` and `proxy_replay_send`
+inherit that approval, and sessions may omit `target_origins`. An unset, empty,
 malformed, or entirely invalid setting leaves the plane disabled. A session's
-declared `target_origins` must all appear in that operator list; REA never adds
-an origin from a request, a redirect, or a capture entry. Every refusal is a
-typed `AnalysisCapabilityUnavailableError` whose remediation names the setting.
+declared `target_origins` must all appear in that operator list otherwise; REA
+never adds an origin from a request, a redirect, or a capture entry. Every
+refusal is a typed `AnalysisCapabilityUnavailableError` whose remediation names
+the setting.
 
 `inspect_analysis_settings` reports `REA_REPLAY_ALLOWED_ORIGINS` (operator
 authority, unknown observation) and `replay.request_timeout` (fixed) so an agent

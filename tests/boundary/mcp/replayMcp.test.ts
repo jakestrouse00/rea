@@ -145,9 +145,14 @@ describe("replay MCP surface", () => {
     expect(
       ajv.validate(start.inputSchema as AnySchema, {
         capture_path: client.capture,
+      }),
+    ).toBe(true);
+    expect(
+      ajv.validate(start.inputSchema as AnySchema, {
+        capture_path: client.capture,
         target_origins: [],
       }),
-    ).toBe(false);
+    ).toBe(true);
     const send = tools.find(
       (candidate) => candidate.name === "http_replay_send",
     )!;
@@ -252,6 +257,58 @@ describe("replay MCP surface", () => {
     });
     expect(both.isError).toBe(true);
     expect(JSON.stringify(both.content)).toContain("exactly one source");
+  });
+});
+
+describe("replay operator authority", () => {
+  it("starts without target_origins when the operator opens the whole plane", async () => {
+    const client = await connectClient("*");
+    try {
+      const started = await client.client.callTool({
+        name: "http_replay_session_start",
+        arguments: { capture_path: client.capture, entry_ordinal: 0 },
+      });
+      expect(started.isError).not.toBe(true);
+      const session = replaySessionStartResultSchema.parse(
+        toolContract("http_replay_session_start").outputSchema.parse(
+          started.structuredContent,
+        ).normalized_result,
+      );
+      const sent = await client.client.callTool({
+        name: "http_replay_send",
+        arguments: { session_id: session.session_id },
+      });
+      expect(sent.isError).not.toBe(true);
+      const result = replaySendResultSchema.parse(
+        toolContract("http_replay_send").outputSchema.parse(
+          sent.structuredContent,
+        ).normalized_result,
+      );
+      expect(result).toMatchObject({ outcome: "response", retry: "none" });
+      const closed = await client.client.callTool({
+        name: "http_replay_session_close",
+        arguments: { session_id: session.session_id },
+      });
+      expect(closed.isError).not.toBe(true);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("still requires target_origins when the operator list is exact", async () => {
+    const client = await connectClient(JSON.stringify([OPERATOR_ORIGIN]));
+    try {
+      const started = await client.client.callTool({
+        name: "http_replay_session_start",
+        arguments: { capture_path: client.capture, entry_ordinal: 0 },
+      });
+      expect(started.isError).toBe(true);
+      expect(JSON.stringify(started.content)).toContain(
+        "Declare target_origins for this session",
+      );
+    } finally {
+      await client.close();
+    }
   });
 
   it("reports a disabled request plane as a typed configuration refusal", async () => {
