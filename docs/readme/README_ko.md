@@ -347,3 +347,50 @@ REA에 도움을 보태 주세요! [issue를 등록](https://github.com/morluto/
 REA가 작성한 코드는 MIT 라이선스를 따릅니다. 제3자 자료에는 각자의 라이선스와 저작권 고지가 그대로 유지됩니다. 의존성 목록, 보존된 라이선스 원문, 외부 도구 약관은 [제3자 고지](../../THIRD_PARTY_NOTICES.md)를 참고하세요.
 
 IDA Pro / Hex-Rays 디컴파일러, Hopper, JEB 등 상용 도구는 해당 라이선스에 따라 **합법적으로 취득하고 사용 권한을 갖춰야 합니다.** REA는 어떤 도구의 라이선스, 키, 활성화 권한도 부여하지 않습니다. 체험판과 데모는 사용자, 기능, 자동화, 출력 공유 제한을 포함한 공급업체 약관을 따릅니다. 크랙 버전, 도난 키, 무단 키 공유, 라이선스 제한 우회는 허용되지 않습니다. 이 안내는 MIT 라이선스나 제3자 라이선스를 변경하지 않습니다.
+
+---
+
+> **Local expansion fork:** this fork (`jakestrouse00/rea`, upstream `morluto/rea`) re-enables categories upstream disables (fuzzing, interception, active replay) and adds the provider lanes listed under [Expansion fork capabilities](#expansion-fork-capabilities). Scope decisions are recorded in [CONTRIBUTING.md](CONTRIBUTING.md#contribution-scope). Nothing here is published upstream.
+
+## Expansion fork capabilities
+
+All lanes follow the upstream contract recipe: fail-closed `REA_*` configuration,
+value-free Evidence with inline limitations, and offline test coverage. Provider
+setup (`REA_*` environment variables and interpreter/venv choices) lives in the
+[reverse-engineering tools guide](docs/reverse-engineering-tools.md); each page
+below states its verified scope — most lanes are verified offline against
+scripted fakes and fixtures, with real-provider verification steps documented
+for the host owner.
+
+| Capability                  | Facts reported                                                                                                                        | External tools                                                                                                                 | Guide |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ----- |
+| iOS images (IPSW/OTA)       | Build inventory, Dyld shared-cache image manifests, ObjC/Swift class tables, crash symbolication                                      | Caller-supplied blacktop/ipsw; [ipsw guide](docs/ipsw-analysis.md)                                                             |
+| Mach-O entitlements         | Entitlement/load-command structure for any Mach-O; values withheld, keys and kinds only                                               | Same ipsw binary; [ipsw guide](docs/ipsw-analysis.md)                                                                          |
+| Binary capabilities         | Matched rule ids, locations and counts (capa, Ghidra backend optional)                                                                | Caller-supplied capa; [capa guide](docs/capa-analysis.md)                                                                      |
+| Scanning with rules         | Rule id, offsets and matched fields; shipped hash-pinned crypto-constant pack                                                         | Caller-supplied YARA-X; [scanning guide](docs/yara-scanning.md)                                                                |
+| Symbol recovery             | Go symbols, demangled Rust names and breakpad symbol tables for stripped binaries                                                     | Caller-supplied GoReSym, rustfilt (LLVM), dump_syms; [symbol guide](docs/symbol-recovery.md)                                   |
+| .NET decompilation          | Typed member/declaration structure; decompiled text kept out of Evidence                                                              | Caller-supplied ilspycmd; [.NET decompilation](docs/dotnet-decompilation.md)                                                   |
+| JVM decompilation           | Jar/class declaration structure for desktop bytecode                                                                                  | Caller-supplied Vineflower jar + JDK; [JVM decompilation](docs/jvm-decompilation.md)                                           |
+| Python bytecode             | Compiled module structure and declaration recovery                                                                                    | Caller-supplied pycdc or PyLingual launcher; [Python decompilation](docs/python-decompilation.md)                              |
+| protobuf/gRPC recovery      | Recovered `.proto` structure from binaries/APKs/JARs; lab-only gRPC reflection                                                        | Caller-supplied pbtk, protodump, grpcurl; [protobuf recovery](docs/protobuf-recovery.md)                                       |
+| Binary diffing              | Match tables (similarity, confidence, names changed) as provider-backed input to behavioral comparison                                | Caller-supplied BinDiff/BinExport; [diffing guide](docs/binary-diffing.md)                                                     |
+| V8 bytecode                 | Header/structure facts and disassembly handoff, sanitized through the script-evidence gate                                            | Locally built View8 binaries; [V8 bytecode](docs/v8-bytecode.md)                                                               |
+| ASAR integrity              | Verified/mismatched member accounting and V8-bytecode handoff candidates                                                              | None (static reads); [ASAR integrity](docs/asar-integrity.md)                                                                  |
+| Isolated emulation          | Bounded function emulation: register/memory structure, executed edges, exit reason; patch assembly                                    | Caller-supplied Unicorn 2.1.x + Keystone venv; [emulation](docs/emulation.md)                                                  |
+| Symbolic execution          | Path conditions, exploration and CFG cross-checks; solver values redacted                                                             | Caller-supplied angr 9.2.x venv; [angr guide](docs/angr-symbolic-execution.md)                                                 |
+| Fuzzing campaigns           | Engine adapters (libFuzzer, AFL++ FRIDA, Jackalope), stats streams, POV-validated crashes into the dedup pipeline; sandboxed launches | Caller-supplied engines; [campaigns](docs/fuzzing-campaigns.md)                                                                |
+| Crash triage                | ASan/TSan/UBSan + macOS report parsing, crash-state hashing, dedup store, minimization hooks                                          | None (pure) + caller-supplied minimizers; [crash triage](docs/crash-triage.md)                                                 |
+| HTTP replay                 | One-shot, never-retrying re-dispatch and mutation of captured or drafted requests; bodies never inline                                | None; [replay client](docs/replay-client.md)                                                                                   |
+| Authorized browser mutation | Page evaluation, request-rule interception and page-context fetch through the same send core                                          | The REA-launched browser; [browser analysis](docs/browser-observation.md)                                                      |
+| mitmproxy interception      | Structure-only endpoint inventory, standing rewrite rules, same send core for replay                                                  | Caller-supplied mitmproxy 12.x; [interception guide](docs/mitm-interception.md)                                                |
+| Protocol learning           | FSA models from pcap/qlog captures, sandboxed lab probes, grammar handoff to campaigns                                                | Caller-supplied tshark fixture lane; [protocol learning](docs/protocol-learning.md)                                            |
+| Investigation queue         | Ledger-driven scheduling, durable resumable queue, directory/device/endpoint watch sessions                                           | None (composes existing lanes); [hunting queue](docs/hunting-queue.md)                                                         |
+| Lab VMs                     | Lima VM sessions (vz driver, Rosetta), command execution with scrubbed output                                                         | Caller-supplied Lima; [lab VMs](docs/lab-vms.md)                                                                               |
+| Runtime presets             | Hash-pinned Frida bypass presets, whitelist-able objection recipes, BLE GATT bridge                                                   | Caller-supplied objection/bleak; [presets](docs/frida-script-presets.md), [mobile toolchain](docs/mobile-runtime-toolchain.md) |
+| Benchmark/eval harness      | CTF-style task scoring inside lab VMs and offline Loop A/B/C eval fixtures                                                            | Caller-supplied Lima lane; [benchmark harness](docs/benchmark-harness.md)                                                      |
+| Autonomous execution policy | sandbox-exec SBPL templates, lab-owned scoping, end-to-end smoke walkthrough                                                          | None; [policy](docs/autonomous-execution.md), [walkthrough](docs/autonomy-walkthrough.md)                                      |
+
+The active request plane is disabled until the operator enables it: set
+`REA_REPLAY_ALLOWED_ORIGINS` to exact origins, or to `*` to open the whole plane
+at operator authority (one decision, no per-session declarations). See the
+[replay client guide](docs/replay-client.md#enabling-the-plane).
