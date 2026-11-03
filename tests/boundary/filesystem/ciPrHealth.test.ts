@@ -405,11 +405,14 @@ it("public CLI uses only GET and produces a report from fixture GitHub responses
   const fixture = await createFixture();
   const ghCalls = join(fixture.directory, "gh-calls.jsonl");
   const ghResponse = join(fixture.directory, "gh-response.json");
+  // The reporter's lookback window is relative to the run's clock, so the
+  // fixture PR must be recent relative to now, not to this file's authorship.
+  const fixtureCreatedAt = new Date(Date.now() - 2 * 86_400_000).toISOString();
   const fakeGh = join(fixture.fakeBin, "gh");
   await writeFile(
     ghResponse,
     JSON.stringify([
-      [rawPull(51, { mergeable: true })],
+      [rawPull(51, { mergeable: true, created_at: fixtureCreatedAt })],
       { total_count: 0, workflow_runs: [] },
     ]),
   );
