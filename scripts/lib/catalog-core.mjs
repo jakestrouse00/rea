@@ -151,6 +151,7 @@ const SOURCE_PATHS = {
   huntingContracts: "dist/contracts/hunting/huntingToolContracts.js",
   huntingProvider: "dist/domain/hunting/huntingLimits.js",
   benchContracts: "dist/contracts/bench/benchToolContracts.js",
+  testmailContracts: "dist/contracts/testmail/testmailToolContracts.js",
   benchProvider: "dist/domain/bench/benchLimits.js",
   mobileToolchainContracts:
     "dist/contracts/mobile/mobileToolchainToolContracts.js",

@@ -69,6 +69,7 @@ import { MOBILE_TOOLCHAIN_TOOL_CONTRACTS } from "./mobile/mobileToolchainToolCon
 import { PROTOLEARN_TOOL_CONTRACTS } from "./protolearn/protolearnToolContracts.js";
 import { HUNTING_TOOL_CONTRACTS } from "./hunting/huntingToolContracts.js";
 import { BENCH_TOOL_CONTRACTS } from "./bench/benchToolContracts.js";
+import { TESTMAIL_TOOL_CONTRACTS } from "./testmail/testmailToolContracts.js";
 import { DISCOVERY_TOOL_CONTRACTS } from "./discovery/discoveryToolContracts.js";
 import { CORRELATION_TOOL_CONTRACTS } from "./correlationToolContracts.js";
 import { ENVIRONMENT_TOOL_CONTRACTS } from "./environmentToolContracts.js";
@@ -116,6 +117,7 @@ export const TOOL_CONTRACTS = [
   ...PROTOLEARN_TOOL_CONTRACTS,
   ...HUNTING_TOOL_CONTRACTS,
   ...BENCH_TOOL_CONTRACTS,
+  ...TESTMAIL_TOOL_CONTRACTS,
   ...DISCOVERY_TOOL_CONTRACTS,
   ...CORRELATION_TOOL_CONTRACTS,
   ...PYTHON_PYC_TOOL_CONTRACTS,
