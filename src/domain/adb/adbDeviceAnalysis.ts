@@ -327,7 +327,7 @@ export const adbInputSchemas = {
           .string()
           .min(1)
           .max(64)
-          .regex(/^[A-Za-z0-9._-]+$/u, "Perf events are simple identifiers"),
+          .regex(/^[A-Za-z0-9._\-]+$/u, "Perf events are simple identifiers"),
       )
       .min(1)
       .max(8)
