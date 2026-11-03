@@ -21,13 +21,16 @@ export interface FakeDiscoveryBehavior {
   /** stdout for `system_profiler SPBluetoothDataType -json`. */
   readonly bluetoothRaw?: string;
   /**
-   * Ping replies consumed in call order for the sweep; the last entry
-   * repeats for additional calls when a /30 is probed.
+  /**
+   * Ping replies keyed by the pinged target address; absent targets are
+   * silent non-responses. Keying keeps concurrent probes deterministic.
    */
-  readonly pingReplies?: readonly {
-    readonly ok: boolean;
-    readonly latencyMs?: number;
-  }[];
+  readonly pingReplies?: {
+    readonly [target: string]: {
+      readonly ok: boolean;
+      readonly latencyMs?: number;
+    };
+  };
   /** stdout for `blueutil --inquiry-timeout <s> --inquiry`. */
   readonly inquiryRaw?: string;
   /** stdout for the fake BLE scanner (`ble-scan --seconds <s> ...`). */
@@ -73,7 +76,6 @@ const ROLE = "__ROLE__";
 const behavior = JSON.parse(fs.readFileSync(__filename + ".json", "utf8"));
 const callsPath = __filename + ".calls";
 fs.appendFileSync(callsPath, JSON.stringify({ role: ROLE, argv: process.argv.slice(2) }) + "\n");
-const roleCalls = () => fs.readFileSync(callsPath, "utf8").split("\n").filter(l => l.length > 0 && JSON.parse(l).role === ROLE).length;
 if (ROLE === "arp") process.stdout.write(behavior.arp ?? "");
 else if (ROLE === "ndp") process.stdout.write(behavior.ndp ?? "");
 else if (ROLE === "dns_sd") {
@@ -95,8 +97,14 @@ else if (ROLE === "dns_sd") {
   else process.stdout.write("{}");
 } else if (ROLE === "ifconfig") process.stdout.write(behavior.ifconfigRaw ?? "");
 else if (ROLE === "ping") {
-  const replies = behavior.pingReplies ?? [];
-  const reply = replies[Math.min(roleCalls() - 1, replies.length - 1)] ?? { ok: false };
+  const replies = behavior.pingReplies ?? {};
+  // Replies are keyed by the pinged target so concurrent probes are
+  // deterministic; absent targets are silent non-responses.
+  const target = process.argv.at(-1);
+  const reply =
+    (target !== undefined && Object.hasOwn(replies, target)
+      ? replies[target]
+      : undefined) ?? { ok: false };
   if (reply.ok) {
     process.stdout.write("64 bytes from " + process.argv.at(-1) + ": icmp_seq=0 ttl=57 time=" + String(reply.latencyMs) + " ms\n");
     process.exit(0);
