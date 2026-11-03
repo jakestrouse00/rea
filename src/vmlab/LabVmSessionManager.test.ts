@@ -75,7 +75,10 @@ const harness = async (
     }),
     ...(options.supported === false
       ? { platform: "linux" as const, arch: "x64" }
-      : {}),
+      : // The supported-host scenario names the lane's verified host
+        // explicitly; inheriting `process.platform` would flip the whole
+        // harness to the refused-host scenario on non-macOS runners.
+        { platform: "darwin" as const, arch: "arm64" }),
   });
   managers.push(manager);
   const created: Harness = { root, workspace, runtimeRoot, logPath, manager };
@@ -174,7 +177,13 @@ describe("lab VM configuration", () => {
   });
 
   it("fails closed when no limactl is selected", async () => {
-    const manager = new LabVmSessionManager({ environment: {} });
+    const manager = new LabVmSessionManager({
+      environment: {},
+      // Configuration semantics on the lane's supported host; the
+      // unsupported-host scenario is its own explicit case below.
+      platform: "darwin",
+      arch: "arm64",
+    });
     managers.push(manager);
     expect(manager.inspectAvailability()).toMatchObject({
       status: "unavailable",
@@ -190,6 +199,8 @@ describe("lab VM configuration", () => {
     const root = await temporaryRoot();
     const relative = new LabVmSessionManager({
       environment: { [LAB_VM_COMMAND_ENV]: "limactl" },
+      platform: "darwin",
+      arch: "arm64",
     });
     managers.push(relative);
     expect(relative.inspectAvailability()).toMatchObject({
@@ -200,6 +211,8 @@ describe("lab VM configuration", () => {
     await writeFile(plain, "#!/bin/sh\n", { mode: 0o600 });
     const notExecutable = new LabVmSessionManager({
       environment: { [LAB_VM_COMMAND_ENV]: plain },
+      platform: "darwin",
+      arch: "arm64",
     });
     managers.push(notExecutable);
     expect(notExecutable.inspectAvailability()).toMatchObject({
