@@ -31,6 +31,8 @@ it("locates malformed pcap parent fields beneath the analysis-view source", asyn
     dns_query_count: 0,
     tls_sni_values: [],
     tls_sni_count: 0,
+    tls_handshakes: [],
+    tls_handshake_count: 0,
     protocol_distribution: [],
     protocol_count: 0,
     http_request_uris: [],

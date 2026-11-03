@@ -68,6 +68,22 @@ it("advertises exact valid pcap schemas and records inline evidence through MCP"
             dns_query_count: 1,
             tls_sni_values: ["example.com"],
             tls_sni_count: 1,
+            tls_handshakes: [
+              {
+                stream: "1",
+                server_name: "example.com",
+                record_version: "0x0301",
+                hello_version: "0x0303",
+                cipher_values: ["0x1301", "0xc02b"],
+                extension_types: ["0", "11", "13"],
+                curves: ["23", "29"],
+                ec_point_formats: ["uncompressed"],
+                alpn: ["h2", "http/1.1"],
+                ja3: "f09d9334475ec483246499ee7a6ff1d2",
+                ja4: "t12d0203h2_777cda164f4b_7638730b74bd",
+              },
+            ],
+            tls_handshake_count: 1,
             protocol_distribution: [
               { protocol: "ip:tcp:tls", packet_count: 25 },
               { protocol: "ip:udp:dns", packet_count: 5 },
