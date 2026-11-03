@@ -437,7 +437,14 @@ const normalizedInspection = (
   },
   console: {
     events: [...state.events.console],
-    coverage_started_at: state.events.coverageStartedAt("Runtime"),
+    coverage_started_at:
+      state.context.input.stealth_safe === true
+        ? // A stealth-safe attach never enabled Runtime, so console events
+          // were policy-excluded for the whole window rather than collected.
+          // The capture window bounds that exclusion; the excluded sections
+          // inventory carries the reason.
+          state.startedAt
+        : state.events.coverageStartedAt("Runtime"),
     prior_activity_available: false,
   },
   workers: [...captured.workers],

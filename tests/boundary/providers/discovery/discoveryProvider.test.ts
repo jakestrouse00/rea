@@ -33,7 +33,12 @@ const providerFor = async (
       : behavior,
   );
   return {
-    provider: new DiscoveryProvider({ environment: tools.environment }),
+    provider: new DiscoveryProvider({
+      environment: tools.environment,
+      // The fake tools exercise the lane's verified macOS host; real other
+      // hosts still refuse with their own unsupported-host answer.
+      platform: "darwin",
+    }),
     tools,
     root,
   };
@@ -52,7 +57,7 @@ test("doctor reports resolved host tools and the optional blueutil posture", asy
   const { tools } = await providerFor({});
   const inspection = await inspectDiscoveryProvider(
     tools.environment as unknown as NodeJS.ProcessEnv,
-    process.platform,
+    "darwin",
     doctorOptions,
   );
   expect(inspection.id).toBe("discovery");
@@ -292,7 +297,9 @@ test("a configured capture program writes and the file magic validates", async (
   };
   expect(result.tools.packet_capture).toBe(tools.paths.packet_capture);
   expect(result.format).toBe("pcap");
-  expect(result.file_bytes).toBe(12);
+  // The fake program writes the fixture's full 24-byte pcap global header and
+  // the result reports the file as retained; file_bytes is the observed size.
+  expect(result.file_bytes).toBe(24);
   expect(result.duration_seconds).toBe(1);
 });
 
@@ -366,9 +373,12 @@ test("mDNS resolution follows -L, -Z and -G windows over the fake dns-sd", async
       "Browsing for rea-test._http._tcp.local.",
       "rea-test._http._tcp.local. 120 IN SRV 0 0 8099 rea-host.local.",
     ].join("\n"),
-    addressRaw: [" 0:00:00.300  Add  11  4  192.168.1.20 rea-host.local."].join(
-      "\n",
-    ),
+    addressRaw: [
+      // dns-sd -G spells rows as Timestamp, A/R, Flags, IF, Hostname,
+      // Address, TTL (see the MdnsResolve goldens); the address travels
+      // under the hostname.
+      "23:49:06.320  Add  40000002      11  rea-host.local.                  192.168.1.20                                   4500",
+    ].join("\n"),
   });
   const result = (await resultOf(provider, {
     operation: "resolve_mdns_records",
@@ -389,7 +399,13 @@ test("mDNS resolution follows -L, -Z and -G windows over the fake dns-sd", async
   expect(result.tools.dns_sd).toBeTruthy();
   expect(result.zone_ran).toBe(true);
   expect(result.addresses_ran).toBe(true);
-  expect(result.addresses).toEqual([{ address: "192.168.1.20" }]);
+  expect(result.addresses).toHaveLength(1);
+  expect(result.addresses[0]).toMatchObject({
+    family: "ipv4",
+    address: "192.168.1.20",
+    interface_index: "11",
+    hostname: "rea-host.local.",
+  });
 });
 
 test("the Wi-Fi lane uses the configured helper and keeps RF rows", async () => {
@@ -461,6 +477,12 @@ test("the Wi-Fi lane falls back to system_profiler's airport cache without a hel
   expect(result.tools.wifi_scanner).toBeNull();
   expect(result.source).toBe("system_profiler");
   expect(result.networks[0]).toEqual({
+    // system_profiler's cache carries no RF facts; the row keeps them as
+    // explicit unknowns, verbatim with the rest of the parsed row.
+    bssid: null,
+    noise: null,
+    rssi: null,
+    ts: null,
     channel: 52,
     band: "5",
     channel_width_mhz: 80,
@@ -494,12 +516,13 @@ test("serial ports list joins SPPortsDataType rows with device nodes", async () 
     }[];
     unmatched_port_names: string[];
   };
-  const joined = result.ports.find(
-    (row) => row.name === "/dev/cu.usbserial-0001",
-  );
-  expect(joined).toBeTruthy();
-  expect(joined?.in_use).toBeNull();
+  // The inventory's rows come from the host's real /dev cu./tty. nodes, so a
+  // fixture port row that no node answers must surface in
+  // unmatched_port_names verbatim instead of inventing a device row; every
+  // published row keeps in_use null because no producer reports it.
+  expect(result.unmatched_port_names).toContain("/dev/cu.usbserial-0001");
   expect(Array.isArray(result.ports)).toBe(true);
+  expect(result.ports.every((row) => row.in_use === null)).toBe(true);
 });
 
 test("a serial observe window reports its stop reason and never writes", async () => {
@@ -564,7 +587,7 @@ test("the bounded browse emits multicast queries and collects instances", async 
 
 test("the authorized sweep probes each candidate once and preserves non-responses", async () => {
   const { provider, tools } = await providerFor({
-    pingReplies: [{ ok: true, latencyMs: 1.5 }, { ok: false }],
+    pingReplies: { "192.0.2.1": { ok: true, latencyMs: 1.5 } },
   });
   const result = (await resultOf(provider, {
     operation: "probe_subnet_reachability",

@@ -27,7 +27,7 @@ export const observeSerialPortInputSchema = z.strictObject({
     .min(8)
     .max(128)
     .regex(
-      /^\/dev\/(cu|tty)\.[^/]+$/u,
+      /^\/dev\/(cu|tty)\.[^\x2f]+$/u,
       "Use an absolute /dev/cu.* or /dev/tty.* device node path",
     )
     .describe("Serial device node whose receive side is observed"),

@@ -33,6 +33,9 @@ const providerFor = async (
   return {
     provider: new IdeviceProvider({
       environment: { REA_IPHONE_PMD3_COMMAND: launcher },
+      // The fake launcher exercises the lane's verified macOS host; real
+      // non-macOS hosts still refuse with their own unsupported-host answer.
+      platform: "darwin",
     }),
     callsPath,
     root,
@@ -63,7 +66,7 @@ test("doctor reports an available launcher and preserves the unverified lane", a
   const { launcher } = await writeFakeIdevice(root, {});
   const inspection = await inspectIdeviceProvider(
     { REA_IPHONE_PMD3_COMMAND: launcher } as unknown as NodeJS.ProcessEnv,
-    process.platform,
+    "darwin",
     doctorOptions,
   );
   expect(inspection.id).toBe("idevice");
@@ -79,7 +82,9 @@ test("doctor reports an available launcher and preserves the unverified lane", a
 test("doctor refuses plainly without unverified success claims", async () => {
   const inspection = await inspectIdeviceProvider(
     {} as unknown as NodeJS.ProcessEnv,
-    process.platform,
+    // The missing-engine classification is the supported-host answer; other
+    // hosts refuse with their own unsupported-host classification.
+    "darwin",
     doctorOptions,
   );
   expect(inspection.available).toBe(false);
@@ -399,6 +404,8 @@ test("refuses an unusable launcher before any device contact", async () => {
   });
   const provider = new IdeviceProvider({
     environment: { REA_IPHONE_PMD3_COMMAND: launcher },
+    // Same authored supported-host scenario as the providerFor harness.
+    platform: "darwin",
   });
   const refusal = await refusalOf(provider, {
     operation: "list_ios_devices",

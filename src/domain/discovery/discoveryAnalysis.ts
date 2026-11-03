@@ -272,7 +272,7 @@ export const discoveryInputSchemas = {
     service_type: z
       .string()
       .regex(
-        /^_[a-z0-9-]+\._(?:tcp|udp)\.$/iu,
+        /^_[a-z0-9\-]+\._(?:tcp|udp)\.$/iu,
         "Use a service type with its trailing dot, e.g. _http._tcp.",
       )
       .describe(
@@ -281,7 +281,7 @@ export const discoveryInputSchemas = {
     domain: z
       .string()
       .regex(
-        /^(?:[a-z0-9_-]{1,63}\.)+$/iu,
+        /^(?:[a-z0-9_\-]{1,63}\.)+$/iu,
         "Use a trailing-dot mDNS domain such as local.",
       )
       .default("local.")
@@ -317,7 +317,7 @@ export const discoveryInputSchemas = {
       .min(8)
       .max(128)
       .regex(
-        /^\/dev\/(cu|tty)\.[^/]+$/u,
+        /^\/dev\/(cu|tty)\.[^\x2f]+$/u,
         "Use an absolute /dev/cu.* or /dev/tty.* device node path",
       )
       .describe("Serial device node whose receive side is observed"),

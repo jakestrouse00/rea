@@ -11,7 +11,7 @@ export const ideviceUdidSchema = z
   .min(1)
   .max(64)
   .regex(
-    /^[0-9a-fA-F-]+$/u,
+    /^[0-9a-fA-F\-]+$/u,
     "A UDID contains hexadecimal digits and dashes only",
   );
 
