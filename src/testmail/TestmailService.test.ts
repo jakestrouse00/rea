@@ -138,7 +138,9 @@ describe("TestmailService", () => {
     const none = await dead.listProviders();
     expect(none.ok).toBe(false);
   });
+});
 
+describe("TestmailService message reads", () => {
   it("waits for a fresh message, extracts its code, and does not re-return it", async () => {
     const backend = new FakeBackend();
     backend.inbox = [summary("m1", "Your verification code is 842109.")];
