@@ -1,4 +1,3 @@
-import { TESTMAIL_PROVIDER_BASE_URLS } from "../../testmail/TestmailConfiguration.js";
 import {
   mailProviderStatusSchema,
   mailboxMessageDetailSchema,
@@ -18,13 +17,15 @@ import {
 const TOOL_DISCLOSURE =
   "Addresses come from free shared disposable-mail pools whose domains appear on common disposable-domain blocklists; use these tools only for signup flows you are authorized to test.";
 
+const PROVIDER_BASE_URLS = "https://api.mail.tm, https://api.mail.gw";
+
 const uuidExample = "c7c9d1a2-5b34-4c56-9e78-d3a0b1c2e4f5";
 
 export const TESTMAIL_TOOL_CONTRACTS = [
   {
     name: "testmail_list_providers",
     ...toolContractMetadata("testmail_list_providers"),
-    description: `List the disposable-mail provider adapters REA fronts, each with its currently active domains. The mail.tm-family providers share one protocol and differ only by base URL (${Object.values(TESTMAIL_PROVIDER_BASE_URLS).join(", ")}); each deployment rotates its own domain pool, so one pool can be temporarily rejected by a target site while the other still passes. Recheck the list before retrying a declined signup: the active domain can change between attempts. Providers with no reachable active domains are omitted from the result; when every adapter fails, the call fails with the first provider error. ${TOOL_DISCLOSURE}`,
+    description: `List the disposable-mail provider adapters REA fronts, each with its currently active domains. The mail.tm-family providers share one protocol and differ only by base URL (${PROVIDER_BASE_URLS}); each deployment rotates its own domain pool, so one pool can be temporarily rejected by a target site while the other still passes. Recheck the list before retrying a declined signup: the active domain can change between attempts. Providers with no reachable active domains are omitted from the result; when every adapter fails, the call fails with the first provider error. ${TOOL_DISCLOSURE}`,
     kind: "testmail-provider",
     inputSchema: testmailListProvidersInputSchema,
     outputSchema: z.strictObject({
