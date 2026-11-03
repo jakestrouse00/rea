@@ -227,10 +227,6 @@ export const findPathsToTargetResultSchema = z.strictObject({
   values_redacted: z.literal(true),
 });
 
-export type FindPathsToTargetResult = z.infer<
-  typeof findPathsToTargetResultSchema
->;
-
 /** Structural result of one bounded symbolic exploration. */
 export const runSymbolicFunctionExplorationResultSchema = z.strictObject({
   bridge: angrBridgeIdentitySchema,
@@ -250,10 +246,6 @@ export const runSymbolicFunctionExplorationResultSchema = z.strictObject({
   coverage: z.enum(["complete", "partial"]),
   values_redacted: z.literal(true),
 });
-
-export type RunSymbolicFunctionExplorationResult = z.infer<
-  typeof runSymbolicFunctionExplorationResultSchema
->;
 
 const angrFunctionSchema = z.strictObject({
   address: hexAddressSchema,
@@ -279,10 +271,6 @@ export const recoverControlFlowAngrResultSchema = z.strictObject({
   edge_count: z.int().min(0),
   coverage: z.enum(["complete", "partial"]),
 });
-
-export type RecoverControlFlowAngrResult = z.infer<
-  typeof recoverControlFlowAngrResultSchema
->;
 
 /** One validated symbolic-lane request. */
 export const angrRequestSchema = z.discriminatedUnion("operation", [

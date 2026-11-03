@@ -30,10 +30,6 @@ export const decompileV8BytecodeInputSchema = z.strictObject({
   ),
 });
 
-export type DecompileV8BytecodeInput = z.input<
-  typeof decompileV8BytecodeInputSchema
->;
-
 export const view8ClientSchema = z.strictObject({
   command: z.string().min(1),
   version: z.string().min(1).nullable(),

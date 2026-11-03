@@ -117,10 +117,6 @@ export const fuzzingCampaignRegistrationSchema = z.strictObject({
     ),
 });
 
-export type FuzzingCampaignRegistration = z.infer<
-  typeof fuzzingCampaignRegistrationSchema
->;
-
 /** Campaign counters as stored, with no execution claim. */
 export const fuzzingCampaignStatusResultSchema = z.strictObject({
   campaign_id: z.string().uuid(),
@@ -136,10 +132,6 @@ export const fuzzingCampaignStatusResultSchema = z.strictObject({
   registered_at: z.string().min(1),
   report_store_path: z.string().min(1),
 });
-
-export type FuzzingCampaignStatusResult = z.infer<
-  typeof fuzzingCampaignStatusResultSchema
->;
 
 /** One deduplicated crash group in a campaign listing. */
 export const crashDedupEntrySchema = z.strictObject({
@@ -157,8 +149,6 @@ export const crashDedupEntrySchema = z.strictObject({
   last_seen_at: z.string().min(1),
 });
 
-export type CrashDedupEntry = z.infer<typeof crashDedupEntrySchema>;
-
 /** Bounded deduplicated group listing for one campaign. */
 export const crashDedupListSchema = z.strictObject({
   campaign_id: z.string().uuid(),
@@ -169,8 +159,6 @@ export const crashDedupListSchema = z.strictObject({
     .boolean()
     .describe("The caller's limit stopped the listing before every group."),
 });
-
-export type CrashDedupList = z.infer<typeof crashDedupListSchema>;
 
 /** Retained copy of one parsed crash report. */
 export const crashReportReferenceSchema = z.strictObject({
@@ -243,5 +231,3 @@ export const crashEvidenceSchema = z.strictObject({
   first_seen_at: z.string().min(1),
   last_seen_at: z.string().min(1),
 });
-
-export type CrashEvidenceResult = z.infer<typeof crashEvidenceSchema>;

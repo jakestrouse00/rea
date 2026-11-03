@@ -62,9 +62,6 @@ export const inspectRpgmakerAssetPrefixesInputSchema = z.strictObject({
   entries_start: z.number().int().min(0).default(0),
   entries_limit: z.number().int().min(1).max(500).default(200),
 });
-export type InspectRpgmakerAssetPrefixesInput = z.infer<
-  typeof inspectRpgmakerAssetPrefixesInputSchema
->;
 
 /** Structural failures of the bounded RPG Maker directory scan. */
 export type RpgmakerDirectoryErrorKind = "nesting" | "capacity";

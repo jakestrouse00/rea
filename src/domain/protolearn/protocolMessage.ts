@@ -17,7 +17,6 @@ export const PROTOCOL_SKETCH_KINDS = [
   "binary",
   "quic-packet",
 ] as const;
-export type ProtocolSketchKind = (typeof PROTOCOL_SKETCH_KINDS)[number];
 
 export const PROTOCOL_PRINTABLE_RATIOS = [
   "high",

@@ -41,7 +41,6 @@ export const mitmEntryRecordSchema = z.strictObject({
     })
     .nullable(),
 });
-export type MitmEntryRecord = z.infer<typeof mitmEntryRecordSchema>;
 
 export type MitmEntryFailure =
   | "record-missing"

@@ -213,8 +213,6 @@ export const assembleBytesResultSchema = z.strictObject({
   instruction_count: z.int().min(1).nullable(),
 });
 
-export type AssembleBytesResult = z.infer<typeof assembleBytesResultSchema>;
-
 /** One validated emulation-lane request. */
 export const emuRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({

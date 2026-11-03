@@ -74,7 +74,6 @@ export const rpaIndexSchema = z.strictObject({
   entries: z.array(rpaEntrySchema),
   slice: pagedSliceSchema,
 });
-export type RpaIndex = z.infer<typeof rpaIndexSchema>;
 
 /** Structure-only observation of one Ren'Py archive. */
 export const rpaReportSchema = z

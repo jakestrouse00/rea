@@ -67,10 +67,6 @@ export const HUNTING_LAUNCH_NOTE =
 export const HUNTING_WATCH_NOTE =
   "A watch session only enqueues re-analysis units for the paths it observed change. Nothing is analyzed inside the watch: the next run_scheduled_batch call executes the queued unit, so a watch never consumes analysis time the caller did not ask for.";
 
-/** Directory watch is real this release; device and endpoint sources are not. */
-export const HUNTING_WATCH_SOURCE_LIMITATION =
-  "This release watches one directory tree. A device or endpoint watch source is refused with a typed unavailable state because no watcher for it is composed yet.";
-
 /** Budget stops are retryable; the queued unit is not consumed. */
 export const HUNTING_BUDGET_NOTE =
   "A unit that reaches its deadline, or a batch that reaches its unit or wall-clock budget, ends with a typed stop and stays queued. No unit is retried automatically; the next run_scheduled_batch call admits it again.";
@@ -90,10 +86,6 @@ export const HUNTING_UNKNOWN_SKIPPED_NOTE =
 /** A present registry can still refuse the append; the reply says so. */
 export const HUNTING_UNKNOWN_REJECTED_NOTE =
   "This session's unknown registry refused the residual unknown for this unit, so the claim remains unrecorded there; the unit Evidence is the only record of it.";
-
-/** Re-analysis runs against the admitted target only. */
-export const HUNTING_REANALYSIS_REMEDIATION =
-  "Open the unit's target with open_binary first: a re-analysis unit runs one inspection operation over the server's admitted analysis target, and refuses to analyze a different path.";
 
 /** The queue store is durable by design. */
 export const HUNTING_STORE_NOTE =

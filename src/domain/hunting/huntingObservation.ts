@@ -43,7 +43,6 @@ export const huntingStopKinds = [
   "interrupted",
 ] as const;
 export const huntingStopKindSchema = z.enum(huntingStopKinds);
-export type HuntingStopKind = z.infer<typeof huntingStopKindSchema>;
 
 /**
  * Typed stop facts. No message text enters this record: a composed runner's
@@ -136,7 +135,6 @@ export const huntingBatchBudgetSchema = z.strictObject({
   units_started: z.int().min(0),
   spent_ms: z.int().min(0),
 });
-export type HuntingBatchBudget = z.infer<typeof huntingBatchBudgetSchema>;
 
 /** Result of scheduling one batch. */
 export const huntingScheduleResultSchema = z.strictObject({
@@ -160,7 +158,6 @@ export const huntingUnitBudgetSchema = z.strictObject({
   batch_remaining_seconds: z.int().min(0),
   batch_remaining_units: z.int().min(0),
 });
-export type HuntingUnitBudget = z.infer<typeof huntingUnitBudgetSchema>;
 
 /** Result of executing the next queued unit. */
 export const huntingRunResultSchema = z.strictObject({

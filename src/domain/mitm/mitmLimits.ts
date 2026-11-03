@@ -123,7 +123,6 @@ export const MITM_RULE_RELEASE_REASONS = [
   "expired",
   "server-close",
 ] as const;
-export type MitmRuleReleaseReason = (typeof MITM_RULE_RELEASE_REASONS)[number];
 
 /** Phase one rewrite rule applies to. */
 export const MITM_RULE_PHASES = ["request", "response"] as const;

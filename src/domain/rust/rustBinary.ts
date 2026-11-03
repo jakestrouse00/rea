@@ -521,7 +521,6 @@ export const rustSymbolsReportSchema = z
   });
 
 export type RustSymbolEntry = z.infer<typeof rustSymbolEntrySchema>;
-export type RustSymbolsSummary = z.infer<typeof rustSymbolsSummarySchema>;
 export type RustSymbolsReport = z.infer<typeof rustSymbolsReportSchema>;
 export type InspectRustSymbolsInput = z.infer<
   typeof inspectRustSymbolsInputSchema

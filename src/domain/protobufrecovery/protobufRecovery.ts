@@ -41,10 +41,6 @@ export const recoverProtoDefinitionsInputSchema = z.strictObject({
     .describe("Upper bound on recovered .proto files published"),
 });
 
-export type RecoverProtoDefinitionsInput = z.input<
-  typeof recoverProtoDefinitionsInputSchema
->;
-
 /**
  * Caller intent for gRPC server reflection against one caller-declared lab
  * endpoint. REA never discovers endpoints.
@@ -82,10 +78,6 @@ export const enumerateGrpcReflectionInputSchema = z.strictObject({
     .default(15_000)
     .describe("Per-invocation reflection deadline"),
 });
-
-export type EnumerateGrpcReflectionInput = z.input<
-  typeof enumerateGrpcReflectionInputSchema
->;
 
 export const protobufClientSchema = z.strictObject({
   tool: z.enum(["pbtk", "protodump", "grpcurl"]),
@@ -190,9 +182,6 @@ export const protobufRecoveryRequestSchema = z.discriminatedUnion("operation", [
   }),
 ]);
 
-export type ProtobufRecoveryRequest = z.output<
-  typeof protobufRecoveryRequestSchema
->;
 export type ProtobufRecoveryRequestInput = z.input<
   typeof protobufRecoveryRequestSchema
 >;

@@ -22,5 +22,3 @@ export const emuBridgeResponseSchema = z.strictObject({
     })
     .optional(),
 });
-
-export type EmuBridgeResponse = z.infer<typeof emuBridgeResponseSchema>;

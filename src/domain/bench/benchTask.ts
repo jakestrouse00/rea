@@ -63,8 +63,6 @@ export const benchGuestOutcomeSchema = z.strictObject({
     .describe("Proof-of-vulnerability bit the harness recorded, if any."),
 });
 
-export type BenchGuestOutcome = z.infer<typeof benchGuestOutcomeSchema>;
-
 /** How the outcome file was observed on the host. */
 export const BENCH_OUTCOME_STATES = [
   "read",
@@ -249,8 +247,6 @@ export const benchGuestFactsSchema = z.strictObject({
   duration_ms: z.int().min(0),
   timeout_ms: z.int().min(1),
 });
-
-export type BenchGuestFacts = z.infer<typeof benchGuestFactsSchema>;
 
 /** Result of one benchmark task run: the metric bit and its supporting facts. */
 export const benchTaskObservationSchema = z.strictObject({

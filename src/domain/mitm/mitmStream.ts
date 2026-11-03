@@ -1,16 +1,12 @@
 import { z } from "zod";
 
 import { absoluteLocalPathStringSchema } from "../localPath.js";
-import {
-  REPLAY_CONTENT_TYPE_CLASSES,
-  REPLAY_STATUS_CLASSES,
-} from "../replay/replayLimits.js";
+import { REPLAY_CONTENT_TYPE_CLASSES } from "../replay/replayLimits.js";
 import {
   MITM_ADDON_ID,
   MITM_LIMITS,
   MITM_PARAMETER_LOCATIONS,
   MITM_PARAMETER_TYPES,
-  MITM_PROTOCOL_VERSION,
   MITM_RULE_PHASES,
 } from "./mitmLimits.js";
 
@@ -120,7 +116,6 @@ export const mitmParameterFactSchema = z.strictObject({
   location: z.enum(MITM_PARAMETER_LOCATIONS),
   type: z.enum(MITM_PARAMETER_TYPES),
 });
-export type MitmParameterFact = z.infer<typeof mitmParameterFactSchema>;
 
 const headerNameListSchema = z.array(z.string().min(1).max(256)).max(64);
 
@@ -274,18 +269,3 @@ export const parseMitmStreamEvent = (line: string): MitmStreamEventParse => {
     ? { kind: "event", event: parsed.data as MitmStreamEvent }
     : { kind: "invalid" };
 };
-
-/** The protocol version this build parses. */
-export const MITM_STREAM_PROTOCOL = MITM_PROTOCOL_VERSION;
-
-/** Every event type the generated addon emits. */
-export const MITM_STREAM_EVENT_TYPES = [
-  "ready",
-  "flow",
-  "rule_match",
-  "notice",
-  "error",
-] as const;
-
-/** Status classification mirrors the replay lane's closed vocabulary. */
-export const MITM_STATUS_CLASSES = REPLAY_STATUS_CLASSES;

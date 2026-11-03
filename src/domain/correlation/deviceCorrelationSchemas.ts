@@ -18,17 +18,6 @@ export const correlateDeviceEvidenceInputSchema = z.strictObject({
     }),
 });
 
-export type CorrelateDeviceEvidenceInput = z.infer<
-  typeof correlateDeviceEvidenceInputSchema
->;
-
-export type DetectedDeviceEndpointKind =
-  | "mac"
-  | "bluetooth"
-  | "ipv4"
-  | "ipv6"
-  | "usb_pair";
-
 /** One extracted endpoint fact: identity normalized, spellings preserved. */
 export const deviceEndpointSchema = z.strictObject({
   kind: z.enum(["mac", "bluetooth", "ipv4", "ipv6", "usb_pair"]),

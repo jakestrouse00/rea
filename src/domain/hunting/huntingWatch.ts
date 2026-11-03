@@ -34,7 +34,6 @@ export const huntingWatchSourceSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 export type HuntingWatchSource = z.output<typeof huntingWatchSourceSchema>;
-export type HuntingWatchSourceInput = z.input<typeof huntingWatchSourceSchema>;
 
 /** One observed directory entry, relative to the watched root. */
 export const huntingWatchEntrySchema = z.strictObject({
@@ -42,7 +41,6 @@ export const huntingWatchEntrySchema = z.strictObject({
   bytes: z.int().min(0),
   mtime_ms: z.int().min(0),
 });
-export type HuntingWatchEntry = z.infer<typeof huntingWatchEntrySchema>;
 
 /** Bounded observation of one directory tree. */
 export const huntingWatchSnapshotSchema = z.strictObject({

@@ -65,7 +65,6 @@ export const godotPckIndexSchema = z.discriminatedUnion("readable", [
     ),
   }),
 ]);
-export type GodotPckIndex = z.infer<typeof godotPckIndexSchema>;
 
 /** Optional bounded single-entry body fact: digest only, written file, no content. */
 export const godotPckExtractionSchema = z.strictObject({
@@ -143,7 +142,6 @@ export const inspectGodotPckInputSchema = z.strictObject({
     })
     .optional(),
 });
-export type InspectGodotPckInput = z.infer<typeof inspectGodotPckInputSchema>;
 
 /** A pack header was found but its declared structure cannot be parsed. */
 export class PckFormatError extends Error {

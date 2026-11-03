@@ -9,8 +9,6 @@ export const ANGR_JOB_KINDS = [
   "recover_cfg",
 ] as const;
 
-export type AngrJobKind = (typeof ANGR_JOB_KINDS)[number];
-
 /**
  * One answer frame on the bridge's stdout. A refusal carries a bounded
  * machine code plus text REA never treats as caller input.
@@ -28,5 +26,3 @@ export const angrBridgeResponseSchema = z.strictObject({
     })
     .optional(),
 });
-
-export type AngrBridgeResponse = z.infer<typeof angrBridgeResponseSchema>;

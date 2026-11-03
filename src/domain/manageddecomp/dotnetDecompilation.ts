@@ -5,9 +5,6 @@ import { absoluteLocalPathStringSchema } from "../localPath.js";
 /** Maximum types one result may publish. */
 export const MAX_DOTNET_TYPES = 2_000;
 
-/** Maximum members one result may publish. */
-export const MAX_DOTNET_MEMBERS = 20_000;
-
 const coverageSchema = z.enum(["complete", "partial"]);
 
 /**
@@ -26,10 +23,6 @@ export const decompileDotnetAssemblyInputSchema = z.strictObject({
     .default(500)
     .describe("Upper bound on reported types"),
 });
-
-export type DecompileDotnetAssemblyInput = z.input<
-  typeof decompileDotnetAssemblyInputSchema
->;
 
 export const dotnetDecompilerClientSchema = z.strictObject({
   command: z.string().min(1),

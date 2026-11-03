@@ -5,9 +5,6 @@ import { absoluteLocalPathStringSchema } from "../localPath.js";
 /** Maximum functions one result may publish. */
 export const MAX_PYTHON_FUNCTIONS = 10_000;
 
-/** Maximum imports one result may publish. */
-export const MAX_PYTHON_IMPORTS = 2_000;
-
 const coverageSchema = z.enum(["complete", "partial"]);
 
 /**
@@ -27,10 +24,6 @@ export const decompilePythonBytecodeInputSchema = z.strictObject({
     .default(5_000)
     .describe("Upper bound on reported functions"),
 });
-
-export type DecompilePythonBytecodeInput = z.input<
-  typeof decompilePythonBytecodeInputSchema
->;
 
 export const pythonDecompilerClientSchema = z.strictObject({
   command: z.string().min(1),

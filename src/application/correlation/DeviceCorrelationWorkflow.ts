@@ -1,7 +1,5 @@
 import { isIPv4, isIPv6 } from "node:net";
 
-import { z } from "zod";
-
 import type { Evidence } from "../../domain/evidence.js";
 import type { JsonValue } from "../../domain/jsonValue.js";
 import { AnalysisInputError } from "../../domain/analysisErrorCore.js";
@@ -18,10 +16,6 @@ export const CORRELATE_DEVICE_EVIDENCE_OPERATION = "correlate_device_evidence";
 
 import { correlateDeviceEvidenceInputSchema } from "../../domain/correlation/deviceCorrelationSchemas.js";
 export { correlateDeviceEvidenceInputSchema };
-
-export type CorrelateDeviceEvidenceInput = z.output<
-  typeof correlateDeviceEvidenceInputSchema
->;
 
 export type DeviceEndpointKind =
   | "mac"

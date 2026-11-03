@@ -18,7 +18,6 @@ export const huntingRecipeKinds = [
   "replay",
 ] as const;
 export const huntingRecipeKindSchema = z.enum(huntingRecipeKinds);
-export type HuntingRecipeKind = z.infer<typeof huntingRecipeKindSchema>;
 
 /**
  * Inspection operations a re-analysis unit may re-run. The set is closed so a
@@ -138,7 +137,6 @@ export const huntingRecipeSchema = z.discriminatedUnion("kind", [
   huntingReplayRecipeSchema,
 ]);
 export type HuntingRecipe = z.output<typeof huntingRecipeSchema>;
-export type HuntingRecipeInput = z.input<typeof huntingRecipeSchema>;
 
 const unknownIdSchema = prefixedDigestSchema("unk");
 
@@ -162,7 +160,6 @@ export const huntingTargetSchema = z.strictObject({
     ),
 });
 export type HuntingTarget = z.output<typeof huntingTargetSchema>;
-export type HuntingTargetInput = z.input<typeof huntingTargetSchema>;
 
 /** Deterministic unit identity from the batch slot, target, and recipe. */
 export const huntingUnitId = (

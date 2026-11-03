@@ -6,7 +6,6 @@ import type { ProviderAvailability } from "../application/AnalysisProvider.js";
 import { SANDBOX_PROFILE_EXECUTABLE } from "../domain/sandboxProfiles.js";
 import {
   parseProtolearnLabEndpoints,
-  ProtolearnConfigurationFailure,
   type LabEndpoint,
 } from "../domain/protolearn/labEndpoints.js";
 import {
@@ -234,7 +233,3 @@ export const protolearnProbeEnabled = (
   return parseProtolearnLabEndpoints(environment[PROTOLEARN_LAB_ENDPOINTS_ENV])
     .ok;
 };
-
-export const PROTOLEARN_PROBE_REMEDIATION = `${PROTOLEARN_PYTHON_ENV_REMEDIATION} ${PROTOLEARN_BRIDGE_DIR_REMEDIATION} ${PROTOLEARN_LAB_ENDPOINTS_REMEDIATION}`;
-
-export type { ProtolearnConfigurationFailure };

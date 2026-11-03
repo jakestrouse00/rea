@@ -122,12 +122,6 @@ export const exportProtocolGrammarInputSchema = z.strictObject({
   ),
 });
 
-/** Supported protocol-learning operations. */
-export type ProtolearnOperation =
-  | "learn_protocol_model"
-  | "probe_learned_model"
-  | "export_protocol_grammar";
-
 /** Validate operation and input together so their types remain correlated. */
 export const protolearnRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({

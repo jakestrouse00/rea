@@ -1,13 +1,5 @@
 import { z } from "zod";
 
-/**
- * Input draft for list_serial_ports. The integrator embeds this in
- * discoveryAnalysis.ts; until then this module keeps the draft self-contained.
- */
-export const listSerialPortsInputSchema = z.strictObject({});
-
-export type ListSerialPortsInput = z.infer<typeof listSerialPortsInputSchema>;
-
 /** Baud rates stty accepts on this lane; callers select from these only. */
 export const SERIAL_BAUD_RATES = [
   1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200,
@@ -82,59 +74,3 @@ export const serialSttyArguments = (
   "-cstopb",
   "-parenb",
 ];
-
-/**
- * Result drafts for the two wired-serial operations. The integrator embeds
- * these in discoveryResultSchemas.ts; until then these modules keep the
- * drafts self-contained.
- */
-export const serialResultSchemas = {
-  list_serial_ports: z.strictObject({
-    tools: z.strictObject({
-      system_profiler: z.string().min(1).nullable(),
-      stty: z.string().min(1).nullable(),
-    }),
-    ports: z.array(
-      z.strictObject({
-        device_path: z.string().min(1).nullable(),
-        name: z.string().min(1).nullable(),
-        interface_type: z.string().min(1).nullable(),
-        description: z.string().min(1).nullable(),
-        in_use: z.boolean().nullable(),
-      }),
-    ),
-    unmatched_port_names: z.array(z.string().min(1)),
-    unparsed_lines: z.array(z.string().min(1)),
-    coverage: z.enum(["complete", "partial"]),
-  }),
-  observe_serial_port: z.strictObject({
-    tools: z.strictObject({
-      system_profiler: z.string().min(1).nullable(),
-      stty: z.string().min(1).nullable(),
-    }),
-    device_path: z.string().min(1),
-    baud_rate: z.number().int(),
-    duration_seconds: z.number().int().positive(),
-    bytes_observed: z.number().int().nonnegative(),
-    hex_preview: z.string().min(1).nullable(),
-    printable_preview: z.string().min(1).nullable(),
-    stop_reason: z.enum([
-      "deadline",
-      "closed",
-      "read_error",
-      "byte_bound",
-      "cancelled",
-    ]),
-    stop_detail: z.string().min(1).nullable(),
-    unparsed_lines: z.array(z.string().min(1)),
-    coverage: z.enum(["complete", "partial"]),
-  }),
-} as const;
-
-export type SerialListResult = z.infer<
-  (typeof serialResultSchemas)["list_serial_ports"]
->;
-
-export type SerialObserveResult = z.infer<
-  (typeof serialResultSchemas)["observe_serial_port"]
->;

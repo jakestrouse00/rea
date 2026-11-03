@@ -86,8 +86,6 @@ export const yaraScanResultSchema = z.strictObject({
   coverage: coverageSchema,
 });
 
-export type YaraScanResult = z.infer<typeof yaraScanResultSchema>;
-
 /** One validated YARA-X scan request. */
 export const yaraScanRequestSchema = z.discriminatedUnion("operation", [
   z.strictObject({

@@ -37,7 +37,6 @@ export const pydollPerformResultSchema = z.strictObject({
   final_url: z.string().nullable(),
   notes: z.array(z.string().min(1)).default([]),
 });
-export type PydollPerformResult = z.infer<typeof pydollPerformResultSchema>;
 
 export const pydollSeedStorageResultSchema = z.strictObject({
   applied: z.array(z.string().min(1)),
@@ -49,9 +48,6 @@ export const pydollCloseSessionResultSchema = z.strictObject({
   profile_removed: z.boolean(),
   notes: z.array(z.string().min(1)).default([]),
 });
-export type PydollCloseSessionResult = z.infer<
-  typeof pydollCloseSessionResultSchema
->;
 
 const bridgeRawCookieSchema = z.strictObject({
   name: z.string(),
@@ -127,20 +123,10 @@ export const bridgeCaptureResultSchema = z.strictObject({
 export type PydollCaptureResult = z.infer<typeof bridgeCaptureResultSchema>;
 export type PydollCaptureArtifact = z.infer<typeof bridgeCaptureArtifactSchema>;
 
-/** Marker data for the bridge's bounded event queue reporting dropped queued events. */
-export const bridgeQueueOverflowDataSchema = z.strictObject({
-  kind: z.literal("event_queue_overflow"),
-  count: z.number().int().min(1),
-});
-export type PydollQueueOverflowData = z.infer<
-  typeof bridgeQueueOverflowDataSchema
->;
-
 const bridgeEventSchema = z.strictObject({
   event: z.literal("scenario"),
   params: z.unknown(),
 });
-export type PydollBridgeEvent = z.infer<typeof bridgeEventSchema>;
 
 export type PydollBridgeReply =
   | { readonly id: number; readonly ok: true; readonly result: unknown }
@@ -153,9 +139,6 @@ export type PydollBridgeReply =
 const bridgeAdvertisingEnvelopeSchema = z.strictObject({
   advertising: bridgeAdvertisingSchema,
 });
-export type PydollBridgeAdvertisingEnvelope = z.infer<
-  typeof bridgeAdvertisingEnvelopeSchema
->;
 
 /** Parse one advertised-capabilities startup line. */
 export const parseBridgeAdvertising = (

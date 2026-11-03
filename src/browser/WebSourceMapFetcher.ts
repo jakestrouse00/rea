@@ -448,7 +448,6 @@ const fetchOne = async (
 
 // Fetch redirect statuses are owned by `domain/fetchRedirectStatus.ts`, which
 // the active request plane shares.
-export { isFetchRedirectStatus } from "../domain/fetchRedirectStatus.js";
 
 const fetchFollowingApprovedRedirects = async (
   initialUrl: string,

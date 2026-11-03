@@ -12,9 +12,6 @@ import {
   type ProtocolModel,
 } from "../../../src/domain/protolearn/protocolModel.js";
 
-/** Which autonomy loop one score belongs to. */
-export type BenchLoopId = "A" | "B" | "C";
-
 const fuzzing = fuzzingCampaignObservationSchema.shape;
 
 /**

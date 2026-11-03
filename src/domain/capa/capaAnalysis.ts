@@ -96,10 +96,6 @@ export const analyzeBinaryCapabilitiesResultSchema = z.strictObject({
   coverage: coverageSchema,
 });
 
-export type AnalyzeBinaryCapabilitiesResult = z.infer<
-  typeof analyzeBinaryCapabilitiesResultSchema
->;
-
 /** One validated capability-matching request. */
 export const analyzeBinaryCapabilitiesRequestSchema = z.strictObject({
   operation: z.literal("analyze_binary_capabilities"),

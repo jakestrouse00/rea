@@ -55,8 +55,6 @@ export const wifiScanResultSchema = z.strictObject({
   coverage: z.enum(["complete", "partial"]),
 });
 
-export type WifiScanResult = z.infer<typeof wifiScanResultSchema>;
-
 const EMPTY_LINE = /^\s*$/u;
 
 export interface WifiScanLineOptions {

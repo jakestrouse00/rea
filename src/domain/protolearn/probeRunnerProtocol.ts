@@ -45,6 +45,4 @@ export const probeRunnerResponseSchema = z.strictObject({
     .optional(),
 });
 
-export type ProbeRunnerResult = z.output<typeof probeRunnerResultSchema>;
 export type ProbeRunnerStep = z.output<typeof probeRunnerStepSchema>;
-export type ProbeRunnerResponse = z.output<typeof probeRunnerResponseSchema>;

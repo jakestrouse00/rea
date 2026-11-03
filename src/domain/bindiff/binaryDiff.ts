@@ -22,8 +22,6 @@ export const binaryDiffInputSchema = z.strictObject({
     .describe("Upper bound on matched function pairs published"),
 });
 
-export type BinaryDiffInput = z.input<typeof binaryDiffInputSchema>;
-
 const binaryDiffMatchSchema = z.strictObject({
   primary_address: z.string().min(1),
   primary_name: z.string().min(1).nullable(),
@@ -94,8 +92,6 @@ export const exportBinexportInputSchema = z.strictObject({
   ),
 });
 
-export type ExportBinexportInput = z.input<typeof exportBinexportInputSchema>;
-
 const exportedFileSchema = z.strictObject({
   relative_path: z.string().min(1),
   bytes: z.int().nonnegative(),
@@ -124,7 +120,3 @@ export const exportBinexportRequestSchema = z.strictObject({
   operation: z.literal("export_binexport_protobuf"),
   input: exportBinexportInputSchema,
 });
-
-export type ExportBinexportRequest = z.input<
-  typeof exportBinexportRequestSchema
->;

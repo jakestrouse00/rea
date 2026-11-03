@@ -58,7 +58,6 @@ export const mitmProxyGuidanceSchema = z.strictObject({
   steps: z.array(z.string().min(1)),
   out_of_scope: z.array(z.string().min(1)),
 });
-export type MitmProxyGuidanceResult = z.infer<typeof mitmProxyGuidanceSchema>;
 
 const mitmDaemonFactsSchema = z.strictObject({
   pid: z.int().min(0).nullable(),
@@ -104,7 +103,6 @@ const mitmCaptureFactsSchema = z.strictObject({
     retry: z.literal("none"),
     limitations: z.array(z.string().min(1)),
   });
-export type MitmStartResult = z.infer<typeof mitmStartResultSchema>;
 
 export const mitmInventoryTotalsSchema = z.strictObject({
   flows: z.int().min(0),
@@ -143,7 +141,6 @@ export const mitmEndpointFactsSchema = z.strictObject({
   response_shape: mitmShapeSketchSchema.nullable(),
   shape_variants: z.int().min(0),
 });
-export type MitmEndpointFactsResult = z.infer<typeof mitmEndpointFactsSchema>;
 
 /** Health of the structure stream itself; a degraded stream is incomplete. */
 export const mitmStreamFactsSchema = z.strictObject({
@@ -219,7 +216,6 @@ export const mitmInventoryResultSchema = z.strictObject({
   retry: z.literal("none"),
   limitations: z.array(z.string().min(1)),
 });
-export type MitmInventoryResult = z.infer<typeof mitmInventoryResultSchema>;
 
 /** The complete inventory as Evidence, optionally copied to a caller path. */
 export const mitmExportResultSchema = z.strictObject({
@@ -240,7 +236,6 @@ export const mitmExportResultSchema = z.strictObject({
   retry: z.literal("none"),
   limitations: z.array(z.string().min(1)),
 });
-export type MitmExportResult = z.infer<typeof mitmExportResultSchema>;
 
 /** Write the control file and report the revision the addon will read. */
 export const mitmRuleSetResultSchema = z.strictObject({
@@ -259,7 +254,6 @@ export const mitmRuleSetResultSchema = z.strictObject({
   counters: mitmRuleCountersSchema,
   limitations: z.array(z.string().min(1)),
 });
-export type MitmRuleSetResult = z.infer<typeof mitmRuleSetResultSchema>;
 
 /** One value-free rule decision retained in the ledger. */
 export const mitmRuleDecisionSchema = z.strictObject({
@@ -312,7 +306,6 @@ export const mitmReplaySendResultSchema = z.strictObject({
   retry: z.literal("none"),
   elapsed_ms: z.int().min(0),
 });
-export type MitmReplaySendResult = z.infer<typeof mitmReplaySendResultSchema>;
 
 /** Observed release of one proxy session and its capture directory. */
 export const mitmStopResultSchema = z.strictObject({
@@ -334,4 +327,3 @@ export const mitmStopResultSchema = z.strictObject({
   retry: z.literal("none"),
   limitations: z.array(z.string().min(1)),
 });
-export type MitmStopResult = z.infer<typeof mitmStopResultSchema>;

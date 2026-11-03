@@ -181,4 +181,3 @@ export type NativeAotArtifactInspection = z.infer<
   typeof nativeAotArtifactInspectionSchema
 >;
 export type NativeAotInspectionRow = z.infer<typeof rowSchema>;
-export type NativeAotDetectionSignal = z.infer<typeof detectionSignalSchema>;

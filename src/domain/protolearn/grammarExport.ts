@@ -88,17 +88,6 @@ export const planProtocolGrammarSeeds = (
   return { plans: [...byKey.values()], skipped };
 };
 
-/**
- * Handoff shape a Batch 3.3 fuzz campaign consumes. The fuzz lane is not part
- * of this release: the exported Evidence names the contract and the exact seed
- * paths so a later wiring task can pass them unchanged to
- * `start_fuzzing_campaign` instead of re-deriving seeds from the model.
- */
-export interface FuzzCampaignSeedHandoff {
-  readonly contract: "rea.fuzzing.campaign-seeds/v1";
-  readonly seed_paths: readonly string[];
-}
-
 export const FUZZ_CAMPAIGN_SEED_CONTRACT = "rea.fuzzing.campaign-seeds/v1";
 
 /** Grammar export: seeds, their coverage, and the campaign handoff. */
@@ -122,11 +111,3 @@ export const protocolGrammarExportSchema = z.strictObject({
 export type ProtocolGrammarExport = z.output<
   typeof protocolGrammarExportSchema
 >;
-
-/** Project one export onto the fuzz-campaign handoff contract. */
-export const fuzzCampaignSeedHandoff = (
-  exported: ProtocolGrammarExport,
-): FuzzCampaignSeedHandoff => ({
-  contract: FUZZ_CAMPAIGN_SEED_CONTRACT,
-  seed_paths: [...exported.campaign_handoff.seed_paths],
-});

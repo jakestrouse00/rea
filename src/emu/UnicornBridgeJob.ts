@@ -7,11 +7,6 @@ import {
 import { runSidecarBridgeJob } from "../process/SidecarBridgeJob.js";
 import type { EmuConfiguration } from "./EmuConfiguration.js";
 
-export {
-  SidecarBridgeProtocolFailure as UnicornBridgeProtocolFailure,
-  type SidecarBridgeJobInput,
-} from "../process/SidecarBridgeJob.js";
-
 export interface UnicornBridgeJobInput {
   readonly configuration: EmuConfiguration;
   readonly operation: string;

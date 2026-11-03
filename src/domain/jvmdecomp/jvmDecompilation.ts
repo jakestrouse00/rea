@@ -56,13 +56,6 @@ export const decompileJarArchiveInputSchema = z.strictObject({
     .describe("Upper bound on reported members per class"),
 });
 
-export type DecompileJarClassInput = z.input<
-  typeof decompileJarClassInputSchema
->;
-export type DecompileJarArchiveInput = z.input<
-  typeof decompileJarArchiveInputSchema
->;
-
 export const jvmDecompilerClientSchema = z.strictObject({
   command: z.string().min(1),
   version: z.string().min(1).nullable(),
@@ -115,10 +108,6 @@ export const jvmDecompilationResultSchema = z.strictObject({
   truncated: z.boolean(),
   coverage: coverageSchema,
 });
-
-export type JvmDecompilationResult = z.infer<
-  typeof jvmDecompilationResultSchema
->;
 
 /** One validated JVM decompilation request. */
 export const jvmDecompilerRequestSchema = z.discriminatedUnion("operation", [
