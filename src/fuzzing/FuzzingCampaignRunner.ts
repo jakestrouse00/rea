@@ -681,6 +681,9 @@ export class FuzzingCampaignRunner {
         ? [...plan.limitations]
         : [
             `No deny-default seatbelt profile applies on ${this.#platform}; the engine writes only where its argv points, without kernel confinement.`,
+            // A `REA_DISABLE_SANDBOX` launch is never reported as confined, so
+            // the emergency-exit disclosure travels with the host notice.
+            ...plan.limitations,
           ];
     const parser =
       adapter.engine === "libfuzzer"
