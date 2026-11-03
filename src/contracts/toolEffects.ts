@@ -237,6 +237,20 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     executesForeignCode: true,
     idempotent: false,
   }),
+  testmail_list_providers: effects({ accessesNetwork: true }),
+  testmail_create_mailbox: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    idempotent: false,
+  }),
+  testmail_wait_for_mail: effects({ accessesNetwork: true }),
+  testmail_read_message: effects({ accessesNetwork: true }),
+  testmail_delete_mailbox: effects({
+    mutatesSession: true,
+    accessesNetwork: true,
+    mayDiscardData: true,
+    idempotent: false,
+  }),
   start_fuzzing_campaign: effects({
     mutatesSession: true,
     writesFilesystem: true,

@@ -265,6 +265,11 @@ export const toolFamilyCatalog = (sources) => {
       contracts: sources.benchContracts.BENCH_TOOL_CONTRACTS,
     },
     {
+      id: "testmail",
+      surface: "testmail-provider",
+      contracts: sources.testmailContracts.TESTMAIL_TOOL_CONTRACTS,
+    },
+    {
       id: "mobile-toolchain",
       surface: "mobile-toolchain-provider",
       contracts:

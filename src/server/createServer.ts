@@ -321,6 +321,9 @@ import { createHuntingQueueService } from "../composition/hunting.js";
 import { registerHuntingTools } from "./registerHuntingTools.js";
 import type { LabVmPort } from "../application/vmlab/LabVmPort.js";
 import type { BenchTaskPort } from "../application/bench/BenchTaskPort.js";
+import type { TestmailService } from "../testmail/TestmailService.js";
+import { createTestmailService } from "../testmail/TestmailConfiguration.js";
+import { registerTestmailTools } from "./registerTestmailTools.js";
 import { createBenchTaskService } from "../composition/bench.js";
 import { registerBenchTools } from "./registerBenchTools.js";
 import { registerGdbTools } from "./registerGdbTools.js";
@@ -386,6 +389,8 @@ export interface CreateServerOptions {
   readonly labVm?: LabVmPort;
   /** Benchmark harness over the lab-VM lane; omitted means the lane is selected from the environment. */
   readonly bench?: BenchTaskPort;
+  /** Disposable-mail plane for test-identity flows; omitted means the keyless mail.tm-family adapters. */
+  readonly testmail?: TestmailService;
   readonly crashTriage?: CrashTriagePort;
   /** Fuzz loop over registered campaigns; omitted means the lane is selected from the environment. */
   readonly fuzzing?: FuzzingCampaignPort;
@@ -783,6 +788,7 @@ export const createServer = (
   const bindiff = options.bindiff ?? createBindiffProvider(environment);
   const labVm = options.labVm ?? createLabVmService(environment);
   const bench = options.bench ?? createBenchTaskService(environment, labVm);
+  const testmail = options.testmail ?? createTestmailService();
   const crashTriage =
     options.crashTriage ?? createCrashTriageService(environment);
   const fuzzing =
@@ -1326,6 +1332,7 @@ export const createServer = (
     logger: toolLogger,
     recordEvidence,
   });
+  registerTestmailTools({ server, testmail });
   registerGuidedPrompts(server, analysis, session);
   if (session !== undefined) {
     registerSessionTools(server, session, toolLogger, {

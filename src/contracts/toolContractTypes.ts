@@ -55,6 +55,7 @@ export const TOOL_KINDS = [
   "protocol-learning",
   "hunting-queue",
   "benchmark-harness",
+  "testmail-provider",
   "session",
 ] as const;
 
