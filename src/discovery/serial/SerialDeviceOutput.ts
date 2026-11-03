@@ -3,7 +3,7 @@ import { readdirSync } from "node:fs";
 import type { ListResult } from "../DiscoveryDeviceOutput.js";
 import type { SerialPortRow } from "./SerialAnalysis.js";
 
-const DEV_SERIAL_ENTRY = /^(cu|tty)\.([^/]+)$/u;
+const DEV_SERIAL_ENTRY = /^(cu|tty)\.([^\x2f]+)$/u;
 
 /**
  * One port row from the SPPortsDataType JSON tree: every string the producer

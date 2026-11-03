@@ -55,7 +55,7 @@ export const enumerateGrpcReflectionInputSchema = z.strictObject({
     .min(1)
     .max(512)
     .regex(
-      /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+)(?::\d{1,5})?$/u,
+      /^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._\-]+)(?::\d{1,5})?$/u,
       "Endpoint must be host[:port] or [IPv6][:port] with no scheme, path, or whitespace",
     )
     .describe("gRPC endpoint as host[:port], for example 127.0.0.1:50051"),

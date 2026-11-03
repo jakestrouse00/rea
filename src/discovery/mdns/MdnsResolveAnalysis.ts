@@ -15,7 +15,7 @@ export const mdnsResolveInputSchema = z.strictObject({
   service_type: z
     .string()
     .regex(
-      /^_[a-z0-9-]+\._(?:tcp|udp)\.$/iu,
+      /^_[a-z0-9\-]+\._(?:tcp|udp)\.$/iu,
       "Use a full mDNS service type such as _http._tcp. or _raop._udp.",
     )
     .describe("One mDNS service type with its trailing dot, e.g. _http._tcp."),

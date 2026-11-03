@@ -38,7 +38,7 @@ export const registerIdeviceCommands = (
     .string()
     .min(1)
     .regex(
-      /^[0-9a-fA-F-]+$/u,
+      /^[0-9a-fA-F\-]+$/u,
       "A UDID contains hexadecimal digits and dashes only",
     )
     .describe("Device UDID");
