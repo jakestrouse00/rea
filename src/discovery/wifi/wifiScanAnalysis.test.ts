@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+
 import { expect, test } from "vitest";
 
 import {
@@ -133,14 +135,21 @@ test("system_profiler's channel spelling parses into channel, band and width", (
 const darwinProbe = async (environment: Record<string, string>) =>
   resolveWifiScanner(environment, { platform: "darwin" });
 
-test("readiness resolves the scanner env override and the shipped fallback", async () => {
-  const profiler = await resolveWifiScanner({}, { platform: "darwin" });
-  expect(profiler.ok).toBe(true);
-  if (profiler.ok) {
-    expect(profiler.value.scanner).toBe(null);
-    expect(profiler.value.systemProfiler).toBe("/usr/sbin/system_profiler");
-  }
-});
+test(
+  "readiness resolves the scanner env override and the shipped fallback",
+  // The shipped fallback is Apple's bundled system_profiler, so the probe can
+  // only observe it on a host that actually ships it; elsewhere the readiness
+  // answer itself (null) is correct, and CI runs the unsupported-host case.
+  { skip: !existsSync("/usr/sbin/system_profiler") },
+  async () => {
+    const profiler = await resolveWifiScanner({}, { platform: "darwin" });
+    expect(profiler.ok).toBe(true);
+    if (profiler.ok) {
+      expect(profiler.value.scanner).toBe(null);
+      expect(profiler.value.systemProfiler).toBe("/usr/sbin/system_profiler");
+    }
+  },
+);
 
 test("readiness refuses a relative REA_WIFI_SCANNER_PATH fail-closed", async () => {
   const refusal = await darwinProbe({ [WIFI_SCANNER_SETTING]: "wifi-scan" });
