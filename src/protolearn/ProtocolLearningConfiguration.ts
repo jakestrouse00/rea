@@ -59,7 +59,8 @@ export const protolearnSandboxHostSupported = (
   platform: string = process.platform,
 ): boolean => platform === "darwin";
 
-const sandboxUnsupported = (
+/** The refusal for a lane whose default confinement cannot run on this host. */
+export const protolearnSandboxUnsupportedFailure = (
   platform: string,
 ): ProtolearnProbeConfigurationFailure =>
   new ProtolearnProbeConfigurationFailure(
@@ -126,13 +127,16 @@ const probeTimeout = (
  * Resolve the probe lane's interpreter, runner script, operator allowlist, and
  * deadline. Every refusal is fail-closed: an unset allowlist disables probing
  * instead of permitting any endpoint.
+ *
+ * This resolves environment selection only. Whether this composition may
+ * launch a confined probe child at all is the provider's answer, keyed on its
+ * launch planner: the default planner needs this host's deny-default profile,
+ * while a caller-supplied planner owns confinement itself.
  */
 export const resolveProtolearnProbeConfiguration = (
   environment: Readonly<Record<string, string | undefined>>,
   settingTimeoutMs?: number,
 ): ProtolearnProbeConfiguration => {
-  if (!protolearnSandboxHostSupported())
-    throw sandboxUnsupported(process.platform);
   const python = requiredAbsolute(
     environment[PROTOLEARN_PYTHON_ENV],
     "probe_python_not_configured",

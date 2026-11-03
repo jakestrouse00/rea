@@ -64,6 +64,8 @@ import type { ProtocolMessageSourcePort } from "../domain/protolearn/protocolMes
 import {
   ProtolearnProbeConfigurationFailure,
   inspectProtolearnProbeConfiguration,
+  protolearnSandboxHostSupported,
+  protolearnSandboxUnsupportedFailure,
   resolveProtolearnProbeConfiguration,
   type ProtolearnProbeConfiguration,
 } from "./ProtocolLearningConfiguration.js";
@@ -121,6 +123,18 @@ const settingTimeout = (
 ): number | undefined =>
   settings?.().overrides[PROTOLEARN_PROBE_TIMEOUT_SETTING];
 
+/**
+ * Whether this composition can launch a confined probe child.
+ *
+ * The default launch planner wraps the child in the deny-default profile, so
+ * it needs a host that provides `sandbox-exec`. A caller-supplied planner owns
+ * the launch itself, including whatever confinement it applies, mirroring the
+ * composition rule in `protolearnProbeEnabled`.
+ */
+const launchesConfinedProbe = (
+  planner: ProtocolProbeLaunchPlanner | undefined,
+): boolean => planner !== undefined || protolearnSandboxHostSupported();
+
 /** Learn protocol models, probe them in a lab, and export their seeds. */
 export class ProtocolLearningProvider {
   readonly #environment: Readonly<Record<string, string | undefined>>;
@@ -138,6 +152,15 @@ export class ProtocolLearningProvider {
 
   /** Report the probe lane's selection without opening a socket. */
   async inspectProbeAvailability(): Promise<ProviderAvailability> {
+    if (!launchesConfinedProbe(this.#probeLaunchPlanner)) {
+      const failure = protolearnSandboxUnsupportedFailure(process.platform);
+      return {
+        status: "unavailable",
+        code: "unsupported_host",
+        reason: failure.message,
+        diagnostics: {},
+      };
+    }
     let configuration: ProtolearnProbeConfiguration;
     try {
       configuration = resolveProtolearnProbeConfiguration(
@@ -146,13 +169,6 @@ export class ProtocolLearningProvider {
       );
     } catch (cause: unknown) {
       if (cause instanceof ProtolearnProbeConfigurationFailure) {
-        if (cause.code === "unsupported_host")
-          return {
-            status: "unavailable",
-            code: "unsupported_host",
-            reason: cause.message,
-            diagnostics: {},
-          };
         return {
           status: "unavailable",
           code: "not_configured",
@@ -466,6 +482,14 @@ export class ProtocolLearningProvider {
                 "Probe a loopback lab endpoint, or forward the lab service to a loopback port from a host you control. REA never probes unconfined.",
             },
           ),
+        ),
+      );
+    if (!launchesConfinedProbe(this.#probeLaunchPlanner))
+      return err(
+        providerConfigurationRefusal(
+          PROTOLEARN_PROVIDER_ID,
+          operation,
+          protolearnSandboxUnsupportedFailure(process.platform),
         ),
       );
     const timeoutMs = input.timeout_ms ?? configuration.probeTimeoutMs;
